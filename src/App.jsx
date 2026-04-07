@@ -158,15 +158,38 @@ const getSession=()=>{try{return JSON.parse(localStorage.getItem("cuet_session")
 const saveSession=u=>localStorage.setItem("cuet_session",JSON.stringify(u));
 const clearSession=()=>localStorage.removeItem("cuet_session");
 
-async function callAI(prompt, max_tokens) {
-  const res = await fetch("/api/anthropic-proxy", {
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({prompt, max_tokens}),
-  });
-  const data = await res.json();
-  if(!res.ok) throw new Error(data.error?.message||"API error");
-  return data;
+async function callAI(prompt, max_tokens, retries=2) {
+  for(let attempt=0; attempt<=retries; attempt++){
+    try{
+      const res = await fetch("/.netlify/functions/anthropic-proxy", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({prompt, max_tokens}),
+      });
+      // If HTML response (Netlify error page), throw descriptive error
+      const contentType = res.headers.get("content-type")||"";
+      if(!contentType.includes("application/json")){
+        const text = await res.text();
+        if(text.includes("<html") || text.includes("<!DOCTYPE")){
+          throw new Error("Server returned an error page. Please try again.");
+        }
+        throw new Error("Unexpected server response format.");
+      }
+      const data = await res.json();
+      if(!res.ok){
+        // Rate limit — wait and retry
+        if(res.status===429 && attempt<retries){
+          await new Promise(r=>setTimeout(r, 2000*(attempt+1)));
+          continue;
+        }
+        throw new Error(data.error?.message||`Server error (${res.status})`);
+      }
+      return data;
+    }catch(e){
+      if(attempt===retries) throw e;
+      await new Promise(r=>setTimeout(r, 1500*(attempt+1)));
+    }
+  }
 }
 
 const parseAI = txt => {
@@ -204,6 +227,38 @@ export default function CUETPlatform() {
   const [showWarn,setShowWarn]         = useState(false);
   const timerRef  = useRef(null);
   const submitRef = useRef(null);
+
+
+  // Inject global responsive styles once
+  useEffect(()=>{
+    const style = document.createElement("style");
+    style.id = "cuet-responsive";
+    style.textContent = `
+      * { box-sizing: border-box; }
+      body { margin: 0; padding: 0; }
+      @media (max-width: 768px) {
+        .exam-main { flex-direction: column !important; }
+        .exam-palette { width: 100% !important; max-height: 220px !important; border-left: none !important; border-top: 2px solid #d1d5db !important; order: -1; }
+        .exam-palette-grid { grid-template-columns: repeat(8, 1fr) !important; }
+        .exam-question { padding: 10px !important; }
+        .dashboard-grid-4 { grid-template-columns: repeat(2, 1fr) !important; }
+        .dashboard-grid-3 { grid-template-columns: 1fr !important; }
+        .diff-row { flex-direction: column !important; }
+        .diff-row button { flex: none !important; }
+        .toolbar-row { flex-direction: column !important; gap: 8px !important; }
+        .toolbar-row > div { justify-content: center !important; }
+        .results-grid { grid-template-columns: 1fr !important; }
+        .advisory-scores { flex-wrap: wrap !important; }
+      }
+      @media (max-width: 480px) {
+        .exam-palette-grid { grid-template-columns: repeat(6, 1fr) !important; }
+        .mode-grid { grid-template-columns: 1fr !important; }
+        .stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
+      }
+    `;
+    if(!document.getElementById("cuet-responsive")) document.head.appendChild(style);
+    return ()=>{};
+  },[]);
 
   // Prevent accidental navigation during exam
   useEffect(()=>{
@@ -603,7 +658,7 @@ export default function CUETPlatform() {
           </div>
         </div>
         {/* Main layout */}
-        <div style={{display:"flex",flex:1,overflow:"hidden",minHeight:0}}>
+        <div style={{display:"flex",flex:1,overflow:"hidden",minHeight:0}} className="exam-main">
           {/* Question area */}
           <div style={{flex:1,padding:14,overflowY:"auto",background:"#f0f0f0"}}>
             {/* Q header */}
@@ -650,14 +705,14 @@ export default function CUETPlatform() {
             </div>
           </div>
           {/* Palette panel */}
-          <div style={{width:200,background:"white",borderLeft:"2px solid #d1d5db",display:"flex",flexDirection:"column",flexShrink:0,overflow:"hidden"}}>
+          <div style={{width:200,background:"white",borderLeft:"2px solid #d1d5db",display:"flex",flexDirection:"column",flexShrink:0,overflow:"hidden"}} className="exam-palette">
             <div style={{background:"linear-gradient(135deg,#1e3a8a,#1d4ed8)",color:"white",fontWeight:800,fontSize:11,padding:"7px 10px",textAlign:"center",letterSpacing:1,textTransform:"uppercase",flexShrink:0}}>Question Palette</div>
             <div style={{padding:"9px 12px",borderBottom:"1px solid #f1f5f9",display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
               <div style={{width:30,height:30,borderRadius:"50%",background:"linear-gradient(135deg,#1e3a8a,#1d4ed8)",display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontWeight:900,fontSize:14,flexShrink:0}}>{user?.name?.[0]?.toUpperCase()}</div>
               <div style={{fontSize:11,fontWeight:600,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user?.name}</div>
             </div>
             <div style={{flex:1,overflowY:"auto",padding:10}}>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:4,marginBottom:14}}>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:4,marginBottom:14}} className="exam-palette-grid">
                 {questions.map((qi,idx)=>(
                   <div key={qi.id} onClick={()=>goTo(idx)} style={{...qstyle(qi.id),outline:idx===currentQ?"3px solid #f59e0b":"none",outlineOffset:1}}>{idx+1}</div>
                 ))}
@@ -688,7 +743,7 @@ You cannot undo this.`))doSubmit();}} style={{width:"100%",padding:"9px",backgro
           </div>
         </div>
         {/* Bottom toolbar */}
-        <div style={{background:"white",borderTop:"2px solid #d1d5db",padding:"9px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0,flexWrap:"wrap",gap:8}}>
+        <div style={{background:"white",borderTop:"2px solid #d1d5db",padding:"9px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0,flexWrap:"wrap",gap:8}} className="toolbar-row">
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
             <button onClick={()=>currentQ>0&&goTo(currentQ-1)} disabled={currentQ===0} style={{padding:"8px 16px",background:currentQ===0?"#f8fafc":"#e2e8f0",border:"1px solid #d1d5db",borderRadius:3,cursor:currentQ===0?"not-allowed":"pointer",fontSize:13,color:currentQ===0?"#94a3b8":"#374151",fontWeight:600}}>◄ Back</button>
             <button onClick={clearResponse} style={{padding:"8px 14px",background:"transparent",border:"none",color:"#dc2626",cursor:"pointer",fontSize:13,textDecoration:"underline",fontWeight:600}}>Clear Response</button>
