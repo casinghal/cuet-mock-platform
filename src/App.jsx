@@ -327,6 +327,24 @@ export default function CUETPlatform() {
     }
   };
 
+  const abandonTest=()=>{
+    if(!window.confirm("Exit this test?\n\nYour progress will be saved as Incomplete in your history. You can start a new test with any difficulty from the dashboard.")) return;
+    clearInterval(timerRef.current);
+    // Score whatever has been answered so far
+    const q=questions[currentQ];
+    const finalAns=selectedOpt&&q?{...answers,[q.id]:selectedOpt}:{...answers};
+    const r=computeResults(questions,finalAns);
+    if(user){
+      const entry={id:Date.now().toString(),date:new Date().toISOString(),mode,difficulty,
+        score:r.score,maxScore:r.maxScore,percentage:r.percentage,
+        correct:r.correct,wrong:r.wrong,unattempted:r.unattempted,qCount:questions.length,
+        abandoned:true};
+      const h=[entry,...getHist(user.id)].slice(0,30);
+      saveHist(user.id,h); setHistory(h);
+    }
+    setScreen("dashboard");
+  };
+
   const handleLogout=()=>{
     clearInterval(timerRef.current);
     clearSession();
@@ -579,7 +597,10 @@ export default function CUETPlatform() {
                           {new Date(t.date).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})}
                           {i===0&&<span style={{background:"#dbeafe",color:"#1d4ed8",fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:10,marginLeft:6}}>Latest</span>}
                         </td>
-                        <td style={{padding:"10px",textTransform:"capitalize",fontWeight:600,color:"#1e293b"}}>{t.mode}</td>
+                        <td style={{padding:"10px",color:"#1e293b"}}>
+                          <span style={{textTransform:"capitalize",fontWeight:600}}>{t.mode}</span>
+                          {t.abandoned&&<span style={{marginLeft:6,background:"#fef3c7",color:"#b45309",fontSize:10,fontWeight:700,padding:"1px 7px",borderRadius:10,border:"1px solid #fde68a"}}>Incomplete</span>}
+                        </td>
                         <td style={{padding:"10px"}}><span style={{background:DIFFS[t.difficulty]?.bg,color:DIFFS[t.difficulty]?.color,padding:"2px 9px",borderRadius:12,fontSize:11,fontWeight:700}}>{t.difficulty}</span></td>
                         <td style={{padding:"10px",fontWeight:900,color:t.percentage>=70?"#16a34a":t.percentage>=50?"#d97706":"#dc2626",fontSize:14}}>{t.score}/{t.maxScore} <span style={{fontSize:12}}>({t.percentage}%)</span></td>
                         <td style={{padding:"10px",color:"#16a34a",fontWeight:700}}>✓ {t.correct}</td>
@@ -647,7 +668,14 @@ export default function CUETPlatform() {
             <div style={{background:"white",borderRadius:3,padding:"3px 9px",fontWeight:900,fontSize:13,color:"#1a56db",letterSpacing:1.5}}>NTA</div>
             <div style={{color:"white",fontSize:13,fontWeight:700}}>CUET (UG) — 2026 | Common University Entrance Test (Undergraduate)</div>
           </div>
-          <div style={{color:"rgba(255,255,255,0.75)",fontSize:12}}>Candidate: <strong style={{color:"white"}}>{user?.name}</strong></div>
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            <div style={{color:"rgba(255,255,255,0.75)",fontSize:12}}>Candidate: <strong style={{color:"white"}}>{user?.name}</strong></div>
+            <button onClick={abandonTest}
+              style={{background:"rgba(255,200,0,0.15)",border:"1px solid rgba(255,200,0,0.5)",color:"#fde68a",
+                padding:"5px 14px",borderRadius:4,cursor:"pointer",fontSize:12,fontWeight:700,letterSpacing:0.3}}>
+              Exit Test ✕
+            </button>
+          </div>
         </div>
         {/* Section / Timer strip */}
         <div style={{background:"#bfdbfe",padding:"7px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"2px solid #93c5fd",flexShrink:0,flexWrap:"wrap",gap:8}}>
