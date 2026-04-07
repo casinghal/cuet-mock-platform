@@ -53,19 +53,40 @@ exports.handler = async function (event) {
   }
 
   try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": process.env.ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-6",
-        max_tokens: max_tokens || 1000,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
+    // AbortController: fail gracefully at 22s rather than letting Netlify 504 at 26s
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 22000);
+
+    let response;
+    try {
+      response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": process.env.ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          // Use haiku for test generation (fast: 6-14s) — sonnet takes 25-40s and hits Netlify timeout
+          // Advisory calls use smaller token counts so haiku handles those too
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: max_tokens || 1000,
+          messages: [{ role: "user", content: prompt }],
+        }),
+      });
+    } catch (fetchErr) {
+      clearTimeout(timeoutId);
+      if (fetchErr.name === "AbortError") {
+        return {
+          statusCode: 504,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+          body: JSON.stringify({ error: { message: "Request timed out (22s). Try a smaller test mode or difficulty, then retry." } }),
+        };
+      }
+      throw fetchErr;
+    }
+    clearTimeout(timeoutId);
 
     const data = await response.json();
 
