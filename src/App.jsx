@@ -9,9 +9,9 @@ const MODES = {
 // Per-combination token ceilings — no explanations in generation (lazy on review)
 // Haiku = 120 tokens/sec, AbortController = 25s = 3000 tokens max safe ceiling
 const MAX_TOKENS = {
-  quick:    { easy:2500, medium:2800, hard:3200 },
-  standard: { easy:2500, medium:2800, hard:3200 }, // per 15Q split-half
-  full:     { easy:2800, medium:3200, hard:3800 }, // per 17Q split-third
+  quick:    { easy:1600, medium:2000, hard:2500 },
+  standard: { easy:1600, medium:2000, hard:2500 }, // per 15Q split-half
+  full:     { easy:2000, medium:2400, hard:2900 }, // per 17Q split-third
 };
 const DIFFS = {
   easy:   { label:"Easy",   color:"#16a34a", bg:"#dcfce7", desc:"Simple vocab, direct questions" },
@@ -59,7 +59,7 @@ Difficulty: ${diff} — ${ddesc}
 Total: exactly ${total} questions
 
 Distribution:
-- Reading Comprehension: ${d.rc[0]} passage(s), ${d.rc[1]} questions. Types: ${ptypes}. Each passage 80-100 words for hard difficulty, 120-150 words for easy/medium, original, information-dense.
+- Reading Comprehension: ${d.rc[0]} passage(s), ${d.rc[1]} questions. Types: ${ptypes}. Each passage 120-150 words, original, information-dense.
 - Synonyms & Antonyms: ${d.sa} questions — alternate between SYNONYM and ANTONYM tasks
 - Choose Correct Word: ${d.cw} fill-in-the-blank sentences, one blank each
 - Sentence Rearrangement: ${d.sr} questions — show sentences as P/Q/R/S individually, options are 4 distinct orderings like PQRS, QPSR, etc.
@@ -87,7 +87,7 @@ function buildSplitPrompt(diff, part, count) {
     : part==="third"
     ? `- Reading Comprehension: 1 passage (literary, 120-150 words), 3 questions\n- Synonyms & Antonyms: 2 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 3 fill-in-the-blank\n- Sentence Rearrangement: 2 questions (P/Q/R/S format)\n- Match the Following: 1 question\n- Vocabulary & Grammar: 1 question`
     : `- Synonyms & Antonyms: 4 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 4 fill-in-the-blank\n- Sentence Rearrangement: 3 questions (P/Q/R/S format)\n- Match the Following: 1 question`;
-  return `You are a senior CUET UG English (101) paper setter for(the National Testing Agency (NTA), India. Create a batch of practice questions.
+  return `You are a senior CUET UG English (101) paper setter for the National Testing Agency (NTA), India. Create a batch of practice questions.
 
 Difficulty: ${diff} — ${ddesc}
 Total: exactly ${count} questions
@@ -112,8 +112,8 @@ function buildStandardSplitPrompt(diff, half) {
   // half: "first"(15Q) | "second"(15Q) — for Standard Test 2-way split
   const ddesc = { easy:"simple vocabulary, direct factual questions, straightforward inference", medium:"moderate vocabulary above Class 12 level, some inference required, plausible distractors", hard:"advanced GRE-level vocabulary, complex literary passages, abstract inference, highly plausible distractors" }[diff];
   const dist = half==="first"
-    ? `- Reading Comprehension: 1 passage (factual, 80-100 words), 4 questions\n- Synonyms & Antonyms: 3 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 4 fill-in-the-blank\n- Sentence Rearrangement: 2 questions (P/Q/R/S format)\n- Match the Following: 1 question\n- Vocabulary & Grammar: 1 question`
-    : `- Reading Comprehension: 1 passage (narrative/literary, 80-100 words), 4 questions\n- Synonyms & Antonyms: 3 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 3 fill-in-the-blank\n- Sentence Rearrangement: 2 questions (P/Q/R/S format)\n- Match the Following: 1 question\n- Vocabulary & Grammar: 2 questions`;
+    ? `- Reading Comprehension: 1 passage (factual, 120-150 words), 4 questions\n- Synonyms & Antonyms: 3 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 4 fill-in-the-blank\n- Sentence Rearrangement: 2 questions (P/Q/R/S format)\n- Match the Following: 1 question\n- Vocabulary & Grammar: 1 question`
+    : `- Reading Comprehension: 1 passage (narrative/literary, 120-150 words), 4 questions\n- Synonyms & Antonyms: 3 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 3 fill-in-the-blank\n- Sentence Rearrangement: 2 questions (P/Q/R/S format)\n- Match the Following: 1 question\n- Vocabulary & Grammar: 2 questions`;
   return `You are a senior CUET UG English (101) paper setter for the National Testing Agency (NTA), India. Create a batch of practice questions.
 
 Difficulty: ${diff} — ${ddesc}
@@ -264,6 +264,7 @@ export default function CUETPlatform() {
   const [genError,setGenError]         = useState("");
   const [reviewOpen,setReviewOpen]     = useState(null);
   const [showWarn,setShowWarn]         = useState(false);
+  const [showReview,setShowReview]     = useState(false);
   const timerRef  = useRef(null);
   const submitRef = useRef(null);
 
@@ -343,6 +344,17 @@ export default function CUETPlatform() {
     if(screen==="generating"){const t=setInterval(()=>setTipIdx(i=>(i+1)%TIPS.length),3800);return()=>clearInterval(t);}
   },[screen]);
 
+  // Auto-generate advisory when results loads
+  useEffect(()=>{
+    if(screen==="results"&&results&&!advisory&&!loadingAdv){
+      setLoadingAdv(true);
+      callAI(buildAdvisoryPrompt(results,user?.name||"Student"),1200)
+        .then(data=>{const txt=data.content.filter(b=>b.type==="text").map(b=>b.text).join("");setAdvisory(txt);})
+        .catch(()=>setAdvisory("Advisory could not be generated at this time."))
+        .finally(()=>setLoadingAdv(false));
+    }
+  },[screen,results]);
+
   // ─── Auth ──────────────────────────────────────────────────
   const handleAuth=()=>{
     setAuthErr("");
@@ -420,7 +432,7 @@ export default function CUETPlatform() {
   const generateTest=async()=>{
     setGenError(""); setScreen("generating");
     try{
-                  let allPassages=[],allQuestions=[];
+      let allPassages=[],allQuestions=[];
       if(mode==="full"){
         // 4-way parallel split: 13+13+12+12 = 50Q, each call ~2000 tokens → ~21s safely within 25s limit
         setGenStage("Preparing your Full Mock paper across all sections. Please wait.");
@@ -470,7 +482,7 @@ export default function CUETPlatform() {
         const r=parseAI(data.content.filter(b=>b.type==="text").map(b=>b.text).join(""));
         allPassages=r.passages; allQuestions=r.questions;
       }
-if(!allQuestions.length) throw new Error("No questions were returned. Please try again.");
+      if(!allQuestions.length) throw new Error("No questions were returned. Please try again.");
       setPassages(allPassages); setQuestions(allQuestions);
       setAnswers({}); setMarkedReview(new Set());
       setVisited(new Set([allQuestions[0]?.id]));
@@ -506,44 +518,58 @@ if(!allQuestions.length) throw new Error("No questions were returned. Please try
   //  AUTH SCREEN
   // ════════════════════════════════════════════════════════
   if(screen==="auth") return(
-    <div style={{minHeight:"100vh",background:"linear-gradient(160deg,#0f172a 0%,#1e3a8a 55%,#1d4ed8 100%)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:20,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
-      <div style={{marginBottom:20,textAlign:"center"}}>
-        <div style={{display:"inline-flex",alignItems:"center",gap:10,background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:8,padding:"8px 18px",marginBottom:8}}>
-          <div style={{fontWeight:900,fontSize:17,color:"white",letterSpacing:2}}>NTA</div>
-          <div style={{width:1,height:22,background:"rgba(255,255,255,0.25)"}}/>
-          <div style={{color:"rgba(255,255,255,0.9)",fontSize:13,fontWeight:600}}>CUET (UG) 2026</div>
-        </div>
-        <div style={{color:"rgba(255,255,255,0.5)",fontSize:12}}>English — Section I (Language) · Mock Test Platform</div>
+    <div style={{minHeight:"100vh",background:"#F8FAFC",fontFamily:"Inter,system-ui,sans-serif"}}>
+      {/* Top nav band */}
+      <div style={{background:"#0F1C2E",padding:"10px 24px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div style={{background:"white",borderRadius:4,padding:"3px 10px",fontWeight:900,fontSize:13,color:"#0F1C2E",letterSpacing:2}}>NTA</div>
+        <div style={{color:"rgba(255,255,255,0.6)",fontSize:12,fontWeight:500,letterSpacing:"0.06em"}}>CUET (UG) 2026</div>
       </div>
-      <div style={{background:"white",borderRadius:14,padding:"30px 34px",width:"100%",maxWidth:390,boxShadow:"0 24px 64px rgba(0,0,0,0.45)"}}>
-        <div style={{textAlign:"center",marginBottom:22}}>
-          <div style={{fontSize:21,fontWeight:900,color:"#0f172a"}}>Student Login</div>
-          <div style={{fontSize:13,color:"#64748b",marginTop:3}}>Practice for CUET English (101)</div>
+      {/* Center content */}
+      <div style={{maxWidth:400,margin:"0 auto",padding:"56px 24px 24px"}}>
+        <div style={{textAlign:"center",marginBottom:32}}>
+          <h1 style={{margin:"0 0 8px",fontSize:20,fontWeight:700,color:"#0F1C2E",lineHeight:1.3}}>CUET English Mock Test Series — 2026</h1>
+          <p style={{margin:"0 0 4px",fontSize:13,color:"#334155"}}>Section I — Language Proficiency (English)</p>
+          <p style={{margin:0,fontSize:11,color:"#94A3B8",fontWeight:600,letterSpacing:"0.06em",textTransform:"uppercase"}}>Accuron Education</p>
         </div>
-        <div style={{display:"flex",background:"#f1f5f9",borderRadius:7,padding:3,marginBottom:22,gap:3}}>
-          {[["login","Sign In"],["register","Register"]].map(([m,l])=>(
-            <button key={m} onClick={()=>{setAuthMode(m);setAuthErr("");}} style={{flex:1,padding:"9px 0",border:"none",borderRadius:5,cursor:"pointer",fontWeight:700,fontSize:13,background:authMode===m?"white":"transparent",color:authMode===m?"#1e3a8a":"#64748b",boxShadow:authMode===m?"0 1px 5px rgba(0,0,0,0.10)":"none",transition:"all 0.15s"}}>{l}</button>
-          ))}
-        </div>
-        {authMode==="register"&&(
-          <div style={{marginBottom:14}}>
-            <label style={{display:"block",fontSize:12,fontWeight:700,color:"#374151",marginBottom:5,textTransform:"uppercase",letterSpacing:0.5}}>Full Name</label>
-            <input value={authForm.name} onChange={e=>setAuthForm(f=>({...f,name:e.target.value}))} placeholder="Your full name" style={{width:"100%",padding:"10px 12px",border:"1.5px solid #e2e8f0",borderRadius:7,fontSize:14,boxSizing:"border-box",outline:"none"}} onFocus={e=>e.target.style.borderColor="#1d4ed8"} onBlur={e=>e.target.style.borderColor="#e2e8f0"}/>
+        <div style={{background:"white",border:"1px solid #E2E8F0",borderRadius:8,padding:"28px 24px",boxShadow:"0 1px 3px rgba(0,0,0,0.08),0 1px 2px rgba(0,0,0,0.04)"}}>
+          {authMode==="register"&&(
+            <div style={{marginBottom:16}}>
+              <label style={{display:"block",fontSize:11,fontWeight:600,color:"#64748B",marginBottom:5,textTransform:"uppercase",letterSpacing:"0.06em"}}>Full Name</label>
+              <input value={authForm.name} onChange={e=>setAuthForm(f=>({...f,name:e.target.value}))} placeholder="Your full name" style={{width:"100%",padding:"9px 12px",border:"1px solid #E2E8F0",borderRadius:6,fontSize:14,boxSizing:"border-box",outline:"none",color:"#0F1C2E",background:"#F8FAFC"}} onFocus={e=>e.target.style.borderColor="#4338CA"} onBlur={e=>e.target.style.borderColor="#E2E8F0"}/>
+            </div>
+          )}
+          <div style={{marginBottom:16}}>
+            <label style={{display:"block",fontSize:11,fontWeight:600,color:"#64748B",marginBottom:5,textTransform:"uppercase",letterSpacing:"0.06em"}}>Email</label>
+            <input type="email" value={authForm.email} onChange={e=>setAuthForm(f=>({...f,email:e.target.value}))} placeholder="you@email.com" style={{width:"100%",padding:"9px 12px",border:"1px solid #E2E8F0",borderRadius:6,fontSize:14,boxSizing:"border-box",outline:"none",color:"#0F1C2E",background:"#F8FAFC"}} onFocus={e=>e.target.style.borderColor="#4338CA"} onBlur={e=>e.target.style.borderColor="#E2E8F0"}/>
           </div>
-        )}
-        <div style={{marginBottom:14}}>
-          <label style={{display:"block",fontSize:12,fontWeight:700,color:"#374151",marginBottom:5,textTransform:"uppercase",letterSpacing:0.5}}>Email Address</label>
-          <input type="email" value={authForm.email} onChange={e=>setAuthForm(f=>({...f,email:e.target.value}))} placeholder="you@email.com" style={{width:"100%",padding:"10px 12px",border:"1.5px solid #e2e8f0",borderRadius:7,fontSize:14,boxSizing:"border-box",outline:"none"}} onFocus={e=>e.target.style.borderColor="#1d4ed8"} onBlur={e=>e.target.style.borderColor="#e2e8f0"}/>
+          <div style={{marginBottom:authErr?"12px":"20px"}}>
+            <label style={{display:"block",fontSize:11,fontWeight:600,color:"#64748B",marginBottom:5,textTransform:"uppercase",letterSpacing:"0.06em"}}>Password</label>
+            <input type="password" value={authForm.password} onChange={e=>setAuthForm(f=>({...f,password:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&handleAuth()} placeholder="Minimum 6 characters" style={{width:"100%",padding:"9px 12px",border:"1px solid #E2E8F0",borderRadius:6,fontSize:14,boxSizing:"border-box",outline:"none",color:"#0F1C2E",background:"#F8FAFC"}} onFocus={e=>e.target.style.borderColor="#4338CA"} onBlur={e=>e.target.style.borderColor="#E2E8F0"}/>
+          </div>
+          {authErr&&<div style={{background:"#FFF1F1",border:"1px solid #FCA5A5",color:"#DC2626",padding:"9px 12px",borderRadius:6,fontSize:13,marginBottom:16,lineHeight:1.5}}>{authErr}</div>}
+          <button onClick={handleAuth} style={{width:"100%",height:44,background:"#0F1C2E",color:"white",border:"none",borderRadius:6,fontSize:14,fontWeight:600,cursor:"pointer",letterSpacing:"0.02em",transition:"background 0.15s"}} onMouseEnter={e=>e.target.style.background="#1E2D42"} onMouseLeave={e=>e.target.style.background="#0F1C2E"}>
+            Continue
+          </button>
+          {/* Divider */}
+          <div style={{display:"flex",alignItems:"center",gap:12,margin:"20px 0 16px"}}>
+            <div style={{flex:1,height:1,background:"#E2E8F0"}}/>
+            <span style={{fontSize:11,color:"#94A3B8",letterSpacing:"0.04em",whiteSpace:"nowrap"}}>or continue with</span>
+            <div style={{flex:1,height:1,background:"#E2E8F0"}}/>
+          </div>
+          {/* Social login */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
+            {[{name:"Google",icon:"G"},{name:"Facebook",icon:"f"}].map(({name,icon})=>(
+              <button key={name} onClick={()=>alert("Social login is coming soon. Please use email to sign in.")} style={{padding:"9px 12px",border:"1px solid #E2E8F0",borderRadius:6,background:"white",cursor:"pointer",fontSize:13,fontWeight:500,color:"#334155",display:"flex",alignItems:"center",justifyContent:"center",gap:8,transition:"border-color 0.15s"}} onMouseEnter={e=>e.target.style.borderColor="#CBD5E1"} onMouseLeave={e=>e.target.style.borderColor="#E2E8F0"}>
+                <span style={{width:18,height:18,borderRadius:3,background:name==="Google"?"#EA4335":"#1877F2",color:"white",fontSize:11,fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{icon}</span>
+                {name}
+              </button>
+            ))}
+          </div>
+          <div style={{textAlign:"center",fontSize:13,color:"#94A3B8"}}>
+            {authMode==="login"?(<>New here?{" "}<button onClick={()=>{setAuthMode("register");setAuthErr("");}} style={{background:"none",border:"none",color:"#4338CA",cursor:"pointer",fontWeight:600,fontSize:13,padding:0,textDecoration:"underline"}}>Create your practice account</button></>):(<>Have an account?{" "}<button onClick={()=>{setAuthMode("login");setAuthErr("");}} style={{background:"none",border:"none",color:"#4338CA",cursor:"pointer",fontWeight:600,fontSize:13,padding:0,textDecoration:"underline"}}>Sign in instead</button></>)}
+          </div>
         </div>
-        <div style={{marginBottom:authErr?"12px":"20px"}}>
-          <label style={{display:"block",fontSize:12,fontWeight:700,color:"#374151",marginBottom:5,textTransform:"uppercase",letterSpacing:0.5}}>Password</label>
-          <input type="password" value={authForm.password} onChange={e=>setAuthForm(f=>({...f,password:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&handleAuth()} placeholder="Minimum 6 characters" style={{width:"100%",padding:"10px 12px",border:"1.5px solid #e2e8f0",borderRadius:7,fontSize:14,boxSizing:"border-box",outline:"none"}} onFocus={e=>e.target.style.borderColor="#1d4ed8"} onBlur={e=>e.target.style.borderColor="#e2e8f0"}/>
-        </div>
-        {authErr&&<div style={{background:"#fef2f2",border:"1px solid #fecaca",color:"#dc2626",padding:"9px 12px",borderRadius:6,fontSize:13,marginBottom:16,lineHeight:1.5}}>{authErr}</div>}
-        <button onClick={handleAuth} style={{width:"100%",padding:"12px",background:"linear-gradient(135deg,#1e3a8a,#1d4ed8)",color:"white",border:"none",borderRadius:8,fontSize:15,fontWeight:800,cursor:"pointer",letterSpacing:0.3}}>{authMode==="login"?"Sign In →":"Create Account →"}</button>
-        <div style={{textAlign:"center",marginTop:14,fontSize:12,color:"#94a3b8"}}>{authMode==="login"?"New here? ":"Have an account? "}<button onClick={()=>setAuthMode(authMode==="login"?"register":"login")} style={{background:"none",border:"none",color:"#1d4ed8",cursor:"pointer",fontWeight:700,fontSize:12,textDecoration:"underline"}}>{authMode==="login"?"Register for free":"Sign in instead"}</button></div>
       </div>
-      <div style={{marginTop:16,color:"rgba(255,255,255,0.25)",fontSize:11,textAlign:"center"}}>Your account is stored securely. No payment required to access.</div>
     </div>
   );
 
@@ -551,139 +577,136 @@ if(!allQuestions.length) throw new Error("No questions were returned. Please try
   //  DASHBOARD
   // ════════════════════════════════════════════════════════
   if(screen==="dashboard"){
-    const best=history.length?Math.max(...history.map(t=>t.percentage)):null;
-    const avg=history.length?Math.round(history.reduce((s,t)=>s+t.percentage,0)/history.length):null;
+    const best=history.filter(t=>!t.abandoned).length?Math.max(...history.filter(t=>!t.abandoned).map(t=>t.percentage)):null;
+    const avg=history.filter(t=>!t.abandoned).length?Math.round(history.filter(t=>!t.abandoned).reduce((s,t)=>s+t.percentage,0)/history.filter(t=>!t.abandoned).length):null;
     const totalDone=history.reduce((s,t)=>s+(t.qCount||0),0);
-    const streak=history.length;
+    const bestColor=best===null?"#4338CA":best>=70?"#059669":best>=50?"#D97706":"#DC2626";
+    const avgColor=avg===null?"#4338CA":avg>=70?"#059669":avg>=50?"#D97706":"#DC2626";
     return(
-      <div style={{minHeight:"100vh",background:"#eef2f7",fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
+      <div style={{minHeight:"100vh",background:"#F8FAFC",fontFamily:"Inter,system-ui,sans-serif"}}>
         {/* Header */}
-        <div style={{background:"linear-gradient(135deg,#0f172a,#1e3a8a)",padding:"11px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
-          <div style={{display:"flex",alignItems:"center",gap:12}}>
-            <div style={{background:"white",borderRadius:4,padding:"4px 10px",fontWeight:900,fontSize:13,color:"#1a56db",letterSpacing:1.5}}>NTA</div>
-            <div style={{color:"white"}}><div style={{fontWeight:700,fontSize:15}}>CUET (UG) 2026 — English (101)</div><div style={{fontSize:11,opacity:0.5}}>Mock Test Practice Platform</div></div>
+        <div style={{background:"#0F1C2E",padding:"10px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
+          <div style={{display:"flex",alignItems:"center",gap:14}}>
+            <div style={{background:"white",borderRadius:4,padding:"3px 10px",fontWeight:900,fontSize:13,color:"#0F1C2E",letterSpacing:2}}>NTA</div>
+            <div style={{color:"white"}}>
+              <div style={{fontWeight:600,fontSize:14,lineHeight:1.3}}>CUET (UG) 2026 — English (101)</div>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.45)"}}>Accuron Education</div>
+            </div>
           </div>
-          <div style={{display:"flex",alignItems:"center",gap:12}}>
-            <div style={{textAlign:"right",color:"white"}}><div style={{fontWeight:700,fontSize:14}}>{user?.name}</div><div style={{fontSize:11,opacity:0.45}}>{user?.email}</div></div>
-            <button onClick={handleLogout} style={{background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",color:"white",padding:"6px 14px",borderRadius:5,cursor:"pointer",fontSize:12,fontWeight:600}}>Logout</button>
+          <div style={{display:"flex",alignItems:"center",gap:14}}>
+            <div style={{textAlign:"right",color:"white"}}>
+              <div style={{fontWeight:600,fontSize:13}}>{user?.name}</div>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>{user?.email}</div>
+            </div>
+            <button onClick={handleLogout} style={{background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",color:"rgba(255,255,255,0.8)",padding:"6px 14px",borderRadius:5,cursor:"pointer",fontSize:12,fontWeight:500,transition:"background 0.15s"}} onMouseEnter={e=>e.target.style.background="rgba(255,255,255,0.15)"} onMouseLeave={e=>e.target.style.background="rgba(255,255,255,0.08)"}>Logout</button>
           </div>
         </div>
 
-        <div style={{maxWidth:900,margin:"0 auto",padding:"22px 20px"}}>
-          {/* Welcome row */}
-          <div style={{marginBottom:18,display:"flex",alignItems:"flex-end",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
-            <div>
-              <h1 style={{margin:0,fontSize:22,fontWeight:900,color:"#0f172a"}}>Welcome back, {user?.name?.split(" ")[0]}</h1>
-              <p style={{margin:"4px 0 0",color:"#64748b",fontSize:14}}>CUET English (101) — Section I · Language Proficiency Test</p>
-            </div>
-            {history.length>0&&<div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,padding:"8px 16px",textAlign:"center"}}><div style={{fontSize:20,fontWeight:900,color:"#1d4ed8"}}>{streak}</div><div style={{fontSize:11,color:"#3b82f6"}}>Tests Taken</div></div>}
-          </div>
-
-          {/* Stats cards */}
-          {history.length>0&&(
-            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:18}}>
-              {[{v:(best||0)+"%",l:"Best Score",c:"#16a34a",sub:best>=70?"Above target":"Target: 70%"},{v:(avg||0)+"%",l:"Average Score",c:avg>=70?"#16a34a":avg>=50?"#d97706":"#dc2626",sub:avg>=70?"Consistent":"Needs work"},{v:totalDone,l:"Questions Attempted",c:"#7c3aed",sub:"Total practice"}]
-                .map(({v,l,c,sub})=>(
-                  <div key={l} style={{background:"white",borderRadius:10,padding:"16px 18px",boxShadow:"0 1px 4px rgba(0,0,0,0.07)",borderTop:`3px solid ${c}`}}>
-                    <div style={{fontSize:28,fontWeight:900,color:c,lineHeight:1.1}}>{v}</div>
-                    <div style={{fontSize:13,fontWeight:700,color:"#1e293b",marginTop:2}}>{l}</div>
-                    <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>{sub}</div>
+        <div style={{maxWidth:880,margin:"0 auto",padding:"28px 20px"}}>
+          {/* Stats strip */}
+          {history.filter(t=>!t.abandoned).length>0&&(
+            <div style={{marginBottom:28}}>
+              <div style={{fontSize:11,fontWeight:600,color:"#64748B",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:12}}>Your Practice Summary</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12}} className="stats-grid">
+                {[
+                  {v:best!==null?best+"%":"—",l:"Best Score",c:bestColor},
+                  {v:avg!==null?avg+"%":"—",l:"Average Score",c:avgColor},
+                  {v:history.length,l:"Tests Taken",c:"#4338CA"},
+                ].map(({v,l,c})=>(
+                  <div key={l} style={{background:"white",border:"1px solid #E2E8F0",borderRadius:8,padding:"16px 18px",borderLeft:`4px solid ${c}`,boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}>
+                    <div style={{fontSize:28,fontWeight:700,color:c,lineHeight:1.1}}>{v}</div>
+                    <div style={{fontSize:11,fontWeight:600,color:"#64748B",marginTop:5,textTransform:"uppercase",letterSpacing:"0.06em"}}>{l}</div>
                   </div>
                 ))}
+              </div>
             </div>
           )}
 
-          {/* New Test Card */}
-          <div style={{background:"white",borderRadius:12,padding:26,boxShadow:"0 1px 4px rgba(0,0,0,0.07)",marginBottom:18,border:"1px solid #e2e8f0"}}>
-            <h2 style={{margin:"0 0 6px",fontSize:17,fontWeight:900,color:"#0f172a"}}>Start a New Test</h2>
-            <p style={{margin:"0 0 20px",fontSize:13,color:"#64748b"}}>Select mode and difficulty, then click Generate. Every test is drawn from our curated question bank. Combinations never repeat.</p>
+          {/* New Test Paper */}
+          <div style={{background:"white",border:"1px solid #E2E8F0",borderRadius:8,padding:"24px",boxShadow:"0 1px 3px rgba(0,0,0,0.06)",marginBottom:24}}>
+            <div style={{fontSize:16,fontWeight:600,color:"#0F1C2E",marginBottom:20}}>New Test Paper</div>
 
-            {/* Mode selector */}
-            <div style={{marginBottom:18}}>
-              <div style={{fontSize:12,fontWeight:700,color:"#94a3b8",marginBottom:10,textTransform:"uppercase",letterSpacing:0.8}}>Test Mode</div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+            {/* Mode tiles */}
+            <div style={{marginBottom:20}}>
+              <div style={{fontSize:11,fontWeight:600,color:"#64748B",marginBottom:10,textTransform:"uppercase",letterSpacing:"0.06em"}}>Test Mode</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}} className="mode-grid">
                 {Object.entries(MODES).map(([k,m])=>(
-                  <div key={k} onClick={()=>setMode(k)} style={{border:`2px solid ${mode===k?"#1d4ed8":"#e2e8f0"}`,borderRadius:10,padding:"14px 12px",cursor:"pointer",background:mode===k?"#eff6ff":"#fafafa",transition:"all 0.15s",userSelect:"none",position:"relative"}}>
-                    {mode===k&&<div style={{position:"absolute",top:8,right:8,width:8,height:8,borderRadius:"50%",background:"#1d4ed8"}}/>}
-                    <div style={{fontWeight:800,fontSize:14,color:mode===k?"#1d4ed8":"#1e293b"}}>{m.label}</div>
-                    <div style={{fontSize:11,color:"#94a3b8",marginTop:4}}>{m.tag}</div>
-                    {k==="full"&&<div style={{fontSize:10,color:"#7c3aed",fontWeight:700,marginTop:4}}>Comprehensive coverage</div>}
+                  <div key={k} onClick={()=>setMode(k)} style={{border:`${mode===k?"2px solid #4338CA":"1px solid #E2E8F0"}`,borderRadius:8,padding:"14px 12px",cursor:"pointer",background:mode===k?"#EEF2FF":"white",transition:"box-shadow 0.1s,border-color 0.1s",userSelect:"none",position:"relative",boxShadow:mode===k?"none":"0 1px 2px rgba(0,0,0,0.04)"}} onMouseEnter={e=>{if(mode!==k)e.currentTarget.style.boxShadow="0 2px 8px rgba(0,0,0,0.10)";}} onMouseLeave={e=>{if(mode!==k)e.currentTarget.style.boxShadow="0 1px 2px rgba(0,0,0,0.04)";}}>
+                    {mode===k&&<div style={{position:"absolute",top:8,right:8,width:7,height:7,borderRadius:"50%",background:"#4338CA"}}/>}
+                    <div style={{fontWeight:600,fontSize:14,color:mode===k?"#4338CA":"#0F1C2E",marginBottom:3}}>{m.label}</div>
+                    <div style={{fontSize:11,color:"#94A3B8"}}>{m.tag}</div>
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* Difficulty selector */}
-            <div style={{marginBottom:22}}>
-              <div style={{fontSize:12,fontWeight:700,color:"#94a3b8",marginBottom:10,textTransform:"uppercase",letterSpacing:0.8}}>Difficulty Level</div>
-              <div style={{display:"flex",gap:10}}>
+            {/* Difficulty tiles */}
+            <div style={{marginBottom:24}}>
+              <div style={{fontSize:11,fontWeight:600,color:"#64748B",marginBottom:10,textTransform:"uppercase",letterSpacing:"0.06em"}}>Difficulty Level</div>
+              <div style={{display:"flex",gap:8}} className="diff-row">
                 {Object.entries(DIFFS).map(([k,d])=>(
-                  <button key={k} onClick={()=>setDifficulty(k)} style={{flex:1,padding:"12px 8px",border:`2px solid ${difficulty===k?d.color:"#e2e8f0"}`,borderRadius:9,cursor:"pointer",background:difficulty===k?d.bg:"#fafafa",color:difficulty===k?d.color:"#374151",fontWeight:800,fontSize:14,transition:"all 0.15s",position:"relative"}}>
-                    {difficulty===k&&<div style={{position:"absolute",top:6,right:6,width:7,height:7,borderRadius:"50%",background:d.color}}/>}
+                  <button key={k} onClick={()=>setDifficulty(k)} style={{flex:1,padding:"13px 8px",border:`${difficulty===k?"2px solid "+d.color:"1px solid #E2E8F0"}`,borderRadius:8,cursor:"pointer",background:difficulty===k?d.bg:"white",color:difficulty===k?d.color:"#334155",fontWeight:600,fontSize:14,transition:"box-shadow 0.1s",position:"relative",boxShadow:difficulty===k?"none":"0 1px 2px rgba(0,0,0,0.04)"}} onMouseEnter={e=>{if(difficulty!==k)e.currentTarget.style.boxShadow="0 2px 8px rgba(0,0,0,0.10)";}} onMouseLeave={e=>{if(difficulty!==k)e.currentTarget.style.boxShadow="0 1px 2px rgba(0,0,0,0.04)";}}>
+                    {difficulty===k&&<div style={{position:"absolute",top:7,right:7,width:6,height:6,borderRadius:"50%",background:d.color}}/>}
                     {d.label}
-                    <div style={{fontSize:10,fontWeight:500,marginTop:3,opacity:0.8}}>{d.desc}</div>
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Selection summary */}
-            <div style={{background:"#f8fafc",borderRadius:8,padding:"10px 14px",marginBottom:16,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-              <span style={{fontSize:13,color:"#64748b"}}>Selected:</span>
-              <span style={{background:"#dbeafe",color:"#1d4ed8",fontSize:12,fontWeight:700,padding:"2px 10px",borderRadius:20}}>{MODES[mode].label}</span>
-              <span style={{background:DIFFS[difficulty].bg,color:DIFFS[difficulty].color,fontSize:12,fontWeight:700,padding:"2px 10px",borderRadius:20}}>{DIFFS[difficulty].label}</span>
-              <span style={{fontSize:12,color:"#94a3b8",marginLeft:"auto"}}>{MODES[mode].tag}</span>
-            </div>
+            {genError&&<div style={{background:"#FFF1F1",border:"1px solid #FCA5A5",color:"#DC2626",padding:"10px 14px",borderRadius:6,fontSize:13,marginBottom:16,lineHeight:1.6}}>{genError}<br/><span style={{fontSize:12,color:"#94A3B8"}}>Check your connection and try again. For persistent errors, try Easy difficulty first.</span></div>}
 
-            {genError&&<div style={{background:"#fef2f2",border:"1px solid #fecaca",color:"#dc2626",padding:"10px 14px",borderRadius:7,fontSize:13,marginBottom:14,lineHeight:1.6}}>{genError}<br/><span style={{fontSize:12,opacity:0.8}}>Check your internet connection and try again. If the problem persists, try a lower difficulty or shorter mode.</span></div>}
-
-            <button onClick={generateTest} style={{width:"100%",padding:"15px",background:"linear-gradient(135deg,#1e3a8a,#1d4ed8)",color:"white",border:"none",borderRadius:10,fontSize:16,fontWeight:900,cursor:"pointer",letterSpacing:0.4,boxShadow:"0 4px 12px rgba(29,78,216,0.3)"}}>
-              Generate &amp; Start Test →
+            <button onClick={generateTest} style={{width:"100%",height:44,background:"#0F1C2E",color:"white",border:"none",borderRadius:6,fontSize:14,fontWeight:600,cursor:"pointer",letterSpacing:"0.02em",transition:"background 0.15s"}} onMouseEnter={e=>e.target.style.background="#1E2D42"} onMouseLeave={e=>e.target.style.background="#0F1C2E"}>
+              Begin Test →
             </button>
           </div>
 
           {/* Test History */}
           {history.length>0?(
-            <div style={{background:"white",borderRadius:12,padding:20,boxShadow:"0 1px 4px rgba(0,0,0,0.07)",border:"1px solid #e2e8f0"}}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
-                <h2 style={{margin:0,fontSize:16,fontWeight:800,color:"#0f172a"}}>Test History</h2>
-                <span style={{fontSize:12,color:"#94a3b8"}}>{history.length} test{history.length!==1?"s":""} completed</span>
+            <div style={{background:"white",border:"1px solid #E2E8F0",borderRadius:8,padding:"20px 24px",boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+                <div style={{fontSize:14,fontWeight:600,color:"#0F1C2E"}}>Test History</div>
+                <div style={{fontSize:11,color:"#94A3B8"}}>{history.length} record{history.length!==1?"s":""}</div>
               </div>
               <div style={{overflowX:"auto"}}>
                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-                  <thead><tr style={{background:"#f8fafc"}}>
-                    {["Date & Time","Mode","Difficulty","Score","Correct","Wrong","Skipped"].map(h=>(
-                      <th key={h} style={{padding:"9px 10px",textAlign:"left",fontWeight:700,color:"#374151",borderBottom:"2px solid #e2e8f0",whiteSpace:"nowrap",fontSize:11,textTransform:"uppercase",letterSpacing:0.3}}>{h}</th>
-                    ))}
-                  </tr></thead>
+                  <thead>
+                    <tr style={{borderBottom:"1px solid #E2E8F0"}}>
+                      {["Date & Time","Mode","Difficulty","Score","Correct","Wrong","Skipped"].map(h=>(
+                        <th key={h} style={{padding:"8px 10px",textAlign:"left",fontSize:11,fontWeight:600,color:"#64748B",textTransform:"uppercase",letterSpacing:"0.06em",whiteSpace:"nowrap"}}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
                   <tbody>
-                    {history.map((t,i)=>(
-                      <tr key={t.id} style={{borderBottom:"1px solid #f1f5f9",background:i===0?"#fafbff":"white"}}>
-                        <td style={{padding:"10px",color:"#64748b",whiteSpace:"nowrap",fontSize:12}}>
-                          {new Date(t.date).toLocaleDateString("en-IN",{day:"2-digit",month:"short"})}&nbsp;
-                          {new Date(t.date).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})}
-                          {i===0&&<span style={{background:"#dbeafe",color:"#1d4ed8",fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:10,marginLeft:6}}>Latest</span>}
-                        </td>
-                        <td style={{padding:"10px",color:"#1e293b"}}>
-                          <span style={{textTransform:"capitalize",fontWeight:600}}>{t.mode}</span>
-                          {t.abandoned&&<span style={{marginLeft:6,background:"#fef3c7",color:"#b45309",fontSize:10,fontWeight:700,padding:"1px 7px",borderRadius:10,border:"1px solid #fde68a"}}>Incomplete</span>}
-                        </td>
-                        <td style={{padding:"10px"}}><span style={{background:DIFFS[t.difficulty]?.bg,color:DIFFS[t.difficulty]?.color,padding:"2px 9px",borderRadius:12,fontSize:11,fontWeight:700}}>{t.difficulty}</span></td>
-                        <td style={{padding:"10px",fontWeight:900,color:t.percentage>=70?"#16a34a":t.percentage>=50?"#d97706":"#dc2626",fontSize:14}}>{t.score}/{t.maxScore} <span style={{fontSize:12}}>({t.percentage}%)</span></td>
-                        <td style={{padding:"10px",color:"#16a34a",fontWeight:700}}>✓ {t.correct}</td>
-                        <td style={{padding:"10px",color:"#dc2626",fontWeight:700}}>✗ {t.wrong}</td>
-                        <td style={{padding:"10px",color:"#94a3b8"}}>{t.unattempted}</td>
-                      </tr>
-                    ))}
+                    {history.map((t,i)=>{
+                      const sc=t.percentage>=70?"#059669":t.percentage>=50?"#D97706":"#DC2626";
+                      return(
+                        <tr key={t.id} style={{borderBottom:"1px solid #F1F5F9"}}>
+                          <td style={{padding:"10px",color:"#64748B",whiteSpace:"nowrap",fontSize:12}}>
+                            {new Date(t.date).toLocaleDateString("en-IN",{day:"2-digit",month:"short"})},{" "}
+                            {new Date(t.date).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})}
+                          </td>
+                          <td style={{padding:"10px"}}>
+                            <span style={{background:"#F1F5F9",color:"#334155",fontSize:11,fontWeight:600,padding:"2px 9px",borderRadius:4,letterSpacing:"0.02em"}}>{t.mode?.charAt(0).toUpperCase()+t.mode?.slice(1)}</span>
+                            {t.abandoned&&<span style={{marginLeft:6,background:"#FEF3C7",color:"#92400E",fontSize:10,fontWeight:600,padding:"1px 7px",borderRadius:4}}>Incomplete</span>}
+                          </td>
+                          <td style={{padding:"10px"}}>
+                            <span style={{background:DIFFS[t.difficulty]?.bg,color:DIFFS[t.difficulty]?.color,padding:"2px 9px",borderRadius:4,fontSize:11,fontWeight:600}}>{t.difficulty?.charAt(0).toUpperCase()+t.difficulty?.slice(1)}</span>
+                          </td>
+                          <td style={{padding:"10px",fontWeight:700,color:sc,fontSize:13}}>{t.percentage}%</td>
+                          <td style={{padding:"10px",color:"#059669",fontWeight:600}}>{t.correct}</td>
+                          <td style={{padding:"10px",color:"#DC2626",fontWeight:600}}>{t.wrong}</td>
+                          <td style={{padding:"10px",color:"#94A3B8"}}>{t.unattempted}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
             </div>
           ):(
-            <div style={{textAlign:"center",padding:"40px 20px",background:"white",borderRadius:12,boxShadow:"0 1px 4px rgba(0,0,0,0.07)",border:"1px solid #e2e8f0"}}>
-              <div style={{fontSize:48,marginBottom:12}}>📝</div>
-              <div style={{fontWeight:800,fontSize:17,color:"#1e293b"}}>No tests taken yet</div>
-              <div style={{fontSize:14,color:"#64748b",marginTop:6,maxWidth:320,margin:"8px auto 0"}}>Select a mode and difficulty above and generate your first test to start tracking your CUET preparation.</div>
+            <div style={{textAlign:"center",padding:"48px 20px",background:"white",border:"1px solid #E2E8F0",borderRadius:8}}>
+              <div style={{fontSize:13,fontWeight:600,color:"#0F1C2E",marginBottom:6}}>No tests taken yet</div>
+              <div style={{fontSize:13,color:"#64748B",maxWidth:340,margin:"0 auto"}}>Select a mode and difficulty above to generate your first test and begin tracking your preparation.</div>
             </div>
           )}
         </div>
@@ -695,22 +718,24 @@ if(!allQuestions.length) throw new Error("No questions were returned. Please try
   //  GENERATING SCREEN
   // ════════════════════════════════════════════════════════
   if(screen==="generating") return(
-    <div style={{minHeight:"100vh",background:"linear-gradient(160deg,#0f172a,#1e3a8a)",display:"flex",alignItems:"center",justifyContent:"center",padding:20,fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
-      <div style={{background:"white",borderRadius:14,padding:"36px 38px",maxWidth:480,width:"100%",textAlign:"center",boxShadow:"0 24px 64px rgba(0,0,0,0.4)"}}>
-        <div style={{width:56,height:56,border:"5px solid #e2e8f0",borderTop:"5px solid #1d4ed8",borderRadius:"50%",margin:"0 auto 20px",animation:"spin 0.9s linear infinite"}}/>
-        <div style={{fontSize:19,fontWeight:900,color:"#0f172a",marginBottom:6}}>Building Your {MODES[mode]?.label}</div>
-        <div style={{display:"flex",gap:8,justifyContent:"center",marginBottom:16}}>
-          <span style={{background:"#dbeafe",color:"#1d4ed8",fontSize:12,fontWeight:700,padding:"3px 10px",borderRadius:20}}>{MODES[mode]?.q} Questions</span>
-          <span style={{background:DIFFS[difficulty]?.bg,color:DIFFS[difficulty]?.color,fontSize:12,fontWeight:700,padding:"3px 10px",borderRadius:20}}>{DIFFS[difficulty]?.label}</span>
+    <div style={{minHeight:"100vh",background:"#F8FAFC",display:"flex",alignItems:"center",justifyContent:"center",padding:20,fontFamily:"Inter,system-ui,sans-serif"}}>
+      <div style={{background:"white",border:"1px solid #E2E8F0",borderRadius:8,padding:"40px 40px",maxWidth:440,width:"100%",boxShadow:"0 4px 16px rgba(0,0,0,0.08)"}}>
+        {/* Tags */}
+        <div style={{display:"flex",gap:8,justifyContent:"center",marginBottom:28}}>
+          <span style={{background:"#EEF2FF",color:"#4338CA",fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:4,textTransform:"uppercase",letterSpacing:"0.06em"}}>{MODES[mode]?.q} Questions</span>
+          <span style={{background:DIFFS[difficulty]?.bg,color:DIFFS[difficulty]?.color,fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:4,textTransform:"uppercase",letterSpacing:"0.06em"}}>{DIFFS[difficulty]?.label}</span>
         </div>
-        {genStage&&<div style={{fontSize:13,color:"#1d4ed8",fontWeight:600,marginBottom:8,background:"#eff6ff",padding:"8px 14px",borderRadius:6}}>{genStage}</div>}
-        <div style={{fontSize:12,color:"#94a3b8",marginBottom:24}}>{mode==="full"?"Preparing your Full Mock paper across all sections. Please wait.":"Preparing your personalised test paper. This takes a moment."}</div>
-        <div style={{background:"#f0f7ff",border:"1px solid #bfdbfe",borderRadius:9,padding:"14px 16px",textAlign:"left"}}>
-          <div style={{fontSize:10,fontWeight:800,color:"#1d4ed8",letterSpacing:1.5,marginBottom:7,textTransform:"uppercase"}}>Exam Strategy Tip</div>
-          <div style={{fontSize:13,color:"#1e3a8a",lineHeight:1.8}}>{TIPS[tipIdx]}</div>
+        {/* Progress bar */}
+        <div style={{background:"#E2E8F0",borderRadius:4,height:3,overflow:"hidden",marginBottom:24,position:"relative"}}>
+          <div style={{position:"absolute",top:0,height:"100%",background:"#4338CA",borderRadius:4,animation:"indeterminate 2.2s ease-in-out infinite"}}/>
+        </div>
+        {/* Status */}
+        <div style={{textAlign:"center"}}>
+          <div style={{fontSize:15,fontWeight:600,color:"#0F1C2E",marginBottom:6}}>{MODES[mode]?.label}</div>
+          <div style={{fontSize:13,color:"#64748B",lineHeight:1.6}}>Preparing your test paper. Please do not close this tab.</div>
         </div>
       </div>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      <style>{`@keyframes indeterminate{0%{left:-50%;width:50%}50%{left:30%;width:70%}100%{left:100%;width:50%}}`}</style>
     </div>
   );
 
@@ -721,78 +746,76 @@ if(!allQuestions.length) throw new Error("No questions were returned. Please try
     const qst=qId=>getQStatus(qId,answers,markedReview,visited);
     const qstyle=qId=>{const s=QS[qst(qId)];return{width:32,height:32,background:s.bg,border:`2px solid ${s.border}`,color:s.text,borderRadius:3,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0};};
     return(
-      <div style={{minHeight:"100vh",background:"#d1d5db",fontFamily:"'Segoe UI',system-ui,sans-serif",fontSize:14,display:"flex",flexDirection:"column"}}>
-        {/* 5-minute warning overlay */}
+      <div style={{minHeight:"100vh",background:"#EAECEF",fontFamily:"Inter,system-ui,sans-serif",fontSize:14,display:"flex",flexDirection:"column"}}>
+        {/* 5-minute warning */}
         {showWarn&&(
-          <div style={{position:"fixed",top:0,left:0,right:0,zIndex:1000,background:"#dc2626",color:"white",textAlign:"center",padding:"10px",fontWeight:800,fontSize:14,animation:"fadeIn 0.3s ease"}}>
-            ⚠ Only 5 minutes remaining — review your marked questions now.
-            <button onClick={()=>setShowWarn(false)} style={{marginLeft:16,background:"rgba(255,255,255,0.2)",border:"none",color:"white",padding:"3px 10px",borderRadius:4,cursor:"pointer",fontSize:12}}>Dismiss</button>
+          <div style={{background:"#DC2626",color:"white",textAlign:"center",padding:"9px 16px",fontWeight:600,fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:12}}>
+            Only 5 minutes remaining — review your marked questions now.
+            <button onClick={()=>setShowWarn(false)} style={{background:"rgba(255,255,255,0.2)",border:"none",color:"white",padding:"2px 10px",borderRadius:4,cursor:"pointer",fontSize:12}}>Dismiss</button>
           </div>
         )}
         {/* NTA Header */}
-        <div style={{background:"linear-gradient(135deg,#0f172a,#1e3a8a)",padding:"7px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0,marginTop:showWarn?40:0}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <div style={{background:"white",borderRadius:3,padding:"3px 9px",fontWeight:900,fontSize:13,color:"#1a56db",letterSpacing:1.5}}>NTA</div>
-            <div style={{color:"white",fontSize:13,fontWeight:700}}>CUET (UG) — 2026 | Common University Entrance Test (Undergraduate)</div>
-          </div>
+        <div style={{background:"#0F1C2E",padding:"8px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
           <div style={{display:"flex",alignItems:"center",gap:12}}>
-            <div style={{color:"rgba(255,255,255,0.75)",fontSize:12}}>Candidate: <strong style={{color:"white"}}>{user?.name}</strong></div>
-            <button onClick={abandonTest}
-              style={{background:"rgba(255,200,0,0.15)",border:"1px solid rgba(255,200,0,0.5)",color:"#fde68a",
-                padding:"5px 14px",borderRadius:4,cursor:"pointer",fontSize:12,fontWeight:700,letterSpacing:0.3}}>
-              Exit Test ✕
-            </button>
+            <div style={{background:"white",borderRadius:3,padding:"2px 9px",fontWeight:900,fontSize:12,color:"#0F1C2E",letterSpacing:2}}>NTA</div>
+            <div style={{color:"rgba(255,255,255,0.85)",fontSize:12,fontWeight:500}}>CUET (UG) — 2026 | Section I — English (101)</div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:16}}>
+            <div style={{textAlign:"right"}}>
+              <div style={{color:"rgba(255,255,255,0.85)",fontSize:12}}>Candidate: <strong style={{color:"white"}}>{user?.name}</strong></div>
+              <button onClick={abandonTest} style={{background:"none",border:"none",color:"rgba(255,255,255,0.35)",cursor:"pointer",fontSize:11,padding:0,textAlign:"right",display:"block",marginLeft:"auto",textDecoration:"none"}} onMouseEnter={e=>e.target.style.color="rgba(255,255,255,0.7)"} onMouseLeave={e=>e.target.style.color="rgba(255,255,255,0.35)"}>Exit</button>
+            </div>
+            <div style={{background:"white",padding:"5px 14px",borderRadius:4,fontFamily:"'Courier New',monospace",fontSize:18,fontWeight:900,color:tColor,letterSpacing:1,animation:timerRed?"blink 1s infinite":"none",border:`1px solid ${tColor}30`}}>
+              {fmtTime(timeLeft)}
+            </div>
           </div>
         </div>
-        {/* Section / Timer strip */}
-        <div style={{background:"#bfdbfe",padding:"7px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"2px solid #93c5fd",flexShrink:0,flexWrap:"wrap",gap:8}}>
-          <div style={{fontSize:13,fontWeight:700,color:"#1e40af"}}>Section: LANGUAGE (ENGLISH) | MCQ | {DIFFS[difficulty]?.label} Difficulty</div>
-          <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <span style={{fontSize:12,fontWeight:600,color:"#1e40af"}}>Time Remaining:</span>
-            <span style={{fontFamily:"'Courier New',monospace",fontSize:20,fontWeight:900,color:tColor,background:"white",padding:"3px 12px",borderRadius:3,border:`2px solid ${tColor}`,animation:timerRed?"blink 1s infinite":"none"}}>{fmtTime(timeLeft)}</span>
-          </div>
+        {/* Section label bar */}
+        <div style={{background:"#F1F5F9",padding:"7px 20px",borderBottom:"1px solid #E2E8F0",flexShrink:0}}>
+          <span style={{fontSize:11,fontWeight:600,color:"#64748B",letterSpacing:"0.04em"}}>SECTION: LANGUAGE (ENGLISH) | Multiple Choice (Single Correct) | {DIFFS[difficulty]?.label?.toUpperCase()} DIFFICULTY</span>
         </div>
         {/* Main layout */}
         <div style={{display:"flex",flex:1,overflow:"hidden",minHeight:0}} className="exam-main">
           {/* Question area */}
-          <div style={{flex:1,padding:14,overflowY:"auto",background:"#f0f0f0"}}>
+          <div style={{flex:1,padding:14,overflowY:"auto",background:"#EAECEF"}}>
             {/* Q header */}
-            <div style={{background:"white",border:"1px solid #d1d5db",borderRadius:3,padding:"9px 14px",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+            <div style={{background:"white",border:"1px solid #E2E8F0",borderRadius:6,padding:"9px 14px",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
-                <span style={{fontWeight:900,color:"#1e293b",fontSize:16}}>Q. {currentQ+1}</span>
-                <span style={{color:"#94a3b8",fontSize:12}}>of {questions.length}</span>
-                <span style={{background:TOPICS[q.topic]?.color+"18",color:TOPICS[q.topic]?.color||"#374151",fontSize:11,fontWeight:800,padding:"2px 8px",borderRadius:10,border:`1px solid ${TOPICS[q.topic]?.color||"#374151"}25`}}>{TOPICS[q.topic]?.label||q.topic}</span>
+                <span style={{fontWeight:700,color:"#0F1C2E",fontSize:15}}>Q.{currentQ+1}</span>
+                <span style={{color:"#94A3B8",fontSize:12}}>of {questions.length}</span>
+                <span style={{background:TOPICS[q.topic]?.color+"15",color:TOPICS[q.topic]?.color||"#334155",fontSize:11,fontWeight:600,padding:"2px 8px",borderRadius:4}}>{TOPICS[q.topic]?.label||q.topic}</span>
               </div>
-              <div style={{fontSize:12,color:"#374151"}}>
-                <span style={{color:"#16a34a",fontWeight:700}}>+5</span> Correct &nbsp;
-                <span style={{color:"#dc2626",fontWeight:700}}>-1</span> Wrong &nbsp;
-                <span style={{color:"#94a3b8",fontWeight:600}}>0</span> Skipped
+              <div style={{fontSize:12,color:"#334155"}}>
+                <span style={{color:"#059669",fontWeight:700}}>+5</span> Correct &nbsp;
+                <span style={{color:"#DC2626",fontWeight:700}}>-1</span> Wrong &nbsp;
+                <span style={{color:"#94A3B8",fontWeight:600}}>0</span> Skipped
               </div>
             </div>
             {/* Passage */}
             {passage&&(
-              <div style={{background:"#fefce8",border:"1px solid #fde68a",borderRadius:3,padding:"12px 15px",marginBottom:10}}>
-                <div style={{fontSize:10,fontWeight:800,color:"#92400e",letterSpacing:1.5,marginBottom:7,textTransform:"uppercase"}}>Read the Following Passage Carefully — {(passage.type||"").toUpperCase()}</div>
-                <div style={{maxHeight:190,overflowY:"auto"}}>
-                  <p style={{margin:0,lineHeight:1.95,color:"#1c1917",fontSize:13.5}}>{passage.text}</p>
+              <div style={{background:"#EEF2FF",borderLeft:"3px solid #4338CA",borderRadius:6,padding:"12px 15px",marginBottom:10}}>
+                <div style={{fontSize:10,fontWeight:600,color:"#64748B",letterSpacing:"0.08em",marginBottom:8,textTransform:"uppercase"}}>Read the Following Passage</div>
+                <div style={{maxHeight:200,overflowY:"auto"}}>
+                  <p style={{margin:0,lineHeight:1.8,color:"#1E293B",fontSize:14}}>{passage.text}</p>
                 </div>
               </div>
             )}
             {/* Question text */}
-            <div style={{background:"white",border:"1px solid #d1d5db",borderRadius:3,padding:"15px",marginBottom:10}}>
-              <p style={{margin:0,fontSize:15,lineHeight:1.9,color:"#1e293b",fontWeight:500}}>{q.question}</p>
+            <div style={{background:"white",border:"1px solid #E2E8F0",borderRadius:6,padding:"15px",marginBottom:10}}>
+              <p style={{margin:0,fontSize:15,lineHeight:1.85,color:"#1E293B",fontWeight:500}}>{q.question}</p>
             </div>
-            {/* Options */}
-            <div style={{background:"white",border:"1px solid #d1d5db",borderRadius:3,overflow:"hidden"}}>
+            {/* Options — CUET square boxes */}
+            <div style={{background:"white",border:"1px solid #E2E8F0",borderRadius:6,overflow:"hidden"}}>
               {["A","B","C","D"].map((opt,oi)=>{
                 const sel=selectedOpt===opt;
                 return(
-                  <div key={opt} onClick={()=>setSelectedOpt(opt)} style={{display:"flex",alignItems:"flex-start",gap:12,padding:"13px 16px",cursor:"pointer",background:sel?"#eff6ff":"white",borderBottom:oi<3?"1px solid #f1f5f9":"none",borderLeft:sel?"4px solid #1d4ed8":"4px solid transparent",transition:"all 0.1s",userSelect:"none"}}>
-                    <div style={{width:20,height:20,borderRadius:"50%",flexShrink:0,marginTop:3,border:sel?"2px solid #1d4ed8":"2px solid #9ca3af",background:sel?"#1d4ed8":"white",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                      {sel&&<div style={{width:8,height:8,borderRadius:"50%",background:"white"}}/>}
+                  <div key={opt} onClick={()=>setSelectedOpt(opt)} style={{display:"flex",alignItems:"flex-start",gap:12,padding:"13px 16px",cursor:"pointer",background:sel?"#EEF2FF":"white",borderBottom:oi<3?"1px solid #F1F5F9":"none",borderLeft:sel?"4px solid #4338CA":"4px solid transparent",transition:"background 0.1s",userSelect:"none"}}>
+                    {/* Square indicator — NTA CUET standard */}
+                    <div style={{width:18,height:18,borderRadius:2,flexShrink:0,marginTop:3,border:sel?"2px solid #4338CA":"2px solid #94A3B8",background:sel?"#4338CA":"white",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      {sel&&<div style={{width:8,height:8,background:"white",borderRadius:1}}/>}
                     </div>
-                    <span style={{fontSize:14,lineHeight:1.75,color:sel?"#1e40af":"#1e293b"}}>
-                      <strong style={{marginRight:7,color:sel?"#1e40af":"#374151"}}>{opt}.</strong>{q.options?.[opt]||""}
+                    <span style={{fontSize:14,lineHeight:1.75,color:sel?"#3730A3":"#1E293B"}}>
+                      <strong style={{marginRight:7,color:sel?"#4338CA":"#64748B"}}>{opt}.</strong>{q.options?.[opt]||""}
                     </span>
                   </div>
                 );
@@ -800,55 +823,51 @@ if(!allQuestions.length) throw new Error("No questions were returned. Please try
             </div>
           </div>
           {/* Palette panel */}
-          <div style={{width:200,background:"white",borderLeft:"2px solid #d1d5db",display:"flex",flexDirection:"column",flexShrink:0,overflow:"hidden"}} className="exam-palette">
-            <div style={{background:"linear-gradient(135deg,#1e3a8a,#1d4ed8)",color:"white",fontWeight:800,fontSize:11,padding:"7px 10px",textAlign:"center",letterSpacing:1,textTransform:"uppercase",flexShrink:0}}>Question Palette</div>
-            <div style={{padding:"9px 12px",borderBottom:"1px solid #f1f5f9",display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-              <div style={{width:30,height:30,borderRadius:"50%",background:"linear-gradient(135deg,#1e3a8a,#1d4ed8)",display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontWeight:900,fontSize:14,flexShrink:0}}>{user?.name?.[0]?.toUpperCase()}</div>
-              <div style={{fontSize:11,fontWeight:600,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user?.name}</div>
+          <div style={{width:200,background:"white",borderLeft:"1px solid #E2E8F0",display:"flex",flexDirection:"column",flexShrink:0,overflow:"hidden"}} className="exam-palette">
+            <div style={{background:"#0F1C2E",color:"white",fontWeight:600,fontSize:11,padding:"8px 10px",textAlign:"center",letterSpacing:"0.08em",textTransform:"uppercase",flexShrink:0}}>Question Palette</div>
+            <div style={{padding:"10px 12px",borderBottom:"1px solid #F1F5F9",display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+              <div style={{width:28,height:28,borderRadius:"50%",background:"#0F1C2E",display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontWeight:700,fontSize:13,flexShrink:0}}>{user?.name?.[0]?.toUpperCase()}</div>
+              <div style={{fontSize:11,fontWeight:600,color:"#0F1C2E",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user?.name}</div>
             </div>
             <div style={{flex:1,overflowY:"auto",padding:10}}>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:4,marginBottom:14}} className="exam-palette-grid">
+              <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:4,marginBottom:16}} className="exam-palette-grid">
                 {questions.map((qi,idx)=>(
-                  <div key={qi.id} onClick={()=>goTo(idx)} style={{...qstyle(qi.id),outline:idx===currentQ?"3px solid #f59e0b":"none",outlineOffset:1}}>{idx+1}</div>
+                  <div key={qi.id} onClick={()=>goTo(idx)} style={{...qstyle(qi.id),outline:idx===currentQ?"3px solid #D97706":"none",outlineOffset:1}}>{idx+1}</div>
                 ))}
               </div>
-              <div style={{fontSize:11,color:"#374151"}}>
-                <div style={{fontWeight:700,marginBottom:6,fontSize:10,textTransform:"uppercase",letterSpacing:0.5,color:"#94a3b8"}}>Colour Guide</div>
+              {/* Colour guide */}
+              <div>
+                <div style={{fontSize:10,fontWeight:600,color:"#94A3B8",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>Colour Guide</div>
                 {[["not_visited","Not Visited"],["not_answered","Not Answered"],["answered","Answered"],["review","Marked – Review"],["answered_review","Answered + Marked"]].map(([s,l])=>(
                   <div key={s} style={{display:"flex",alignItems:"center",gap:6,marginBottom:5}}>
-                    <div style={{width:15,height:15,background:QS[s].bg,border:`2px solid ${QS[s].border}`,borderRadius:2,flexShrink:0}}/>
-                    <span style={{fontSize:10}}>{l}</span>
+                    <div style={{width:14,height:14,background:QS[s].bg,border:`2px solid ${QS[s].border}`,borderRadius:2,flexShrink:0}}/>
+                    <span style={{fontSize:10,color:"#64748B"}}>{l}</span>
                   </div>
                 ))}
               </div>
             </div>
-            {/* Live counters + submit */}
-            <div style={{padding:10,borderTop:"1px solid #e2e8f0",flexShrink:0}}>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:5,marginBottom:8}}>
-                <div style={{background:"#dcfce7",padding:"7px",borderRadius:5,textAlign:"center"}}><div style={{fontWeight:900,fontSize:17,color:"#16a34a"}}>{answeredCount}</div><div style={{fontSize:9,color:"#166534",textTransform:"uppercase",letterSpacing:0.3}}>Answered</div></div>
-                <div style={{background:"#fef3c7",padding:"7px",borderRadius:5,textAlign:"center"}}><div style={{fontWeight:900,fontSize:17,color:"#d97706"}}>{questions.length-answeredCount}</div><div style={{fontSize:9,color:"#92400e",textTransform:"uppercase",letterSpacing:0.3}}>Remaining</div></div>
+            {/* Counters + submit */}
+            <div style={{padding:10,borderTop:"1px solid #E2E8F0",flexShrink:0}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:8}}>
+                <div style={{background:"#ECFDF5",padding:"7px",borderRadius:5,textAlign:"center"}}><div style={{fontWeight:700,fontSize:17,color:"#059669"}}>{answeredCount}</div><div style={{fontSize:9,color:"#065F46",textTransform:"uppercase",letterSpacing:"0.04em"}}>Answered</div></div>
+                <div style={{background:"#FEF3C7",padding:"7px",borderRadius:5,textAlign:"center"}}><div style={{fontWeight:700,fontSize:17,color:"#D97706"}}>{questions.length-answeredCount}</div><div style={{fontSize:9,color:"#78350F",textTransform:"uppercase",letterSpacing:"0.04em"}}>Remaining</div></div>
               </div>
-              <button onClick={()=>{if(window.confirm(`Submit test?
-
-Answered: ${answeredCount}
-Unattempted: ${questions.length-answeredCount}
-
-You cannot undo this.`))doSubmit();}} style={{width:"100%",padding:"9px",background:"linear-gradient(135deg,#7f1d1d,#dc2626)",color:"white",border:"none",borderRadius:4,fontWeight:900,fontSize:13,cursor:"pointer",letterSpacing:0.5}}>SUBMIT TEST</button>
+              <button onClick={()=>{if(window.confirm(`Submit test?\n\nAnswered: ${answeredCount}\nUnattempted: ${questions.length-answeredCount}\n\nThis cannot be undone.`))doSubmit();}} style={{width:"100%",padding:"9px",background:"#DC2626",color:"white",border:"none",borderRadius:4,fontWeight:700,fontSize:12,cursor:"pointer",letterSpacing:"0.04em",transition:"background 0.15s"}} onMouseEnter={e=>e.target.style.background="#B91C1C"} onMouseLeave={e=>e.target.style.background="#DC2626"}>SUBMIT TEST</button>
             </div>
           </div>
         </div>
         {/* Bottom toolbar */}
-        <div style={{background:"white",borderTop:"2px solid #d1d5db",padding:"9px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0,flexWrap:"wrap",gap:8}} className="toolbar-row">
+        <div style={{background:"white",borderTop:"1px solid #E2E8F0",padding:"9px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0,flexWrap:"wrap",gap:8}} className="toolbar-row">
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
-            <button onClick={()=>currentQ>0&&goTo(currentQ-1)} disabled={currentQ===0} style={{padding:"8px 16px",background:currentQ===0?"#f8fafc":"#e2e8f0",border:"1px solid #d1d5db",borderRadius:3,cursor:currentQ===0?"not-allowed":"pointer",fontSize:13,color:currentQ===0?"#94a3b8":"#374151",fontWeight:600}}>◄ Back</button>
-            <button onClick={clearResponse} style={{padding:"8px 14px",background:"transparent",border:"none",color:"#dc2626",cursor:"pointer",fontSize:13,textDecoration:"underline",fontWeight:600}}>Clear Response</button>
+            <button onClick={()=>currentQ>0&&goTo(currentQ-1)} disabled={currentQ===0} style={{padding:"7px 16px",background:"white",border:"1px solid #E2E8F0",borderRadius:5,cursor:currentQ===0?"not-allowed":"pointer",fontSize:13,color:currentQ===0?"#94A3B8":"#334155",fontWeight:500}}>◄ Back</button>
+            <button onClick={clearResponse} style={{padding:"7px 14px",background:"transparent",border:"none",color:"#DC2626",cursor:"pointer",fontSize:13,fontWeight:500,textDecoration:"underline"}}>Clear Response</button>
           </div>
           <div style={{display:"flex",gap:8}}>
-            <button onClick={markAndNext} style={{padding:"9px 16px",background:"linear-gradient(135deg,#4c1d95,#7c3aed)",color:"white",border:"none",borderRadius:3,cursor:"pointer",fontSize:13,fontWeight:700}}>Mark for Review &amp; Next ►</button>
-            <button onClick={saveAndNext} style={{padding:"9px 22px",background:"linear-gradient(135deg,#1e3a8a,#1d4ed8)",color:"white",border:"none",borderRadius:3,cursor:"pointer",fontSize:14,fontWeight:900}}>Save &amp; Next ►</button>
+            <button onClick={markAndNext} style={{padding:"8px 16px",background:"#D97706",color:"white",border:"none",borderRadius:5,cursor:"pointer",fontSize:13,fontWeight:600,transition:"background 0.15s"}} onMouseEnter={e=>e.target.style.background="#B45309"} onMouseLeave={e=>e.target.style.background="#D97706"}>Mark for Review &amp; Next ►</button>
+            <button onClick={saveAndNext} style={{padding:"8px 20px",background:"#0F1C2E",color:"white",border:"none",borderRadius:5,cursor:"pointer",fontSize:13,fontWeight:600,transition:"background 0.15s"}} onMouseEnter={e=>e.target.style.background="#1E2D42"} onMouseLeave={e=>e.target.style.background="#0F1C2E"}>Save &amp; Next ►</button>
           </div>
         </div>
-        <style>{`@keyframes blink{0%,100%{opacity:1}50%{opacity:0.5}} @keyframes fadeIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}`}</style>
+        <style>{`@keyframes blink{0%,100%{opacity:1}50%{opacity:0.5}}`}</style>
       </div>
     );
   }
@@ -857,162 +876,164 @@ You cannot undo this.`))doSubmit();}} style={{width:"100%",padding:"9px",backgro
   //  RESULTS SCREEN
   // ════════════════════════════════════════════════════════
   if(screen==="results"&&results){
-    const sc=results.percentage>=70?"#16a34a":results.percentage>=50?"#d97706":"#dc2626";
-    const ctxMsg = results.percentage>=80?"Strong performance. Well above typical qualifying range."
-      :results.percentage>=70?"On target. You are within the competitive zone for most universities."
-      :results.percentage>=50?"Below competitive range. Significant improvement needed before exam day."
-      :"Critical gap. Foundational work required across multiple topic types.";
+    const sc=results.percentage>=70?"#059669":results.percentage>=50?"#D97706":"#DC2626";
     return(
-      <div style={{minHeight:"100vh",background:"#eef2f7",fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
-        <div style={{background:"linear-gradient(135deg,#0f172a,#1e3a8a)",padding:"10px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
-          <div style={{color:"white",fontWeight:700,fontSize:15}}>CUET (UG) 2026 — English (101) | Test Results</div>
-          <button onClick={()=>setScreen("dashboard")} style={{background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",color:"white",padding:"6px 14px",borderRadius:4,cursor:"pointer",fontSize:12,fontWeight:600}}>← Dashboard</button>
+      <div style={{minHeight:"100vh",background:"#F8FAFC",fontFamily:"Inter,system-ui,sans-serif"}}>
+        {/* Header */}
+        <div style={{background:"#0F1C2E",padding:"10px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+          <div style={{color:"white",fontWeight:600,fontSize:14}}>Test Performance Report</div>
+          <button onClick={()=>setScreen("dashboard")} style={{background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",color:"rgba(255,255,255,0.8)",padding:"6px 14px",borderRadius:5,cursor:"pointer",fontSize:12,fontWeight:500}}>← Dashboard</button>
         </div>
-        <div style={{maxWidth:820,margin:"0 auto",padding:"22px 20px"}}>
-          {/* Score card */}
-          <div style={{background:"white",borderRadius:12,padding:"28px 24px",boxShadow:"0 4px 20px rgba(0,0,0,0.08)",marginBottom:16,textAlign:"center",borderTop:`5px solid ${sc}`}}>
-            <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",letterSpacing:1.5,marginBottom:8,textTransform:"uppercase"}}>Your Score</div>
-            <div style={{fontSize:70,fontWeight:900,color:sc,lineHeight:1}}>{results.score}</div>
-            <div style={{fontSize:16,color:"#94a3b8",marginBottom:10}}>out of {results.maxScore} marks</div>
-            <div style={{display:"inline-block",background:sc+"15",color:sc,fontWeight:900,fontSize:24,padding:"5px 24px",borderRadius:40,border:`1px solid ${sc}30`,marginBottom:16}}>{results.percentage}%</div>
-            {/* CUET context message */}
-            <div style={{background:"#f8fafc",borderRadius:8,padding:"10px 16px",marginBottom:20,fontSize:13,color:"#374151",fontWeight:600,maxWidth:500,margin:"0 auto 20px"}}>{ctxMsg}</div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,maxWidth:480,margin:"0 auto"}}>
-              {[{v:results.correct,l:"Correct",c:"#16a34a",p:`+${results.correct*5} marks`},{v:results.wrong,l:"Wrong",c:"#dc2626",p:`-${results.wrong} marks`},{v:results.unattempted,l:"Skipped",c:"#94a3b8",p:"0 marks"}]
-                .map(({v,l,c,p})=>(
-                  <div key={l} style={{background:"#f8fafc",borderRadius:9,padding:"14px 8px"}}>
-                    <div style={{fontSize:30,fontWeight:900,color:c}}>{v}</div>
-                    <div style={{fontSize:12,color:"#64748b",fontWeight:600}}>{l}</div>
-                    <div style={{fontSize:11,color:c,fontWeight:700,marginTop:3}}>{p}</div>
+
+        {!showReview?(
+          <div style={{maxWidth:800,margin:"0 auto",padding:"28px 20px"}}>
+            {/* Score card */}
+            <div style={{background:"white",border:"1px solid #E2E8F0",borderRadius:8,padding:"32px 24px",boxShadow:"0 1px 3px rgba(0,0,0,0.06)",marginBottom:20,textAlign:"center"}}>
+              <div style={{fontSize:11,fontWeight:600,color:"#64748B",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:12}}>Your Score</div>
+              <div style={{fontSize:32,fontWeight:700,color:"#0F1C2E",marginBottom:4}}>{results.score}/{results.maxScore}</div>
+              <div style={{fontSize:48,fontWeight:700,color:sc,lineHeight:1.1,marginBottom:16}}>{results.percentage}%</div>
+              {/* Stat pills */}
+              <div style={{display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap"}}>
+                {[{v:results.correct,l:"Correct",c:"#059669"},{v:results.wrong,l:"Wrong",c:"#DC2626"},{v:results.unattempted,l:"Skipped",c:"#94A3B8"}].map(({v,l,c})=>(
+                  <div key={l} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:6,padding:"10px 20px",minWidth:90}}>
+                    <div style={{fontSize:22,fontWeight:700,color:c}}>{v}</div>
+                    <div style={{fontSize:11,color:"#64748B",fontWeight:600,marginTop:2}}>{l}</div>
                   </div>
                 ))}
+              </div>
+            </div>
+
+            {/* Topic breakdown — table */}
+            <div style={{background:"white",border:"1px solid #E2E8F0",borderRadius:8,padding:"20px 24px",boxShadow:"0 1px 3px rgba(0,0,0,0.06)",marginBottom:20}}>
+              <div style={{fontSize:14,fontWeight:600,color:"#0F1C2E",marginBottom:16}}>Topic Performance</div>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                <thead>
+                  <tr style={{borderBottom:"1px solid #E2E8F0"}}>
+                    {["Topic","Attempted","Correct","Accuracy"].map(h=>(
+                      <th key={h} style={{padding:"8px 10px",textAlign:"left",fontSize:11,fontWeight:600,color:"#64748B",textTransform:"uppercase",letterSpacing:"0.06em"}}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(results.topicStats).sort(([,a],[,b])=>(a.correct/a.total||0)-(b.correct/b.total||0)).map(([t,s])=>{
+                    const acc=s.total?Math.round(s.correct/s.total*100):0;
+                    const ac=acc>=70?"#059669":acc>=50?"#D97706":"#DC2626";
+                    return(
+                      <tr key={t} style={{borderBottom:"1px solid #F1F5F9"}}>
+                        <td style={{padding:"10px"}}>
+                          <div style={{display:"flex",alignItems:"center",gap:8}}>
+                            <span style={{background:TOPICS[t]?.color+"15",color:TOPICS[t]?.color||"#334155",fontSize:10,fontWeight:600,padding:"1px 7px",borderRadius:4}}>{TOPICS[t]?.abbr||t}</span>
+                            <span style={{fontSize:13,color:"#334155"}}>{TOPICS[t]?.label||t}</span>
+                          </div>
+                        </td>
+                        <td style={{padding:"10px",color:"#64748B",fontSize:13}}>{s.total}</td>
+                        <td style={{padding:"10px",color:"#059669",fontWeight:600,fontSize:13}}>{s.correct}</td>
+                        <td style={{padding:"10px",fontWeight:700,color:ac,fontSize:13}}>{acc}%</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Performance Analysis (auto-generated advisory) */}
+            <div style={{background:"white",border:"1px solid #E2E8F0",borderRadius:8,padding:"20px 24px",boxShadow:"0 1px 3px rgba(0,0,0,0.06)",marginBottom:24,borderLeft:"4px solid #4338CA"}}>
+              <div style={{fontSize:11,fontWeight:600,color:"#64748B",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:12}}>Performance Analysis</div>
+              {loadingAdv?(
+                <div style={{display:"flex",alignItems:"center",gap:10,color:"#64748B",fontSize:13}}>
+                  <div style={{width:16,height:16,border:"2px solid #E2E8F0",borderTop:"2px solid #4338CA",borderRadius:"50%",animation:"spin 0.8s linear infinite",flexShrink:0}}/>
+                  Generating your analysis...
+                </div>
+              ):advisory?(
+                <div style={{fontSize:14,lineHeight:2.0,color:"#334155",whiteSpace:"pre-wrap"}}>{advisory}</div>
+              ):(
+                <div style={{fontSize:13,color:"#94A3B8"}}>Analysis will appear here momentarily.</div>
+              )}
+            </div>
+
+            {/* Action buttons */}
+            <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+              <button onClick={()=>setShowReview(true)} style={{flex:1,minWidth:160,height:44,background:"white",color:"#0F1C2E",border:"2px solid #0F1C2E",borderRadius:6,fontSize:14,fontWeight:600,cursor:"pointer",transition:"background 0.15s"}} onMouseEnter={e=>{e.currentTarget.style.background="#F8FAFC";}} onMouseLeave={e=>{e.currentTarget.style.background="white";}}>Review Answers</button>
+              <button onClick={()=>setScreen("dashboard")} style={{flex:1,minWidth:160,height:44,background:"#0F1C2E",color:"white",border:"none",borderRadius:6,fontSize:14,fontWeight:600,cursor:"pointer",transition:"background 0.15s"}} onMouseEnter={e=>e.target.style.background="#1E2D42"} onMouseLeave={e=>e.target.style.background="#0F1C2E"}>New Test Paper</button>
             </div>
           </div>
-          {/* Topic performance */}
-          <div style={{background:"white",borderRadius:11,padding:22,boxShadow:"0 1px 4px rgba(0,0,0,0.07)",marginBottom:14}}>
-            <h2 style={{margin:"0 0 18px",fontSize:16,fontWeight:900,color:"#0f172a"}}>Topic-wise Performance</h2>
-            {Object.entries(results.topicStats).sort(([,a],[,b])=>(a.correct/a.total||0)-(b.correct/b.total||0)).map(([t,s])=>{
-              const acc=s.total?Math.round(s.correct/s.total*100):0;
-              const tc=TOPICS[t];
-              const bc=acc>=70?"#16a34a":acc>=50?"#d97706":"#dc2626";
-              return(
-                <div key={t} style={{marginBottom:18}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8}}>
-                      <span style={{background:tc?.color+"18",color:tc?.color||"#374151",fontSize:10,fontWeight:800,padding:"2px 7px",borderRadius:10,border:`1px solid ${tc?.color||"#374151"}25`}}>{tc?.abbr||t}</span>
-                      <span style={{fontSize:13,fontWeight:600,color:"#374151"}}>{tc?.label||t}</span>
-                      {acc<50&&<span style={{fontSize:10,color:"#dc2626",fontWeight:700,background:"#fee2e2",padding:"1px 6px",borderRadius:8}}>Needs Work</span>}
-                    </div>
-                    <div style={{display:"flex",gap:12,alignItems:"center"}}>
-                      <span style={{fontSize:11,color:"#94a3b8"}}>{s.correct}/{s.total}</span>
-                      <span style={{fontSize:15,fontWeight:900,color:bc,minWidth:42,textAlign:"right"}}>{acc}%</span>
-                    </div>
-                  </div>
-                  <div style={{background:"#f1f5f9",borderRadius:100,height:10,overflow:"hidden"}}>
-                    <div style={{height:"100%",borderRadius:100,background:bc,width:acc+"%",transition:"width 0.8s ease"}}/>
-                  </div>
-                  <div style={{display:"flex",gap:14,marginTop:4,fontSize:11}}>
-                    <span style={{color:"#16a34a"}}>✓ {s.correct} correct</span>
-                    <span style={{color:"#dc2626"}}>✗ {s.wrong} wrong</span>
-                    <span style={{color:"#94a3b8"}}>— {s.unattempted} skipped</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          {/* Question review */}
-          <div style={{background:"white",borderRadius:11,padding:20,boxShadow:"0 1px 4px rgba(0,0,0,0.07)",marginBottom:16}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
-              <h2 style={{margin:0,fontSize:16,fontWeight:900,color:"#0f172a"}}>Question Review</h2>
-              <span style={{fontSize:12,color:"#94a3b8"}}>Click any question to expand</span>
+        ):(
+          // ─── Review Panel ───────────────────────────────────
+          <div style={{maxWidth:920,margin:"0 auto",padding:"28px 20px"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
+              <div style={{fontSize:14,fontWeight:600,color:"#0F1C2E"}}>Answer Review — {results.questionResults.length} Questions</div>
+              <button onClick={()=>setShowReview(false)} style={{background:"none",border:"1px solid #E2E8F0",color:"#334155",padding:"6px 14px",borderRadius:5,cursor:"pointer",fontSize:12,fontWeight:500}}>← Back to Results</button>
             </div>
             {results.questionResults.map((qr,i)=>{
               const isOpen=reviewOpen===qr.id;
-              const sc2={correct:"#16a34a",wrong:"#dc2626",unattempted:"#94a3b8"}[qr.status];
-              const sbg={correct:"#f0fdf4",wrong:"#fff1f1",unattempted:"#f8fafc"}[qr.status];
+              const sc2={correct:"#059669",wrong:"#DC2626",unattempted:"#94A3B8"}[qr.status];
+              const sbg={correct:"#ECFDF5",wrong:"#FFF1F1",unattempted:"#F8FAFC"}[qr.status];
               const psg=qr.passage_id?passages.find(p=>p.id===qr.passage_id):null;
               return(
-                <div key={qr.id} style={{border:`1px solid ${sc2}30`,borderRadius:8,marginBottom:8,overflow:"hidden"}}>
-                  <div onClick={()=>setReviewOpen(isOpen?null:qr.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",cursor:"pointer",background:sbg,userSelect:"none"}}>
-                    <div style={{width:26,height:26,borderRadius:"50%",background:sc2,color:"white",fontWeight:900,fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{i+1}</div>
-                    <div style={{flex:1,fontSize:13,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(qr.question||"").slice(0,90)}{(qr.question||"").length>90?"...":""}</div>
+                <div key={qr.id} style={{border:"1px solid #E2E8F0",borderRadius:8,marginBottom:8,overflow:"hidden",borderLeft:`4px solid ${sc2}`}}>
+                  <div onClick={()=>setReviewOpen(isOpen?null:qr.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 16px",cursor:"pointer",background:sbg,userSelect:"none"}}>
+                    <div style={{width:24,height:24,borderRadius:4,background:sc2,color:"white",fontWeight:700,fontSize:11,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{i+1}</div>
+                    <div style={{flex:1,fontSize:13,color:"#334155",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(qr.question||"").slice(0,100)}{(qr.question||"").length>100?"...":""}</div>
                     <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-                      <span style={{background:TOPICS[qr.topic]?.color+"18",color:TOPICS[qr.topic]?.color,fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:8}}>{TOPICS[qr.topic]?.abbr}</span>
-                      <span style={{fontSize:11,fontWeight:800,color:sc2,textTransform:"uppercase"}}>{qr.status}</span>
-                      <span style={{fontSize:11,color:"#94a3b8"}}>{isOpen?"▲":"▼"}</span>
+                      <span style={{background:TOPICS[qr.topic]?.color+"15",color:TOPICS[qr.topic]?.color,fontSize:10,fontWeight:600,padding:"1px 6px",borderRadius:4}}>{TOPICS[qr.topic]?.abbr}</span>
+                      <span style={{fontSize:11,fontWeight:600,color:sc2,textTransform:"uppercase",letterSpacing:"0.04em"}}>{qr.status}</span>
+                      <span style={{fontSize:11,color:"#94A3B8"}}>{isOpen?"▲":"▼"}</span>
                     </div>
                   </div>
                   {isOpen&&(
-                    <div style={{padding:"14px 16px",borderTop:`1px solid ${sc2}20`,background:"white"}}>
-                      {psg&&<div style={{background:"#fefce8",border:"1px solid #fde68a",borderRadius:5,padding:"10px 12px",marginBottom:12,fontSize:12,lineHeight:1.85,color:"#1c1917",maxHeight:130,overflowY:"auto"}}>{psg.text}</div>}
-                      <p style={{margin:"0 0 12px",fontSize:14,fontWeight:600,color:"#1e293b",lineHeight:1.7}}>{qr.question}</p>
-                      {["A","B","C","D"].map(opt=>{
-                        const isC=opt===qr.correct, uW=opt===qr.userAnswer&&!isC;
-                        return(
-                          <div key={opt} style={{padding:"9px 12px",borderRadius:6,marginBottom:5,fontSize:13,background:isC?"#dcfce7":uW?"#fee2e2":"#f8fafc",border:`1px solid ${isC?"#16a34a":uW?"#dc2626":"#e2e8f0"}`,color:isC?"#14532d":uW?"#7f1d1d":"#374151"}}>
-                            <strong style={{marginRight:6}}>{opt}.</strong>{qr.options?.[opt]}{isC?" ✓":""}{uW?" ✗ Your Answer":""}
-                          </div>
-                        );
-                      })}
-                      {qr.explanation&&<div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:6,padding:"10px 13px",marginTop:10,fontSize:13,color:"#1e40af",lineHeight:1.65}}><strong>Why: </strong>{qr.explanation}</div>}
+                    <div style={{background:"white",borderTop:"1px solid #E2E8F0"}}>
+                      {psg&&(
+                        <div style={{background:"#EEF2FF",borderLeft:"3px solid #4338CA",padding:"12px 16px",margin:"14px 16px 0",borderRadius:6,fontSize:13,lineHeight:1.8,color:"#1E293B",maxHeight:140,overflowY:"auto"}}>{psg.text}</div>
+                      )}
+                      <div style={{padding:"14px 16px"}}>
+                        <p style={{margin:"0 0 12px",fontSize:14,fontWeight:500,color:"#1E293B",lineHeight:1.7}}>{qr.question}</p>
+                        {["A","B","C","D"].map(opt=>{
+                          const isC=opt===qr.correct,uW=opt===qr.userAnswer&&!isC;
+                          return(
+                            <div key={opt} style={{padding:"9px 12px",borderRadius:6,marginBottom:5,fontSize:13,background:isC?"#ECFDF5":uW?"#FFF1F1":"#F8FAFC",border:`1px solid ${isC?"#059669":uW?"#DC2626":"#E2E8F0"}`,color:isC?"#065F46":uW?"#7F1D1D":"#334155"}}>
+                              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                                <strong>{opt}.</strong> {qr.options?.[opt]}
+                                {isC&&<span style={{fontSize:11,fontWeight:600,color:"#059669",marginLeft:"auto"}}>Correct Answer</span>}
+                                {uW&&<span style={{fontSize:11,fontWeight:600,color:"#DC2626",marginLeft:"auto"}}>Your Answer</span>}
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {qr.explanation&&<div style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:6,padding:"10px 13px",marginTop:10,fontSize:13,color:"#334155",lineHeight:1.65}}><span style={{fontSize:11,fontWeight:600,color:"#64748B",textTransform:"uppercase",letterSpacing:"0.04em",display:"block",marginBottom:4}}>Explanation</span>{qr.explanation}</div>}
+                      </div>
                     </div>
                   )}
                 </div>
               );
             })}
+            <button onClick={()=>setShowReview(false)} style={{marginTop:8,padding:"10px 24px",background:"#0F1C2E",color:"white",border:"none",borderRadius:6,fontSize:13,fontWeight:600,cursor:"pointer"}}>← Back to Results</button>
           </div>
-          {/* Action buttons */}
-          <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
-            <button onClick={getAdvisory} disabled={loadingAdv} style={{flex:2,minWidth:200,padding:"15px",background:loadingAdv?"#94a3b8":"linear-gradient(135deg,#4c1d95,#7c3aed)",color:"white",border:"none",borderRadius:10,fontSize:15,fontWeight:900,cursor:loadingAdv?"not-allowed":"pointer",boxShadow:loadingAdv?"none":"0 4px 12px rgba(124,58,237,0.3)"}}>
-              {loadingAdv?"Preparing Performance Advisory...":"Get Performance Advisory →"}
-            </button>
-            <button onClick={()=>setScreen("dashboard")} style={{flex:1,minWidth:140,padding:"15px",background:"white",color:"#1d4ed8",border:"2px solid #1d4ed8",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer"}}>Take New Test</button>
-          </div>
-        </div>
+        )}
+        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       </div>
     );
   }
 
   // ════════════════════════════════════════════════════════
-  //  ADVISORY SCREEN
+  //  ADVISORY SCREEN (kept for fallback)
   // ════════════════════════════════════════════════════════
   if(screen==="advisory") return(
-    <div style={{minHeight:"100vh",background:"#eef2f7",fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
-      <div style={{background:"linear-gradient(135deg,#3b0764,#7c3aed)",padding:"10px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
-        <div style={{color:"white",fontWeight:700,fontSize:15}}>Performance Advisory — CUET English (101)</div>
+    <div style={{minHeight:"100vh",background:"#F8FAFC",fontFamily:"Inter,system-ui,sans-serif"}}>
+      <div style={{background:"#0F1C2E",padding:"10px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+        <div style={{color:"white",fontWeight:600,fontSize:14}}>Performance Analysis — CUET English (101)</div>
         <div style={{display:"flex",gap:8}}>
-          <button onClick={()=>setScreen("results")} style={{background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",color:"white",padding:"6px 14px",borderRadius:4,cursor:"pointer",fontSize:12,fontWeight:600}}>← Results</button>
-          <button onClick={()=>setScreen("dashboard")} style={{background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",color:"white",padding:"6px 14px",borderRadius:4,cursor:"pointer",fontSize:12,fontWeight:600}}>Dashboard</button>
+          <button onClick={()=>setScreen("results")} style={{background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",color:"rgba(255,255,255,0.8)",padding:"6px 14px",borderRadius:5,cursor:"pointer",fontSize:12,fontWeight:500}}>← Results</button>
+          <button onClick={()=>setScreen("dashboard")} style={{background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",color:"rgba(255,255,255,0.8)",padding:"6px 14px",borderRadius:5,cursor:"pointer",fontSize:12,fontWeight:500}}>Dashboard</button>
         </div>
       </div>
-      <div style={{maxWidth:760,margin:"0 auto",padding:"26px 20px"}}>
-        {results&&(
-          <div style={{display:"flex",gap:10,marginBottom:18,flexWrap:"wrap"}}>
-            {[{v:`${results.score}/${results.maxScore}`,l:"Score",c:"#1d4ed8"},{v:`${results.percentage}%`,l:"Percentage",c:results.percentage>=70?"#16a34a":results.percentage>=50?"#d97706":"#dc2626"},{v:results.correct,l:"Correct",c:"#16a34a"},{v:results.wrong,l:"Wrong",c:"#dc2626"},{v:results.unattempted,l:"Skipped",c:"#94a3b8"}]
-              .map(({v,l,c})=>(
-                <div key={l} style={{background:"white",borderRadius:9,padding:"10px 16px",boxShadow:"0 1px 4px rgba(0,0,0,0.07)",textAlign:"center",minWidth:80}}>
-                  <div style={{fontSize:20,fontWeight:900,color:c}}>{v}</div>
-                  <div style={{fontSize:11,color:"#64748b",fontWeight:600}}>{l}</div>
-                </div>
-              ))}
-          </div>
-        )}
-        <div style={{background:"white",borderRadius:13,padding:"28px 30px",boxShadow:"0 4px 20px rgba(0,0,0,0.08)",borderLeft:"5px solid #7c3aed",marginBottom:16}}>
-          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20,paddingBottom:16,borderBottom:"1px solid #f1f5f9"}}>
-            <div style={{width:44,height:44,borderRadius:"50%",background:"linear-gradient(135deg,#4c1d95,#7c3aed)",display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontSize:22,flexShrink:0}}>🎓</div>
-            <div>
-              <div style={{fontWeight:900,fontSize:16,color:"#1e293b"}}>Coaching Advisory — {user?.name}</div>
-              <div style={{fontSize:12,color:"#94a3b8",marginTop:2}}>Personalised analysis based on your actual wrong answers and topic gaps</div>
-            </div>
-          </div>
-          <div style={{fontSize:15,lineHeight:2.05,color:"#1e293b",whiteSpace:"pre-wrap"}}>{advisory}</div>
+      <div style={{maxWidth:760,margin:"0 auto",padding:"28px 20px"}}>
+        <div style={{background:"white",border:"1px solid #E2E8F0",borderRadius:8,padding:"28px 30px",boxShadow:"0 1px 3px rgba(0,0,0,0.06)",borderLeft:"4px solid #4338CA",marginBottom:16}}>
+          <div style={{fontSize:11,fontWeight:600,color:"#64748B",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:16}}>Performance Analysis — {user?.name}</div>
+          <div style={{fontSize:14,lineHeight:2.0,color:"#334155",whiteSpace:"pre-wrap"}}>{advisory}</div>
         </div>
-        <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,padding:"12px 16px",marginBottom:16,fontSize:13,color:"#1e40af",lineHeight:1.7}}>
-          <strong>Tip:</strong> Save this advisory by copying the text or taking a screenshot. Run at least 3 tests before your next advisory for more accurate gap analysis.
-        </div>
-        <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
-          <button onClick={generateTest} style={{flex:1,minWidth:180,padding:"14px",background:"linear-gradient(135deg,#1e3a8a,#1d4ed8)",color:"white",border:"none",borderRadius:10,fontSize:15,fontWeight:900,cursor:"pointer",boxShadow:"0 4px 12px rgba(29,78,216,0.25)"}}>Start Next Test →</button>
-          <button onClick={()=>setScreen("dashboard")} style={{flex:1,minWidth:140,padding:"14px",background:"white",color:"#374151",border:"2px solid #e2e8f0",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer"}}>← Dashboard</button>
+        <div style={{display:"flex",gap:12}}>
+          <button onClick={generateTest} style={{flex:1,height:44,background:"#0F1C2E",color:"white",border:"none",borderRadius:6,fontSize:14,fontWeight:600,cursor:"pointer"}}>Start Next Test →</button>
+          <button onClick={()=>setScreen("dashboard")} style={{flex:1,height:44,background:"white",color:"#334155",border:"1px solid #E2E8F0",borderRadius:6,fontSize:14,fontWeight:500,cursor:"pointer"}}>← Dashboard</button>
         </div>
       </div>
     </div>
