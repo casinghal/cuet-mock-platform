@@ -71,18 +71,21 @@ RULES:
 2. Every question: exactly 4 options A, B, C, D — exactly one correct answer
 3. All distractors must be plausible — no obviously wrong options
 4. Passages go in a separate "passages" array — questions use passage_id only, never repeat passage text
-5. Explanations: 1 sentence, under 20 words
+5. Do NOT include an explanation field in any question
 
 Return ONLY valid JSON, no markdown fences, no commentary:
 {"passages":[{"id":"P1","type":"factual","text":"..."}],"questions":[{"id":1,"topic":"reading_comprehension","passage_id":"P1","question":"...","options":{"A":"...","B":"...","C":"...","D":"..."},"correct":"A"}]}`;
 }
 
-function buildSplitPrompt(diff, half, count) {
+function buildSplitPrompt(diff, part, count) {
+  // part: "first"(17Q) | "second"(17Q) | "third"(16Q) — for Full Mock 3-way split
   const ddesc = { easy:"simple vocabulary, direct factual questions, straightforward inference", medium:"moderate vocabulary above Class 12 level, some inference required, plausible distractors", hard:"advanced GRE-level vocabulary, complex literary passages, abstract inference, highly plausible distractors" }[diff];
-  const dist = half==="first"
-    ? `- Reading Comprehension: 1 passage (factual, 120-150 words), 8 questions\n- Synonyms & Antonyms: 5 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 6 fill-in-the-blank\n- Sentence Rearrangement: 3 questions (P/Q/R/S format)\n- Match the Following: 2 questions\n- Vocabulary & Grammar: 1 question`
-    : `- Reading Comprehension: 2 passages (narrative + literary, 120-150 words each), 8 questions total\n- Synonyms & Antonyms: 5 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 6 fill-in-the-blank\n- Sentence Rearrangement: 4 questions (P/Q/R/S format)\n- Match the Following: 1 question\n- Vocabulary & Grammar: 1 question`;
-  return `You are a senior CUET UG English (101) paper setter for the National Testing Agency (NTA), India. Create a ${half} batch of practice questions.
+  const dist = part==="first"
+    ? `- Reading Comprehension: 1 passage (factual, 120-150 words), 5 questions\n- Synonyms & Antonyms: 3 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 4 fill-in-the-blank\n- Sentence Rearrangement: 2 questions (P/Q/R/S format)\n- Match the Following: 2 questions\n- Vocabulary & Grammar: 1 question`
+    : part==="second"
+    ? `- Reading Comprehension: 1 passage (narrative, 120-150 words), 5 questions\n- Synonyms & Antonyms: 3 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 4 fill-in-the-blank\n- Sentence Rearrangement: 2 questions (P/Q/R/S format)\n- Match the Following: 2 questions\n- Vocabulary & Grammar: 1 question`
+    : `- Reading Comprehension: 1 passage (literary, 120-150 words), 6 questions\n- Synonyms & Antonyms: 4 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 3 fill-in-the-blank\n- Sentence Rearrangement: 2 questions (P/Q/R/S format)\n- Match the Following: 1 question`;
+  return `You are a senior CUET UG English (101) paper setter for(the National Testing Agency (NTA), India. Create a batch of practice questions.
 
 Difficulty: ${diff} — ${ddesc}
 Total: exactly ${count} questions
@@ -97,10 +100,37 @@ RULES:
 4. Passages go in a separate "passages" array — questions use passage_id only
 5. Sentence rearrangement: P/Q/R/S shown as separate labelled sentences, options are ordering strings
 6. Match the Following: Column A (4 items) + Column B (4 items), 4 match-combination options
-7. Explanations: 1 sentence, under 20 words
+7. Do NOT include an explanation field in any question
 
 Return ONLY valid JSON, no markdown, no commentary:
-{"passages":[{"id":"P1","type":"factual","text":"..."}],"questions":[{"id":1,"topic":"reading_comprehension","passage_id":"P1","question":"...","options":{"A":"...","B":"...","C":"...","D":"..."},"correct":"A","explanation":"..."}]}`;
+{"passages":[{"id":"P1","type":"factual","text":"..."}],"questions":[{"id":1,"topic":"reading_comprehension","passage_id":"P1","question":"...","options":{"A":"...","B":"...","C":"...","D":"..."},"correct":"A"}]}`;
+}
+
+function buildStandardSplitPrompt(diff, half) {
+  // half: "first"(15Q) | "second"(15Q) — for Standard Test 2-way split
+  const ddesc = { easy:"simple vocabulary, direct factual questions, straightforward inference", medium:"moderate vocabulary above Class 12 level, some inference required, plausible distractors", hard:"advanced GRE-level vocabulary, complex literary passages, abstract inference, highly plausible distractors" }[diff];
+  const dist = half==="first"
+    ? `- Reading Comprehension: 1 passage (factual, 120-150 words), 4 questions\n- Synonyms & Antonyms: 3 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 4 fill-in-the-blank\n- Sentence Rearrangement: 2 questions (P/Q/R/S format)\n- Match the Following: 1 question\n- Vocabulary & Grammar: 1 question`
+    : `- Reading Comprehension: 1 passage (narrative/literary, 120-150 words), 4 questions\n- Synonyms & Antonyms: 3 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 3 fill-in-the-blank\n- Sentence Rearrangement: 2 questions (P/Q/R/S format)\n- Match the Following: 1 question\n- Vocabulary & Grammar: 2 questions`;
+  return `You are a senior CUET UG English (101) paper setter for the National Testing Agency (NTA), India. Create a batch of practice questions.
+
+Difficulty: ${diff} — ${ddesc}
+Total: exactly 15 questions
+
+Distribution:
+${dist}
+
+RULES:
+1. Exactly 15 questions total — no more, no less
+2. Every question: exactly 4 options A, B, C, D — exactly one correct
+3. All distractors must be plausible
+4. Passages go in a separate "passages" array — questions use passage_id only
+5. Sentence rearrangement: P/Q/R/S shown as separate labelled sentences, options are ordering strings
+6. Match the Following: Column A (4 items) + Column B (4 items), 4 match-combination options
+7. Do NOT include an explanation field in any question
+
+Return ONLY valid JSON, no markdown, no commentary:
+{"passages":[{"id":"P1","type":"factual","text":"..."}],"questions":[{"id":1,"topic":"reading_comprehension","passage_id":"P1","question":"...","options":{"A":"...","B":"...","C":"...","D":"..."},"correct":"A"}]}`;
 }
 
 function buildAdvisoryPrompt(res, name) {
@@ -388,14 +418,36 @@ export default function CUETPlatform() {
   const generateTest=async()=>{
     setGenError(""); setScreen("generating");
     try{
-      let allPassages=[],allQuestions=[];
+            let allPassages=[],allQuestions=[];
       if(mode==="full"){
-        setGenStage("Preparing Section 1 of 2 (Questions 1–25)...");
-        const [d1,d2]=await Promise.all([
-          callAI(buildSplitPrompt(difficulty,"first",25),MAX_TOKENS.full[difficulty]),
-          callAI(buildSplitPrompt(difficulty,"second",25),MAX_TOKENS.full[difficulty]),
+        // 3-way parallel split: 17+17+16 = 50Q, each call ~2500 tokens → ~21s safely within 25s limit
+        setGenStage("Preparing your Full Mock paper across all sections. Please wait.");
+        const [d1,d2,d3]=await Promise.all([
+          callAI(buildSplitPrompt(difficulty,"first",17),MAX_TOKENS.full[difficulty]),
+          callAI(buildSplitPrompt(difficulty,"second",17),MAX_TOKENS.full[difficulty]),
+          callAI(buildSplitPrompt(difficulty,"third",16),MAX_TOKENS.full[difficulty]),
         ]);
         setGenStage("Finalising your Full Mock Test paper...");
+        const r1=parseAI(d1.content.filter(b=>b.type==="text").map(b=>b.text).join(""));
+        const r2=parseAI(d2.content.filter(b=>b.type==="text").map(b=>b.text).join(""));
+        const r3=parseAI(d3.content.filter(b=>b.type==="text").map(b=>b.text).join(""));
+        const o2=r1.questions.length, o3=r1.questions.length+r2.questions.length;
+        const r2qs=r2.questions.map(q=>({...q,id:q.id+o2}));
+        const r3qs=r3.questions.map(q=>({...q,id:q.id+o3}));
+        const r2ps=r2.passages.map(p=>({...p,id:p.id+"b"}));
+        const r3ps=r3.passages.map(p=>({...p,id:p.id+"c"}));
+        r2qs.forEach(q=>{if(q.passage_id)q.passage_id=q.passage_id+"b";});
+        r3qs.forEach(q=>{if(q.passage_id)q.passage_id=q.passage_id+"c";});
+        allPassages=[...r1.passages,...r2ps,...r3ps];
+        allQuestions=[...r1.questions,...r2qs,...r3qs];
+      }else if(mode==="standard"){
+        // 2-way parallel split: 15+15 = 30Q, each call ~2000 tokens → ~17s safely within 25s limit
+        setGenStage("Preparing your test paper...");
+        const [d1,d2]=await Promise.all([
+          callAI(buildStandardSplitPrompt(difficulty,"first"),MAX_TOKENS.standard[difficulty]),
+          callAI(buildStandardSplitPrompt(difficulty,"second"),MAX_TOKENS.standard[difficulty]),
+        ]);
+        setGenStage("Finalising your Standard Test paper...");
         const r1=parseAI(d1.content.filter(b=>b.type==="text").map(b=>b.text).join(""));
         const r2=parseAI(d2.content.filter(b=>b.type==="text").map(b=>b.text).join(""));
         const offset=r1.questions.length;
@@ -405,12 +457,13 @@ export default function CUETPlatform() {
         allPassages=[...r1.passages,...r2ps];
         allQuestions=[...r1.questions,...r2qs];
       }else{
+        // Quick Practice — single call, 15Q
         setGenStage("Preparing your test paper...");
         const data=await callAI(buildTestPrompt(mode,difficulty),MAX_TOKENS[mode][difficulty]);
         const r=parseAI(data.content.filter(b=>b.type==="text").map(b=>b.text).join(""));
         allPassages=r.passages; allQuestions=r.questions;
       }
-      if(!allQuestions.length) throw new Error("No questions were returned. Please try again.");
+if(!allQuestions.length) throw new Error("No questions were returned. Please try again.");
       setPassages(allPassages); setQuestions(allQuestions);
       setAnswers({}); setMarkedReview(new Set());
       setVisited(new Set([allQuestions[0]?.id]));
