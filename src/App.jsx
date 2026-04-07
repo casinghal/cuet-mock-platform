@@ -9,9 +9,9 @@ const MODES = {
 // Per-combination token ceilings — no explanations in generation (lazy on review)
 // Haiku = 120 tokens/sec, AbortController = 25s = 3000 tokens max safe ceiling
 const MAX_TOKENS = {
-  quick:    { easy:1600, medium:2000, hard:2500 },
-  standard: { easy:1600, medium:2000, hard:2500 }, // per 15Q split-half
-  full:     { easy:2000, medium:2400, hard:2900 }, // per 17Q split-third
+  quick:    { easy:2500, medium:2800, hard:3200 },
+  standard: { easy:2500, medium:2800, hard:3200 }, // per 15Q split-half
+  full:     { easy:2800, medium:3200, hard:3800 }, // per 17Q split-third
 };
 const DIFFS = {
   easy:   { label:"Easy",   color:"#16a34a", bg:"#dcfce7", desc:"Simple vocab, direct questions" },
@@ -59,7 +59,7 @@ Difficulty: ${diff} — ${ddesc}
 Total: exactly ${total} questions
 
 Distribution:
-- Reading Comprehension: ${d.rc[0]} passage(s), ${d.rc[1]} questions. Types: ${ptypes}. Each passage 120-150 words, original, information-dense.
+- Reading Comprehension: ${d.rc[0]} passage(s), ${d.rc[1]} questions. Types: ${ptypes}. Each passage 80-100 words for hard difficulty, 120-150 words for easy/medium, original, information-dense.
 - Synonyms & Antonyms: ${d.sa} questions — alternate between SYNONYM and ANTONYM tasks
 - Choose Correct Word: ${d.cw} fill-in-the-blank sentences, one blank each
 - Sentence Rearrangement: ${d.sr} questions — show sentences as P/Q/R/S individually, options are 4 distinct orderings like PQRS, QPSR, etc.
@@ -81,10 +81,10 @@ function buildSplitPrompt(diff, part, count) {
   // part: "first"(17Q) | "second"(17Q) | "third"(16Q) — for Full Mock 3-way split
   const ddesc = { easy:"simple vocabulary, direct factual questions, straightforward inference", medium:"moderate vocabulary above Class 12 level, some inference required, plausible distractors", hard:"advanced GRE-level vocabulary, complex literary passages, abstract inference, highly plausible distractors" }[diff];
   const dist = part==="first"
-    ? `- Reading Comprehension: 1 passage (factual, 120-150 words), 5 questions\n- Synonyms & Antonyms: 3 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 4 fill-in-the-blank\n- Sentence Rearrangement: 2 questions (P/Q/R/S format)\n- Match the Following: 2 questions\n- Vocabulary & Grammar: 1 question`
+    ? `- Reading Comprehension: 1 passage (factual, 80-100 words), 5 questions\n- Synonyms & Antonyms: 3 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 4 fill-in-the-blank\n- Sentence Rearrangement: 2 questions (P/Q/R/S format)\n- Match the Following: 2 questions\n- Vocabulary & Grammar: 1 question`
     : part==="second"
-    ? `- Reading Comprehension: 1 passage (narrative, 120-150 words), 5 questions\n- Synonyms & Antonyms: 3 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 4 fill-in-the-blank\n- Sentence Rearrangement: 2 questions (P/Q/R/S format)\n- Match the Following: 2 questions\n- Vocabulary & Grammar: 1 question`
-    : `- Reading Comprehension: 1 passage (literary, 120-150 words), 6 questions\n- Synonyms & Antonyms: 4 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 3 fill-in-the-blank\n- Sentence Rearrangement: 2 questions (P/Q/R/S format)\n- Match the Following: 1 question`;
+    ? `- Reading Comprehension: 1 passage (narrative, 80-100 words), 5 questions\n- Synonyms & Antonyms: 3 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 4 fill-in-the-blank\n- Sentence Rearrangement: 2 questions (P/Q/R/S format)\n- Match the Following: 2 questions\n- Vocabulary & Grammar: 1 question`
+    : `- Reading Comprehension: 1 passage (literary, 80-100 words), 6 questions\n- Synonyms & Antonyms: 4 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 3 fill-in-the-blank\n- Sentence Rearrangement: 2 questions (P/Q/R/S format)\n- Match the Following: 1 question`;
   return `You are a senior CUET UG English (101) paper setter for(the National Testing Agency (NTA), India. Create a batch of practice questions.
 
 Difficulty: ${diff} — ${ddesc}
@@ -110,8 +110,8 @@ function buildStandardSplitPrompt(diff, half) {
   // half: "first"(15Q) | "second"(15Q) — for Standard Test 2-way split
   const ddesc = { easy:"simple vocabulary, direct factual questions, straightforward inference", medium:"moderate vocabulary above Class 12 level, some inference required, plausible distractors", hard:"advanced GRE-level vocabulary, complex literary passages, abstract inference, highly plausible distractors" }[diff];
   const dist = half==="first"
-    ? `- Reading Comprehension: 1 passage (factual, 120-150 words), 4 questions\n- Synonyms & Antonyms: 3 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 4 fill-in-the-blank\n- Sentence Rearrangement: 2 questions (P/Q/R/S format)\n- Match the Following: 1 question\n- Vocabulary & Grammar: 1 question`
-    : `- Reading Comprehension: 1 passage (narrative/literary, 120-150 words), 4 questions\n- Synonyms & Antonyms: 3 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 3 fill-in-the-blank\n- Sentence Rearrangement: 2 questions (P/Q/R/S format)\n- Match the Following: 1 question\n- Vocabulary & Grammar: 2 questions`;
+    ? `- Reading Comprehension: 1 passage (factual, 80-100 words), 4 questions\n- Synonyms & Antonyms: 3 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 4 fill-in-the-blank\n- Sentence Rearrangement: 2 questions (P/Q/R/S format)\n- Match the Following: 1 question\n- Vocabulary & Grammar: 1 question`
+    : `- Reading Comprehension: 1 passage (narrative/literary, 80-100 words), 4 questions\n- Synonyms & Antonyms: 3 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 3 fill-in-the-blank\n- Sentence Rearrangement: 2 questions (P/Q/R/S format)\n- Match the Following: 1 question\n- Vocabulary & Grammar: 2 questions`;
   return `You are a senior CUET UG English (101) paper setter for the National Testing Agency (NTA), India. Create a batch of practice questions.
 
 Difficulty: ${diff} — ${ddesc}
