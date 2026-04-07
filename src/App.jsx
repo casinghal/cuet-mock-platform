@@ -69,7 +69,7 @@ RULES:
 2. Every question: exactly 4 options A, B, C, D — exactly one correct answer
 3. All distractors must be plausible — no obviously wrong options
 4. Passages go in a separate "passages" array — questions use passage_id only, never repeat passage text
-5. Explanations: 1 sentence, 12 words maximum
+5. Explanations: 1 sentence, under 20 words
 
 Return ONLY valid JSON, no markdown fences, no commentary:
 {"passages":[{"id":"P1","type":"factual","text":"..."}],"questions":[{"id":1,"topic":"reading_comprehension","passage_id":"P1","question":"...","options":{"A":"...","B":"...","C":"...","D":"..."},"correct":"A","explanation":"..."}]}`;
@@ -95,7 +95,7 @@ RULES:
 4. Passages go in a separate "passages" array — questions use passage_id only
 5. Sentence rearrangement: P/Q/R/S shown as separate labelled sentences, options are ordering strings
 6. Match the Following: Column A (4 items) + Column B (4 items), 4 match-combination options
-7. Explanations: 1 sentence, 12 words maximum
+7. Explanations: 1 sentence, under 20 words
 
 Return ONLY valid JSON, no markdown, no commentary:
 {"passages":[{"id":"P1","type":"factual","text":"..."}],"questions":[{"id":1,"topic":"reading_comprehension","passage_id":"P1","question":"...","options":{"A":"...","B":"...","C":"...","D":"..."},"correct":"A","explanation":"..."}]}`;
@@ -388,12 +388,12 @@ export default function CUETPlatform() {
     try{
       let allPassages=[],allQuestions=[];
       if(mode==="full"){
-        setGenStage("Generating Part 1 of 2 (Questions 1–25)...");
+        setGenStage("Preparing Section 1 of 2 (Questions 1–25)...");
         const [d1,d2]=await Promise.all([
           callAI(buildSplitPrompt(difficulty,"first",25),MAX_TOKENS.full[difficulty]),
           callAI(buildSplitPrompt(difficulty,"second",25),MAX_TOKENS.full[difficulty]),
         ]);
-        setGenStage("Merging and finalising all 50 questions...");
+        setGenStage("Finalising your Full Mock Test paper...");
         const r1=parseAI(d1.content.filter(b=>b.type==="text").map(b=>b.text).join(""));
         const r2=parseAI(d2.content.filter(b=>b.type==="text").map(b=>b.text).join(""));
         const offset=r1.questions.length;
@@ -403,7 +403,7 @@ export default function CUETPlatform() {
         allPassages=[...r1.passages,...r2ps];
         allQuestions=[...r1.questions,...r2qs];
       }else{
-        setGenStage("Generating your questions...");
+        setGenStage("Preparing your test paper...");
         const data=await callAI(buildTestPrompt(mode,difficulty),MAX_TOKENS[mode][difficulty]);
         const r=parseAI(data.content.filter(b=>b.type==="text").map(b=>b.text).join(""));
         allPassages=r.passages; allQuestions=r.questions;
@@ -534,7 +534,7 @@ export default function CUETPlatform() {
           {/* New Test Card */}
           <div style={{background:"white",borderRadius:12,padding:26,boxShadow:"0 1px 4px rgba(0,0,0,0.07)",marginBottom:18,border:"1px solid #e2e8f0"}}>
             <h2 style={{margin:"0 0 6px",fontSize:17,fontWeight:900,color:"#0f172a"}}>Start a New Test</h2>
-            <p style={{margin:"0 0 20px",fontSize:13,color:"#64748b"}}>Select mode and difficulty, then click Generate. Each test is freshly created by AI — no two tests are the same.</p>
+            <p style={{margin:"0 0 20px",fontSize:13,color:"#64748b"}}>Select mode and difficulty, then click Generate. Every test is drawn from our curated question bank. Combinations never repeat.</p>
 
             {/* Mode selector */}
             <div style={{marginBottom:18}}>
@@ -545,7 +545,7 @@ export default function CUETPlatform() {
                     {mode===k&&<div style={{position:"absolute",top:8,right:8,width:8,height:8,borderRadius:"50%",background:"#1d4ed8"}}/>}
                     <div style={{fontWeight:800,fontSize:14,color:mode===k?"#1d4ed8":"#1e293b"}}>{m.label}</div>
                     <div style={{fontSize:11,color:"#94a3b8",marginTop:4}}>{m.tag}</div>
-                    {k==="full"&&<div style={{fontSize:10,color:"#7c3aed",fontWeight:700,marginTop:4}}>AI-split generation</div>}
+                    {k==="full"&&<div style={{fontSize:10,color:"#7c3aed",fontWeight:700,marginTop:4}}>Comprehensive coverage</div>}
                   </div>
                 ))}
               </div>
@@ -642,7 +642,7 @@ export default function CUETPlatform() {
           <span style={{background:DIFFS[difficulty]?.bg,color:DIFFS[difficulty]?.color,fontSize:12,fontWeight:700,padding:"3px 10px",borderRadius:20}}>{DIFFS[difficulty]?.label}</span>
         </div>
         {genStage&&<div style={{fontSize:13,color:"#1d4ed8",fontWeight:600,marginBottom:8,background:"#eff6ff",padding:"8px 14px",borderRadius:6}}>{genStage}</div>}
-        <div style={{fontSize:12,color:"#94a3b8",marginBottom:24}}>{mode==="full"?"Generating 50 questions in parallel — takes 20-35 seconds.":"AI is writing authentic NTA-standard questions — takes 15-25 seconds."}</div>
+        <div style={{fontSize:12,color:"#94a3b8",marginBottom:24}}>{mode==="full"?"Preparing your Full Mock paper across all sections. Please wait.":"Preparing your personalised test paper. This takes a moment."}</div>
         <div style={{background:"#f0f7ff",border:"1px solid #bfdbfe",borderRadius:9,padding:"14px 16px",textAlign:"left"}}>
           <div style={{fontSize:10,fontWeight:800,color:"#1d4ed8",letterSpacing:1.5,marginBottom:7,textTransform:"uppercase"}}>Exam Strategy Tip</div>
           <div style={{fontSize:13,color:"#1e3a8a",lineHeight:1.8}}>{TIPS[tipIdx]}</div>
@@ -902,7 +902,7 @@ You cannot undo this.`))doSubmit();}} style={{width:"100%",padding:"9px",backgro
           {/* Action buttons */}
           <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
             <button onClick={getAdvisory} disabled={loadingAdv} style={{flex:2,minWidth:200,padding:"15px",background:loadingAdv?"#94a3b8":"linear-gradient(135deg,#4c1d95,#7c3aed)",color:"white",border:"none",borderRadius:10,fontSize:15,fontWeight:900,cursor:loadingAdv?"not-allowed":"pointer",boxShadow:loadingAdv?"none":"0 4px 12px rgba(124,58,237,0.3)"}}>
-              {loadingAdv?"Generating Coaching Advisory...":"Get AI Coaching Advisory →"}
+              {loadingAdv?"Preparing Performance Advisory...":"Get Performance Advisory →"}
             </button>
             <button onClick={()=>setScreen("dashboard")} style={{flex:1,minWidth:140,padding:"15px",background:"white",color:"#1d4ed8",border:"2px solid #1d4ed8",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer"}}>Take New Test</button>
           </div>
@@ -917,7 +917,7 @@ You cannot undo this.`))doSubmit();}} style={{width:"100%",padding:"9px",backgro
   if(screen==="advisory") return(
     <div style={{minHeight:"100vh",background:"#eef2f7",fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
       <div style={{background:"linear-gradient(135deg,#3b0764,#7c3aed)",padding:"10px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
-        <div style={{color:"white",fontWeight:700,fontSize:15}}>AI Coaching Advisory — CUET English (101)</div>
+        <div style={{color:"white",fontWeight:700,fontSize:15}}>Performance Advisory — CUET English (101)</div>
         <div style={{display:"flex",gap:8}}>
           <button onClick={()=>setScreen("results")} style={{background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",color:"white",padding:"6px 14px",borderRadius:4,cursor:"pointer",fontSize:12,fontWeight:600}}>← Results</button>
           <button onClick={()=>setScreen("dashboard")} style={{background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",color:"white",padding:"6px 14px",borderRadius:4,cursor:"pointer",fontSize:12,fontWeight:600}}>Dashboard</button>
