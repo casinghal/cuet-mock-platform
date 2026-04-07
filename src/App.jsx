@@ -6,10 +6,12 @@ const MODES = {
   standard: { label:"Standard Test",  q:30, secs:2160, tag:"30 Questions · 36 Minutes" },
   full:     { label:"Full Mock Test", q:50, secs:3600, tag:"50 Questions · 60 Minutes" },
 };
+// Per-combination token ceilings — no explanations in generation (lazy on review)
+// Haiku = 120 tokens/sec, AbortController = 25s = 3000 tokens max safe ceiling
 const MAX_TOKENS = {
-  quick:    { easy:2000, medium:2500, hard:3000 },
-  standard: { easy:3500, medium:4500, hard:5500 },
-  full:     { easy:3000, medium:3800, hard:4500 },
+  quick:    { easy:1600, medium:2000, hard:2500 },
+  standard: { easy:1600, medium:2000, hard:2500 }, // per 15Q split-half
+  full:     { easy:2000, medium:2400, hard:2900 }, // per 17Q split-third
 };
 const DIFFS = {
   easy:   { label:"Easy",   color:"#16a34a", bg:"#dcfce7", desc:"Simple vocab, direct questions" },
@@ -72,7 +74,7 @@ RULES:
 5. Explanations: 1 sentence, under 20 words
 
 Return ONLY valid JSON, no markdown fences, no commentary:
-{"passages":[{"id":"P1","type":"factual","text":"..."}],"questions":[{"id":1,"topic":"reading_comprehension","passage_id":"P1","question":"...","options":{"A":"...","B":"...","C":"...","D":"..."},"correct":"A","explanation":"..."}]}`;
+{"passages":[{"id":"P1","type":"factual","text":"..."}],"questions":[{"id":1,"topic":"reading_comprehension","passage_id":"P1","question":"...","options":{"A":"...","B":"...","C":"...","D":"..."},"correct":"A"}]}`;
 }
 
 function buildSplitPrompt(diff, half, count) {
