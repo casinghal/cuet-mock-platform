@@ -420,7 +420,7 @@ export default function CUETPlatform() {
   const generateTest=async()=>{
     setGenError(""); setScreen("generating");
     try{
-            let allPassages=[],allQuestions=[];
+                  let allPassages=[],allQuestions=[];
       if(mode==="full"){
         // 4-way parallel split: 13+13+12+12 = 50Q, each call ~2000 tokens → ~21s safely within 25s limit
         setGenStage("Preparing your Full Mock paper across all sections. Please wait.");
