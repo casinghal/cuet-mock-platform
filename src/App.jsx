@@ -81,10 +81,12 @@ function buildSplitPrompt(diff, part, count) {
   // part: "first"(17Q) | "second"(17Q) | "third"(16Q) — for Full Mock 3-way split
   const ddesc = { easy:"simple vocabulary, direct factual questions, straightforward inference", medium:"moderate vocabulary above Class 12 level, some inference required, plausible distractors", hard:"advanced GRE-level vocabulary, complex literary passages, abstract inference, highly plausible distractors" }[diff];
   const dist = part==="first"
-    ? `- Reading Comprehension: 1 passage (factual, 80-100 words), 5 questions\n- Synonyms & Antonyms: 3 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 4 fill-in-the-blank\n- Sentence Rearrangement: 2 questions (P/Q/R/S format)\n- Match the Following: 2 questions\n- Vocabulary & Grammar: 1 question`
+    ? `- Reading Comprehension: 1 passage (factual, 120-150 words), 3 questions\n- Synonyms & Antonyms: 3 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 3 fill-in-the-blank\n- Sentence Rearrangement: 2 questions (P/Q/R/S format)\n- Match the Following: 1 question\n- Vocabulary & Grammar: 1 question`
     : part==="second"
-    ? `- Reading Comprehension: 1 passage (narrative, 80-100 words), 5 questions\n- Synonyms & Antonyms: 3 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 4 fill-in-the-blank\n- Sentence Rearrangement: 2 questions (P/Q/R/S format)\n- Match the Following: 2 questions\n- Vocabulary & Grammar: 1 question`
-    : `- Reading Comprehension: 1 passage (literary, 80-100 words), 6 questions\n- Synonyms & Antonyms: 4 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 3 fill-in-the-blank\n- Sentence Rearrangement: 2 questions (P/Q/R/S format)\n- Match the Following: 1 question`;
+    ? `- Reading Comprehension: 1 passage (narrative, 120-150 words), 3 questions\n- Synonyms & Antonyms: 3 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 3 fill-in-the-blank\n- Sentence Rearrangement: 2 questions (P/Q/R/S format)\n- Match the Following: 1 question\n- Vocabulary & Grammar: 1 question`
+    : part==="third"
+    ? `- Reading Comprehension: 1 passage (literary, 120-150 words), 3 questions\n- Synonyms & Antonyms: 2 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 3 fill-in-the-blank\n- Sentence Rearrangement: 2 questions (P/Q/R/S format)\n- Match the Following: 1 question\n- Vocabulary & Grammar: 1 question`
+    : `- Synonyms & Antonyms: 4 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 4 fill-in-the-blank\n- Sentence Rearrangement: 3 questions (P/Q/R/S format)\n- Match the Following: 1 question`;
   return `You are a senior CUET UG English (101) paper setter for(the National Testing Agency (NTA), India. Create a batch of practice questions.
 
 Difficulty: ${diff} — ${ddesc}
@@ -420,26 +422,31 @@ export default function CUETPlatform() {
     try{
             let allPassages=[],allQuestions=[];
       if(mode==="full"){
-        // 3-way parallel split: 17+17+16 = 50Q, each call ~2500 tokens → ~21s safely within 25s limit
+        // 4-way parallel split: 13+13+12+12 = 50Q, each call ~2000 tokens → ~21s safely within 25s limit
         setGenStage("Preparing your Full Mock paper across all sections. Please wait.");
-        const [d1,d2,d3]=await Promise.all([
-          callAI(buildSplitPrompt(difficulty,"first",17),MAX_TOKENS.full[difficulty]),
-          callAI(buildSplitPrompt(difficulty,"second",17),MAX_TOKENS.full[difficulty]),
-          callAI(buildSplitPrompt(difficulty,"third",16),MAX_TOKENS.full[difficulty]),
+        const [d1,d2,d3,d4]=await Promise.all([
+          callAI(buildSplitPrompt(difficulty,"first",13),MAX_TOKENS.full[difficulty]),
+          callAI(buildSplitPrompt(difficulty,"second",13),MAX_TOKENS.full[difficulty]),
+          callAI(buildSplitPrompt(difficulty,"third",12),MAX_TOKENS.full[difficulty]),
+          callAI(buildSplitPrompt(difficulty,"fourth",12),MAX_TOKENS.full[difficulty]),
         ]);
         setGenStage("Finalising your Full Mock Test paper...");
         const r1=parseAI(d1.content.filter(b=>b.type==="text").map(b=>b.text).join(""));
         const r2=parseAI(d2.content.filter(b=>b.type==="text").map(b=>b.text).join(""));
         const r3=parseAI(d3.content.filter(b=>b.type==="text").map(b=>b.text).join(""));
-        const o2=r1.questions.length, o3=r1.questions.length+r2.questions.length;
+        const r4=parseAI(d4.content.filter(b=>b.type==="text").map(b=>b.text).join(""));
+        const o2=r1.questions.length;
+        const o3=o2+r2.questions.length;
+        const o4=o3+r3.questions.length;
         const r2qs=r2.questions.map(q=>({...q,id:q.id+o2}));
         const r3qs=r3.questions.map(q=>({...q,id:q.id+o3}));
+        const r4qs=r4.questions.map(q=>({...q,id:q.id+o4}));
         const r2ps=r2.passages.map(p=>({...p,id:p.id+"b"}));
         const r3ps=r3.passages.map(p=>({...p,id:p.id+"c"}));
         r2qs.forEach(q=>{if(q.passage_id)q.passage_id=q.passage_id+"b";});
         r3qs.forEach(q=>{if(q.passage_id)q.passage_id=q.passage_id+"c";});
         allPassages=[...r1.passages,...r2ps,...r3ps];
-        allQuestions=[...r1.questions,...r2qs,...r3qs];
+        allQuestions=[...r1.questions,...r2qs,...r3qs,...r4qs];
       }else if(mode==="standard"){
         // 2-way parallel split: 15+15 = 30Q, each call ~2000 tokens → ~17s safely within 25s limit
         setGenStage("Preparing your test paper...");
