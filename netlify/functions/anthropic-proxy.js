@@ -53,9 +53,9 @@ exports.handler = async function (event) {
   }
 
   try {
-    // AbortController: fail gracefully at 24s rather than letting Netlify 504 at 26s
+    // AbortController: fail gracefully at 25s rather than letting Netlify 504 at 26s
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 24000);
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
 
     let response;
     try {
@@ -81,7 +81,7 @@ exports.handler = async function (event) {
         return {
           statusCode: 504,
           headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
-          body: JSON.stringify({ error: { message: "Request timed out (24s). Try a smaller test mode or difficulty, then retry." } }),
+          body: JSON.stringify({ error: { message: "Request timed out (25s). Try a smaller test mode or difficulty, then retry." } }),
         };
       }
       throw fetchErr;
