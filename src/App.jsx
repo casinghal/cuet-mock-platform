@@ -2,9 +2,14 @@ import { useState, useEffect, useRef, useCallback } from "react";
 
 // ─── Constants ───────────────────────────────────────────────
 const MODES = {
-  quick:    { label:"Quick Practice", q:15, secs:1080, tag:"15 Questions · 18 Minutes", maxT:4500 },
-  standard: { label:"Standard Test",  q:30, secs:2160, tag:"30 Questions · 36 Minutes", maxT:8000 },
-  full:     { label:"Full Mock Test", q:50, secs:3600, tag:"50 Questions · 60 Minutes", maxT:5500 },
+  quick:    { label:"Quick Practice", q:15, secs:1080, tag:"15 Questions · 18 Minutes" },
+  standard: { label:"Standard Test",  q:30, secs:2160, tag:"30 Questions · 36 Minutes" },
+  full:     { label:"Full Mock Test", q:50, secs:3600, tag:"50 Questions · 60 Minutes" },
+};
+const MAX_TOKENS = {
+  quick:    { easy:2000, medium:2500, hard:3000 },
+  standard: { easy:3500, medium:4500, hard:5500 },
+  full:     { easy:3000, medium:3800, hard:4500 },
 };
 const DIFFS = {
   easy:   { label:"Easy",   color:"#16a34a", bg:"#dcfce7", desc:"Simple vocab, direct questions" },
@@ -52,7 +57,7 @@ Difficulty: ${diff} — ${ddesc}
 Total: exactly ${total} questions
 
 Distribution:
-- Reading Comprehension: ${d.rc[0]} passage(s), ${d.rc[1]} questions. Types: ${ptypes}. Each passage 220-260 words, original, engaging topic.
+- Reading Comprehension: ${d.rc[0]} passage(s), ${d.rc[1]} questions. Types: ${ptypes}. Each passage 120-150 words, original, information-dense.
 - Synonyms & Antonyms: ${d.sa} questions — alternate between SYNONYM and ANTONYM tasks
 - Choose Correct Word: ${d.cw} fill-in-the-blank sentences, one blank each
 - Sentence Rearrangement: ${d.sr} questions — show sentences as P/Q/R/S individually, options are 4 distinct orderings like PQRS, QPSR, etc.
@@ -64,7 +69,7 @@ RULES:
 2. Every question: exactly 4 options A, B, C, D — exactly one correct answer
 3. All distractors must be plausible — no obviously wrong options
 4. Passages go in a separate "passages" array — questions use passage_id only, never repeat passage text
-5. Explanations: 1-2 sentences, clear and educational
+5. Explanations: 1 sentence, 12 words maximum
 
 Return ONLY valid JSON, no markdown fences, no commentary:
 {"passages":[{"id":"P1","type":"factual","text":"..."}],"questions":[{"id":1,"topic":"reading_comprehension","passage_id":"P1","question":"...","options":{"A":"...","B":"...","C":"...","D":"..."},"correct":"A","explanation":"..."}]}`;
@@ -73,8 +78,8 @@ Return ONLY valid JSON, no markdown fences, no commentary:
 function buildSplitPrompt(diff, half, count) {
   const ddesc = { easy:"simple vocabulary, direct factual questions, straightforward inference", medium:"moderate vocabulary above Class 12 level, some inference required, plausible distractors", hard:"advanced GRE-level vocabulary, complex literary passages, abstract inference, highly plausible distractors" }[diff];
   const dist = half==="first"
-    ? `- Reading Comprehension: 1 passage (factual), 8 questions\n- Synonyms & Antonyms: 5 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 6 fill-in-the-blank\n- Sentence Rearrangement: 3 questions (P/Q/R/S format)\n- Match the Following: 2 questions\n- Vocabulary & Grammar: 1 question`
-    : `- Reading Comprehension: 2 passages (narrative + literary), 8 questions total\n- Synonyms & Antonyms: 5 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 6 fill-in-the-blank\n- Sentence Rearrangement: 4 questions (P/Q/R/S format)\n- Match the Following: 1 question\n- Vocabulary & Grammar: 1 question`;
+    ? `- Reading Comprehension: 1 passage (factual, 120-150 words), 8 questions\n- Synonyms & Antonyms: 5 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 6 fill-in-the-blank\n- Sentence Rearrangement: 3 questions (P/Q/R/S format)\n- Match the Following: 2 questions\n- Vocabulary & Grammar: 1 question`
+    : `- Reading Comprehension: 2 passages (narrative + literary, 120-150 words each), 8 questions total\n- Synonyms & Antonyms: 5 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 6 fill-in-the-blank\n- Sentence Rearrangement: 4 questions (P/Q/R/S format)\n- Match the Following: 1 question\n- Vocabulary & Grammar: 1 question`;
   return `You are a senior CUET UG English (101) paper setter for the National Testing Agency (NTA), India. Create a ${half} batch of practice questions.
 
 Difficulty: ${diff} — ${ddesc}
@@ -90,7 +95,7 @@ RULES:
 4. Passages go in a separate "passages" array — questions use passage_id only
 5. Sentence rearrangement: P/Q/R/S shown as separate labelled sentences, options are ordering strings
 6. Match the Following: Column A (4 items) + Column B (4 items), 4 match-combination options
-7. Explanations: 1-2 sentences max
+7. Explanations: 1 sentence, 12 words maximum
 
 Return ONLY valid JSON, no markdown, no commentary:
 {"passages":[{"id":"P1","type":"factual","text":"..."}],"questions":[{"id":1,"topic":"reading_comprehension","passage_id":"P1","question":"...","options":{"A":"...","B":"...","C":"...","D":"..."},"correct":"A","explanation":"..."}]}`;
@@ -385,8 +390,8 @@ export default function CUETPlatform() {
       if(mode==="full"){
         setGenStage("Generating Part 1 of 2 (Questions 1–25)...");
         const [d1,d2]=await Promise.all([
-          callAI(buildSplitPrompt(difficulty,"first",25),5500),
-          callAI(buildSplitPrompt(difficulty,"second",25),5500),
+          callAI(buildSplitPrompt(difficulty,"first",25),MAX_TOKENS.full[difficulty]),
+          callAI(buildSplitPrompt(difficulty,"second",25),MAX_TOKENS.full[difficulty]),
         ]);
         setGenStage("Merging and finalising all 50 questions...");
         const r1=parseAI(d1.content.filter(b=>b.type==="text").map(b=>b.text).join(""));
@@ -399,7 +404,7 @@ export default function CUETPlatform() {
         allQuestions=[...r1.questions,...r2qs];
       }else{
         setGenStage("Generating your questions...");
-        const data=await callAI(buildTestPrompt(mode,difficulty),MODES[mode].maxT);
+        const data=await callAI(buildTestPrompt(mode,difficulty),MAX_TOKENS[mode][difficulty]);
         const r=parseAI(data.content.filter(b=>b.type==="text").map(b=>b.text).join(""));
         allPassages=r.passages; allQuestions=r.questions;
       }
