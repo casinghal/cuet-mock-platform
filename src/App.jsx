@@ -44,6 +44,13 @@ const TIPS = [
   "Target 1.2 minutes per question. 50 questions, 60 minutes — every second matters.",
 ];
 
+
+// ─── Monetisation & Analytics constants ──────────────────────
+const GA_MEASUREMENT_ID  = "G-XXXXXXXXXX";          // TODO: replace with real GA4 Measurement ID
+const RAZORPAY_KEY_ID    = "rzp_test_XXXXXXXXXXXXXXXX"; // TODO: replace with Razorpay test Key ID
+const FREE_LIMIT         = 5;                        // free Standard + Full Mock tests per user
+const GATED_MODES        = ["standard","full"];      // Quick Practice is always free
+
 // ─── Prompt builders ─────────────────────────────────────────
 function buildTestPrompt(mode, diff) {
   const d = {
@@ -237,6 +244,95 @@ const parseAI = txt => {
   return {passages:p.passages||[], questions:p.questions||[]};
 };
 
+
+// ─── GA4 ─────────────────────────────────────────────────────
+function loadGA4(){
+  if(window.gtag||document.getElementById("ga4-script")) return;
+  const s=document.createElement("script");
+  s.id="ga4-script"; s.async=true;
+  s.src=`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`;
+  document.head.appendChild(s);
+  window.dataLayer=window.dataLayer||[];
+  window.gtag=function(){window.dataLayer.push(arguments);};
+  window.gtag("js",new Date());
+  window.gtag("config",GA_MEASUREMENT_ID,{send_page_view:false});
+}
+
+function trackEvent(name,params={}){
+  // Wrapped in try/catch — GA4 errors must never break payment or exam flows
+  try{ if(typeof window.gtag==="function") window.gtag("event",name,params); }
+  catch(e){ /* silent */ }
+}
+
+// ─── Paywall helpers ─────────────────────────────────────────
+// NOTE: localStorage is the client-side layer only.
+// Server-side count + unlock will be enforced via Netlify Function
+// when Razorpay verification is wired (Phase 3).
+const getTestCount  = uid => { try{ return parseInt(localStorage.getItem(`cuet_tc_${uid}`)||"0"); }catch{ return 0; } };
+const saveTestCount = (uid,n) => { try{ localStorage.setItem(`cuet_tc_${uid}`,String(n)); }catch{} };
+const isPaidUser    = uid => { try{ return localStorage.getItem(`cuet_paid_${uid}`)==="true"; }catch{ return false; } };
+const setPaidUser   = uid => { try{ localStorage.setItem(`cuet_paid_${uid}`,"true"); }catch{} };
+
+// ─── Razorpay ────────────────────────────────────────────────
+function loadRazorpay(){
+  if(window.Razorpay||document.getElementById("rzp-script")) return;
+  const s=document.createElement("script");
+  s.id="rzp-script";
+  s.src="https://checkout.razorpay.com/v1/checkout.js";
+  document.head.appendChild(s);
+}
+
+function openRazorpay({userId,userName,userEmail,onSuccess,onFailure}){
+  if(!window.Razorpay){ onFailure("Razorpay not loaded. Please refresh and try again."); return; }
+  trackEvent("payment_initiated",{currency:"INR",value:199});
+  const options={
+    key:           RAZORPAY_KEY_ID,
+    amount:        19900,             // ₹199 in paise
+    currency:      "INR",
+    name:          "Accuron Education",
+    description:   "CUET English Mock Tests — Unlimited Access",
+    handler: async function(response){
+      // TODO (Phase 3): POST to /.netlify/functions/verify-payment
+      // and only call onSuccess after server confirms signature.
+      // For now, unlock client-side as placeholder.
+      try{
+        // Placeholder server call — swap this block for real verification
+        // const res = await fetch("/.netlify/functions/verify-payment", {
+        //   method:"POST",
+        //   headers:{"Content-Type":"application/json"},
+        //   body:JSON.stringify({
+        //     razorpay_order_id:    response.razorpay_order_id,
+        //     razorpay_payment_id:  response.razorpay_payment_id,
+        //     razorpay_signature:   response.razorpay_signature,
+        //     userId
+        //   })
+        // });
+        // if(!res.ok) throw new Error("Verification failed");
+        setPaidUser(userId);
+        trackEvent("payment_success",{currency:"INR",value:199,transaction_id:response.razorpay_payment_id});
+        onSuccess();
+      }catch(e){
+        trackEvent("payment_failed",{reason:"verification_error"});
+        onFailure("Payment verification failed. Please contact support with your payment ID: "+response.razorpay_payment_id);
+      }
+    },
+    prefill:{ name:userName||"", email:userEmail||"" },
+    theme:{ color:"#0F1C2E" },
+    modal:{
+      ondismiss: function(){
+        trackEvent("payment_failed",{reason:"dismissed"});
+        onFailure("dismissed");
+      }
+    }
+  };
+  const rzp=new window.Razorpay(options);
+  rzp.on("payment.failed",function(r){
+    trackEvent("payment_failed",{reason:r.error?.reason||"unknown"});
+    onFailure(r.error?.description||"Payment failed. Please try again.");
+  });
+  rzp.open();
+}
+
 // ─── Main Component ──────────────────────────────────────────
 export default function CUETPlatform() {
   // Restore session on mount — fixes page refresh logout
@@ -265,9 +361,14 @@ export default function CUETPlatform() {
   const [reviewOpen,setReviewOpen]     = useState(null);
   const [showWarn,setShowWarn]         = useState(false);
   const [showReview,setShowReview]     = useState(false);
+  const [showPaywall,setShowPaywall]   = useState(false);
+  const [paywallErr,setPaywallErr]     = useState("");
   const timerRef  = useRef(null);
   const submitRef = useRef(null);
 
+
+  // Load GA4 + Razorpay scripts on mount
+  useEffect(()=>{ loadGA4(); loadRazorpay(); },[]);
 
   // Inject global responsive styles once
   useEffect(()=>{
@@ -309,6 +410,9 @@ export default function CUETPlatform() {
     }
   },[screen]);
 
+  // GA4 — track every screen transition
+  useEffect(()=>{ trackEvent("page_view",{page_title:screen,page_location:window.location.href}); },[screen]);
+
   const doSubmit=useCallback(()=>{
     clearInterval(timerRef.current);
     const q=questions[currentQ];
@@ -320,6 +424,7 @@ export default function CUETPlatform() {
       const h=[entry,...getHist(user.id)].slice(0,30);
       saveHist(user.id,h); setHistory(h);
     }
+    trackEvent("test_completed",{mode,difficulty,score:r.score,max_score:r.maxScore,percentage:r.percentage,correct:r.correct,wrong:r.wrong,unattempted:r.unattempted});
     setScreen("results");
   },[questions,currentQ,answers,selectedOpt,user,mode,difficulty]);
 
@@ -368,12 +473,14 @@ export default function CUETPlatform() {
       const nu={id:Date.now().toString(),name:name.trim(),email:email.trim(),created:new Date().toISOString()};
       saveUsers({...users,[email.trim()]:{...nu,password}});
       saveSession(nu);
+      trackEvent("sign_up",{method:"email"});
       setUser(nu); setHistory([]); setScreen("dashboard");
     }else{
       const u=users[email.trim()];
       if(!u||u.password!==password){setAuthErr("Invalid email or password.");return;}
       const{password:_,...safe}=u;
       saveSession(safe);
+      trackEvent("login",{method:"email"});
       setUser(safe); setHistory(getHist(u.id)); setScreen("dashboard");
     }
   };
@@ -430,6 +537,16 @@ export default function CUETPlatform() {
 
   // ─── Generate Test ─────────────────────────────────────────
   const generateTest=async()=>{
+    // ── Paywall gate ──────────────────────────────────────────
+    if(user && GATED_MODES.includes(mode) && !isPaidUser(user.id)){
+      const count=getTestCount(user.id);
+      if(count>=FREE_LIMIT){
+        trackEvent("paywall_triggered",{mode,difficulty,test_count:count});
+        setShowPaywall(true);
+        return;
+      }
+    }
+    // ─────────────────────────────────────────────────────────
     setGenError(""); setScreen("generating");
     try{
       let allPassages=[],allQuestions=[];
@@ -488,7 +605,13 @@ export default function CUETPlatform() {
       setVisited(new Set([allQuestions[0]?.id]));
       setCurrentQ(0); setSelectedOpt(null);
       setResults(null); setAdvisory(""); setGenStage("");
-      setTimeLeft(MODES[mode].secs); setScreen("exam");
+      setTimeLeft(MODES[mode].secs);
+      // Increment free test counter for gated modes
+      if(user && GATED_MODES.includes(mode) && !isPaidUser(user.id)){
+        saveTestCount(user.id, getTestCount(user.id)+1);
+      }
+      trackEvent("test_started",{mode,difficulty,question_count:allQuestions.length});
+      setScreen("exam");
     }catch(e){
       setGenError("Generation failed: "+e.message);
       setGenStage(""); setScreen("dashboard");
@@ -653,6 +776,17 @@ export default function CUETPlatform() {
               </div>
             </div>
 
+            {/* Free test usage indicator */}
+            {user&&!isPaidUser(user.id)&&(()=>{
+              const used=history.filter(t=>GATED_MODES.includes(t.mode)&&!t.abandoned).length;
+              const remaining=Math.max(0,FREE_LIMIT-used);
+              return(
+                <div style={{fontSize:12,color:remaining===0?"#DC2626":remaining<=2?"#D97706":"#64748B",marginBottom:14,display:"flex",alignItems:"center",gap:5}}>
+                  <span>{remaining===0?"All free tests used.":remaining===1?"1 free Standard/Full Mock test remaining.":`${remaining} of ${FREE_LIMIT} free Standard/Full Mock tests remaining.`}</span>
+                  {remaining===0&&<span style={{color:"#4338CA",fontWeight:600,cursor:"pointer",textDecoration:"underline"}} onClick={()=>setShowPaywall(true)}>Unlock unlimited →</span>}
+                </div>
+              );
+            })()}
             {genError&&<div style={{background:"#FFF1F1",border:"1px solid #FCA5A5",color:"#DC2626",padding:"10px 14px",borderRadius:6,fontSize:13,marginBottom:16,lineHeight:1.6}}>{genError}<br/><span style={{fontSize:12,color:"#94A3B8"}}>Check your connection and try again. For persistent errors, try Easy difficulty first.</span></div>}
 
             <button onClick={generateTest} style={{width:"100%",height:44,background:"#0F1C2E",color:"white",border:"none",borderRadius:6,fontSize:14,fontWeight:600,cursor:"pointer",letterSpacing:"0.02em",transition:"background 0.15s"}} onMouseEnter={e=>e.target.style.background="#1E2D42"} onMouseLeave={e=>e.target.style.background="#0F1C2E"}>
@@ -711,6 +845,62 @@ export default function CUETPlatform() {
           )}
         </div>
       </div>
+
+        {/* ── Paywall Modal ─────────────────────────────── */}
+        {showPaywall&&(
+          <div style={{position:"fixed",inset:0,background:"rgba(15,28,46,0.72)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+            <div style={{background:"white",borderRadius:12,padding:"36px 32px",maxWidth:440,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.25)",fontFamily:"Inter,system-ui,sans-serif",textAlign:"center"}}>
+              {/* Lock icon */}
+              <div style={{width:56,height:56,background:"#EEF2FF",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 20px",fontSize:24}}>🔒</div>
+              <div style={{fontSize:20,fontWeight:700,color:"#0F1C2E",marginBottom:8}}>You've used your {FREE_LIMIT} free tests</div>
+              <div style={{fontSize:14,color:"#64748B",lineHeight:1.7,marginBottom:8}}>
+                Unlock unlimited Standard &amp; Full Mock tests with one-time access.
+              </div>
+              {/* Value prop strip */}
+              <div style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:8,padding:"14px 16px",marginBottom:20,textAlign:"left"}}>
+                {[
+                  "Unlimited Standard + Full Mock tests",
+                  "All 3 difficulty levels — Easy, Medium, Hard",
+                  "Performance coaching after every test",
+                  "Lifetime access — no subscription",
+                ].map(f=>(
+                  <div key={f} style={{display:"flex",alignItems:"center",gap:8,marginBottom:7,fontSize:13,color:"#334155"}}>
+                    <span style={{color:"#059669",fontWeight:700,flexShrink:0}}>✓</span>{f}
+                  </div>
+                ))}
+              </div>
+              {paywallErr&&<div style={{background:"#FFF1F1",border:"1px solid #FCA5A5",color:"#DC2626",padding:"9px 12px",borderRadius:6,fontSize:13,marginBottom:14,lineHeight:1.5,textAlign:"left"}}>{paywallErr}</div>}
+              {/* CTA */}
+              <button
+                onClick={()=>{
+                  setPaywallErr("");
+                  openRazorpay({
+                    userId:user.id,
+                    userName:user.name,
+                    userEmail:user.email,
+                    onSuccess:()=>{ setPaidUser(user.id); setShowPaywall(false); setPaywallErr(""); generateTest(); },
+                    onFailure:(msg)=>{ if(msg!=="dismissed") setPaywallErr(msg||"Payment failed. Please try again."); }
+                  });
+                }}
+                style={{width:"100%",height:48,background:"#0F1C2E",color:"white",border:"none",borderRadius:8,fontSize:15,fontWeight:700,cursor:"pointer",marginBottom:10,transition:"background 0.15s"}}
+                onMouseEnter={e=>e.target.style.background="#1E2D42"}
+                onMouseLeave={e=>e.target.style.background="#0F1C2E"}
+              >
+                Unlock All Tests — ₹199
+              </button>
+              <button
+                onClick={()=>{ setShowPaywall(false); setPaywallErr(""); }}
+                style={{width:"100%",height:40,background:"transparent",color:"#94A3B8",border:"1px solid #E2E8F0",borderRadius:8,fontSize:13,fontWeight:500,cursor:"pointer"}}
+              >
+                Not now
+              </button>
+              <div style={{fontSize:11,color:"#94A3B8",marginTop:12}}>
+                Secured by Razorpay · One-time payment · No subscription
+              </div>
+            </div>
+          </div>
+        )}
+
     );
   }
 
