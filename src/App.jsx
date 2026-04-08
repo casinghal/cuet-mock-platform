@@ -206,7 +206,7 @@ function PaywallModal({ user, onSuccess, onClose }) {
   );
 }
 
-// ── AUTH SCREEN ───────────────────────────────────────────────────────────────
+// ── AUTH SCREEN — Premium Landing Page ───────────────────────────────────────
 function AuthScreen({ onLogin, showToast }) {
   const [loading, setLoading] = useState(null);
   const [error,   setError]   = useState(null);
@@ -233,61 +233,236 @@ function AuthScreen({ onLogin, showToast }) {
       await ensureUserDoc(r.user);
       logEvent(isNew ? "sign_up" : "login", { method: "google" });
       onLogin(r.user);
-    } catch(e) { setError(e.message || "Google sign-in failed."); }
+    } catch(e) { setError("Sign-in failed. Please try again."); }
     finally { setLoading(null); }
   }
 
+  const subjects = [
+    { code: "101", name: "English", status: "live",   color: "#10B981" },
+    { code: "301", name: "Physics", status: "soon",   color: "#6366F1" },
+    { code: "302", name: "Chemistry", status: "soon", color: "#F59E0B" },
+    { code: "303", name: "Mathematics", status: "soon", color: "#EF4444" },
+    { code: "304", name: "Biology", status: "soon",   color: "#14B8A6" },
+    { code: "108", name: "History", status: "soon",   color: "#8B5CF6" },
+  ];
+
+  const stats = [
+    { val: "50",    label: "Questions per test" },
+    { val: "NTA",   label: "Exact pattern" },
+    { val: "+5/−1", label: "Marking scheme" },
+    { val: "AI",    label: "Generated papers" },
+  ];
+
   return (
-    <div style={{ minHeight: "100vh", background: "#fff", display: "flex", flexDirection: "column" }}>
-      <div style={{ background: "var(--navy)", height: 52, display: "flex", alignItems: "center", padding: "0 24px" }}>
-        <span className="nta-logo">Vantiq <span>CUET</span></span>
+    <div style={{ minHeight: "100vh", background: "#0A1628", display: "flex", flexDirection: "column", position: "relative", overflow: "hidden" }}>
+
+      {/* Background mesh gradient */}
+      <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 0 }}>
+        <div style={{ position: "absolute", top: "-20%", right: "-10%", width: 600, height: 600, borderRadius: "50%", background: "radial-gradient(circle, rgba(99,102,241,0.18) 0%, transparent 70%)" }} />
+        <div style={{ position: "absolute", bottom: "-10%", left: "-5%", width: 500, height: 500, borderRadius: "50%", background: "radial-gradient(circle, rgba(16,185,129,0.12) 0%, transparent 70%)" }} />
+        <div style={{ position: "absolute", top: "40%", left: "30%", width: 300, height: 300, borderRadius: "50%", background: "radial-gradient(circle, rgba(251,191,36,0.06) 0%, transparent 70%)" }} />
+        {/* Subtle grid */}
+        <div style={{ position: "absolute", inset: 0, backgroundImage: "linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)", backgroundSize: "60px 60px" }} />
       </div>
-      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "40px 24px" }}>
-        <div style={{ width: "100%", maxWidth: 400 }}>
-          <div style={{ marginBottom: 32 }}>
-            <h1 style={{ fontFamily: "var(--font-display)", fontSize: 34, color: "var(--navy)", lineHeight: 1.2, marginBottom: 10 }}>
-              CUET English<br />Mock Test Series
-            </h1>
-            <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>
-              2026 Edition &middot; Subject 101 &middot; 50 Questions &middot; 60 Minutes
-            </p>
+
+      {/* Top nav */}
+      <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 32px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: "linear-gradient(135deg, #6366F1, #10B981)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <span style={{ color: "#fff", fontWeight: 800, fontSize: 14, fontFamily: "var(--font-mono)" }}>V</span>
           </div>
-          <div style={{ display: "flex", gap: 8, marginBottom: 36, flexWrap: "wrap" }}>
-            {["NTA Pattern", "AI-Generated", "Instant Analysis"].map(t => (
-              <span key={t} className="pill pill-navy">{t}</span>
-            ))}
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 16 }}>
-            <button
-              onClick={handleGoogle}
-              disabled={loading === "google"}
-              style={{ height: 44, border: "1.5px solid var(--border)", borderRadius: 8, background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, fontSize: 14, fontWeight: 500, color: "var(--text-primary)", fontFamily: "var(--font-body)", cursor: "pointer", transition: "border-color .15s" }}
-              onMouseOver={e => e.currentTarget.style.borderColor = "var(--indigo)"}
-              onMouseOut={e => e.currentTarget.style.borderColor = "var(--border)"}
-            >
-              <GoogleIcon />
-              {loading === "google" ? "Signing in..." : "Continue with Google"}
-            </button>
-            <button
-              onClick={() => showToast("Facebook login coming soon", "info")}
-              title="Facebook login not yet active"
-              style={{ height: 44, border: "1.5px solid var(--border)", borderRadius: 8, background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, fontSize: 14, fontWeight: 500, color: "var(--text-primary)", fontFamily: "var(--font-body)", cursor: "pointer", opacity: 0.6 }}
-            >
-              <FacebookIcon />
-              Continue with Facebook
-            </button>
-          </div>
-          {error && <div className="error-msg">{error}</div>}
-          <p style={{ textAlign: "center", fontSize: 13, color: "var(--text-muted)", marginTop: 24 }}>
-            {mode === "login"
-              ? <React.Fragment>New here?{" "}<span style={{ color: "var(--indigo)", cursor: "pointer", fontWeight: 500 }} onClick={() => setMode("register")}>Create an account</span></React.Fragment>
-              : <React.Fragment>Have an account?{" "}<span style={{ color: "var(--indigo)", cursor: "pointer", fontWeight: 500 }} onClick={() => setMode("login")}>Sign in</span></React.Fragment>
-            }
-          </p>
-          <p style={{ textAlign: "center", fontSize: 11, color: "var(--text-muted)", marginTop: 20, lineHeight: 1.6 }}>
-            By continuing, you agree to our Terms of Service and Privacy Policy.
-          </p>
+          <span style={{ fontFamily: "var(--font-display)", fontSize: 20, color: "#fff", letterSpacing: "0.01em" }}>
+            Vantiq
+          </span>
         </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", fontFamily: "var(--font-mono)" }}>CUET 2026</span>
+          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#10B981", boxShadow: "0 0 8px #10B981" }} />
+          <span style={{ fontSize: 12, color: "#10B981", fontWeight: 600 }}>English Live</span>
+        </div>
+      </div>
+
+      {/* Main content */}
+      <div style={{ position: "relative", zIndex: 1, flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px 24px" }}>
+        <div style={{ width: "100%", maxWidth: 1040, display: "flex", gap: 64, alignItems: "center", flexWrap: "wrap" }}>
+
+          {/* Left — Hero copy */}
+          <div style={{ flex: "1 1 420px" }}>
+            {/* Badge */}
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(99,102,241,0.15)", border: "1px solid rgba(99,102,241,0.3)", borderRadius: 100, padding: "6px 14px", marginBottom: 28 }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#6366F1", display: "inline-block" }} />
+              <span style={{ fontSize: 12, color: "#A5B4FC", fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase" }}>
+                NTA-Standard CUET Preparation
+              </span>
+            </div>
+
+            <h1 style={{ fontFamily: "var(--font-display)", fontSize: "clamp(36px, 5vw, 56px)", color: "#fff", lineHeight: 1.1, marginBottom: 20, letterSpacing: "-0.01em" }}>
+              Crack CUET 2026<br />
+              <span style={{ background: "linear-gradient(135deg, #6366F1, #10B981)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>
+                on your terms.
+              </span>
+            </h1>
+
+            <p style={{ fontSize: 17, color: "rgba(255,255,255,0.55)", lineHeight: 1.7, marginBottom: 32, maxWidth: 440 }}>
+              AI-generated mock tests that match the exact NTA format. Know your weak topics before the exam does.
+            </p>
+
+            {/* Stats row */}
+            <div style={{ display: "flex", gap: 28, marginBottom: 40, flexWrap: "wrap" }}>
+              {stats.map(s => (
+                <div key={s.label}>
+                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 22, fontWeight: 700, color: "#fff", lineHeight: 1 }}>{s.val}</div>
+                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginTop: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Subject chips */}
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 12, fontWeight: 600 }}>Subjects</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {subjects.map(s => (
+                  <div key={s.code} style={{
+                    display: "flex", alignItems: "center", gap: 6,
+                    padding: "6px 12px", borderRadius: 100,
+                    background: s.status === "live" ? `${s.color}18` : "rgba(255,255,255,0.04)",
+                    border: `1px solid ${s.status === "live" ? `${s.color}50` : "rgba(255,255,255,0.08)"}`,
+                  }}>
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: s.status === "live" ? s.color : "rgba(255,255,255,0.2)", boxShadow: s.status === "live" ? `0 0 6px ${s.color}` : "none", display: "inline-block", flexShrink: 0 }} />
+                    <span style={{ fontSize: 12, fontWeight: 600, color: s.status === "live" ? "#fff" : "rgba(255,255,255,0.35)" }}>{s.name}</span>
+                    {s.status === "soon" && <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", fontWeight: 500 }}>soon</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Right — Auth card */}
+          <div style={{ flex: "0 0 340px" }}>
+            <div style={{
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,255,255,0.1)",
+              borderRadius: 20,
+              padding: "36px 32px",
+              backdropFilter: "blur(20px)",
+              boxShadow: "0 24px 64px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.08)",
+            }}>
+              <div style={{ marginBottom: 28 }}>
+                <h2 style={{ fontFamily: "var(--font-display)", fontSize: 22, color: "#fff", marginBottom: 6 }}>
+                  {mode === "login" ? "Welcome back" : "Start for free"}
+                </h2>
+                <p style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", lineHeight: 1.5 }}>
+                  {mode === "login"
+                    ? "Sign in to resume your preparation"
+                    : "5 free mock tests — no card required"}
+                </p>
+              </div>
+
+              {/* Free tier callout */}
+              {mode === "register" && (
+                <div style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)", borderRadius: 10, padding: "12px 14px", marginBottom: 20, display: "flex", gap: 10, alignItems: "flex-start" }}>
+                  <span style={{ fontSize: 16 }}>🎁</span>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#10B981", marginBottom: 2 }}>5 Tests Free</div>
+                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", lineHeight: 1.5 }}>No credit card. Full NTA experience from your first test.</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Google button */}
+              <button
+                onClick={handleGoogle}
+                disabled={loading === "google"}
+                style={{
+                  width: "100%", height: 48, border: "1px solid rgba(255,255,255,0.15)",
+                  borderRadius: 12, background: loading === "google" ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.08)",
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+                  fontSize: 14, fontWeight: 600, color: "#fff", fontFamily: "var(--font-body)",
+                  cursor: loading === "google" ? "not-allowed" : "pointer",
+                  transition: "all .2s", marginBottom: 12,
+                }}
+                onMouseOver={e => { if (loading !== "google") { e.currentTarget.style.background = "rgba(255,255,255,0.12)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.25)"; } }}
+                onMouseOut={e => { e.currentTarget.style.background = "rgba(255,255,255,0.08)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.15)"; }}
+              >
+                {loading === "google"
+                  ? <span style={{ fontSize: 13, opacity: 0.6 }}>Signing in...</span>
+                  : <React.Fragment><GoogleIcon /> Continue with Google</React.Fragment>
+                }
+              </button>
+
+              {/* Facebook button */}
+              <button
+                onClick={() => showToast("Facebook login coming soon", "info")}
+                title="Coming soon"
+                style={{
+                  width: "100%", height: 48, border: "1px solid rgba(255,255,255,0.08)",
+                  borderRadius: 12, background: "transparent",
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+                  fontSize: 14, fontWeight: 600, color: "rgba(255,255,255,0.3)", fontFamily: "var(--font-body)",
+                  cursor: "pointer", marginBottom: 24,
+                }}
+              >
+                <FacebookIcon /> Continue with Facebook
+              </button>
+
+              {/* Divider */}
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+                <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.08)" }} />
+                <span style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", textTransform: "uppercase", letterSpacing: "0.05em" }}>secure login</span>
+                <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.08)" }} />
+              </div>
+
+              {error && (
+                <div style={{ background: "rgba(220,38,38,0.12)", border: "1px solid rgba(220,38,38,0.3)", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#FCA5A5", marginBottom: 16 }}>
+                  {error}
+                </div>
+              )}
+
+              {/* Mode toggle */}
+              <p style={{ textAlign: "center", fontSize: 13, color: "rgba(255,255,255,0.3)" }}>
+                {mode === "login"
+                  ? <React.Fragment>New here?{" "}
+                      <span style={{ color: "#6366F1", cursor: "pointer", fontWeight: 600 }} onClick={() => setMode("register")}>
+                        Start for free
+                      </span>
+                    </React.Fragment>
+                  : <React.Fragment>Already registered?{" "}
+                      <span style={{ color: "#6366F1", cursor: "pointer", fontWeight: 600 }} onClick={() => setMode("login")}>
+                        Sign in
+                      </span>
+                    </React.Fragment>
+                }
+              </p>
+
+              {/* Trust signals */}
+              <div style={{ display: "flex", justifyContent: "center", gap: 20, marginTop: 24, paddingTop: 20, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                {["NTA Verified Pattern", "Instant Results", "Free to start"].map(t => (
+                  <div key={t} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <span style={{ color: "#10B981", fontSize: 11 }}>&#10003;</span>
+                    <span style={{ fontSize: 11, color: "rgba(255,255,255,0.25)" }}>{t}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Pricing hint below card */}
+            <div style={{ textAlign: "center", marginTop: 16 }}>
+              <span style={{ fontSize: 12, color: "rgba(255,255,255,0.2)" }}>
+                5 tests free &middot; Full access at &#8377;199 one-time
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom bar */}
+      <div style={{ position: "relative", zIndex: 1, padding: "16px 32px", borderTop: "1px solid rgba(255,255,255,0.05)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+        <span style={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>
+          &copy; 2026 Vantiq Education &middot; Not affiliated with NTA
+        </span>
+        <span style={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>
+          By signing in, you agree to our Terms &amp; Privacy Policy
+        </span>
       </div>
     </div>
   );
