@@ -621,28 +621,10 @@ function AuthScreen({ onLogin, showToast }) {
             {loading === "google" ? "Signing you in..." : "Continue with Google"}
           </button>
 
-          {/* Divider */}
-          <div style={S.divider}>
-            <div style={S.dividerLine} />
-            <span style={S.dividerText}>Pricing</span>
-            <div style={S.dividerLine} />
-          </div>
-
-          {/* Pricing breakdown */}
-          <div style={S.pricingNote}>
-            <div style={S.pricingRow}>
-              <span style={S.pricingLabel}>First 5 mock tests</span>
-              <span style={{ ...S.pricingValue, color: "#6EE7B7" }}>Free</span>
-            </div>
-            <div style={S.pricingRow}>
-              <span style={S.pricingLabel}>Unlimited access</span>
-              <span style={S.pricingValue}>One-time unlock</span>
-            </div>
-            <div style={S.pricingFinal}>
-              <span style={S.pricingFinalLabel}>Unlock price</span>
-              <span style={S.pricingFinalValue}>&#8377;199</span>
-            </div>
-          </div>
+          {/* Hook line */}
+          <p style={{ fontSize: 14, color: "rgba(255,255,255,0.55)", lineHeight: 1.6, marginBottom: 20, textAlign: "center" }}>
+            Find your weak topics before the exam does.
+          </p>
 
           {/* Error */}
           {error && <div style={S.errorBox}>{error}</div>}
