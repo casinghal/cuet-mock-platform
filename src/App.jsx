@@ -206,7 +206,7 @@ function PaywallModal({ user, onSuccess, onClose }) {
   );
 }
 
-// ── AUTH SCREEN — Premium Landing Page ───────────────────────────────────────
+// ── AUTH SCREEN — Premium Landing Page ────────────────────────────────────────
 function AuthScreen({ onLogin, showToast }) {
   const [loading, setLoading] = useState(null);
   const [error,   setError]   = useState(null);
@@ -233,236 +233,374 @@ function AuthScreen({ onLogin, showToast }) {
       await ensureUserDoc(r.user);
       logEvent(isNew ? "sign_up" : "login", { method: "google" });
       onLogin(r.user);
-    } catch(e) { setError("Sign-in failed. Please try again."); }
+    } catch(e) { setError(e.message || "Google sign-in failed. Try again."); }
     finally { setLoading(null); }
   }
 
   const subjects = [
-    { code: "101", name: "English", status: "live",   color: "#10B981" },
-    { code: "301", name: "Physics", status: "soon",   color: "#6366F1" },
-    { code: "302", name: "Chemistry", status: "soon", color: "#F59E0B" },
-    { code: "303", name: "Mathematics", status: "soon", color: "#EF4444" },
-    { code: "304", name: "Biology", status: "soon",   color: "#14B8A6" },
-    { code: "108", name: "History", status: "soon",   color: "#8B5CF6" },
+    { name: "English (101)", live: true },
+    { name: "Physics", live: false },
+    { name: "Chemistry", live: false },
+    { name: "Mathematics", live: false },
+    { name: "Biology", live: false },
+    { name: "Economics", live: false },
+    { name: "History", live: false },
+    { name: "Political Science", live: false },
   ];
 
-  const stats = [
-    { val: "50",    label: "Questions per test" },
-    { val: "NTA",   label: "Exact pattern" },
-    { val: "+5/−1", label: "Marking scheme" },
-    { val: "AI",    label: "Generated papers" },
+  const features = [
+    { icon: "\u2728", title: "AI-Generated Papers", desc: "Fresh 50-question paper every attempt. No repeats, ever." },
+    { icon: "\u26A1", title: "Instant Analytics", desc: "Topic-wise breakdown the moment you submit. Know your weak spots immediately." },
+    { icon: "\u2705", title: "Exact NTA Pattern", desc: "+5 correct, \u22121 wrong. Same interface as the real exam." },
   ];
+
+  // Inline styles for the premium landing
+  const S = {
+    page: {
+      minHeight: "100vh",
+      background: "linear-gradient(135deg, #080F1E 0%, #0D1B3E 50%, #0A1628 100%)",
+      display: "flex",
+      flexDirection: "column",
+      fontFamily: "var(--font-body)",
+      position: "relative",
+      overflow: "hidden",
+    },
+    // Decorative mesh blobs
+    blob1: {
+      position: "absolute", top: "-20%", right: "-10%",
+      width: 600, height: 600, borderRadius: "50%",
+      background: "radial-gradient(circle, rgba(67,56,202,0.15) 0%, transparent 70%)",
+      pointerEvents: "none",
+    },
+    blob2: {
+      position: "absolute", bottom: "-15%", left: "-10%",
+      width: 500, height: 500, borderRadius: "50%",
+      background: "radial-gradient(circle, rgba(217,119,6,0.08) 0%, transparent 70%)",
+      pointerEvents: "none",
+    },
+    // Top nav
+    nav: {
+      display: "flex", alignItems: "center", justifyContent: "space-between",
+      padding: "20px 32px", position: "relative", zIndex: 10,
+    },
+    navLogo: {
+      fontFamily: "var(--font-display)", fontSize: 22, color: "#fff",
+      letterSpacing: "0.02em",
+    },
+    navLogoAccent: { color: "#F59E0B" },
+    navBadge: {
+      background: "rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.3)",
+      color: "#F59E0B", padding: "4px 12px", borderRadius: 20,
+      fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase",
+    },
+    // Main layout
+    main: {
+      flex: 1, display: "flex", alignItems: "stretch",
+      padding: "24px 32px 48px", gap: 48,
+      position: "relative", zIndex: 10,
+      maxWidth: 1100, margin: "0 auto", width: "100%",
+    },
+    // Left hero panel
+    hero: {
+      flex: "1 1 55%", display: "flex", flexDirection: "column",
+      justifyContent: "center", paddingRight: 24,
+    },
+    eyebrow: {
+      display: "inline-flex", alignItems: "center", gap: 8,
+      background: "rgba(99,102,241,0.15)", border: "1px solid rgba(99,102,241,0.3)",
+      color: "#A5B4FC", padding: "6px 14px", borderRadius: 20,
+      fontSize: 12, fontWeight: 600, letterSpacing: "0.05em",
+      textTransform: "uppercase", marginBottom: 24, width: "fit-content",
+    },
+    dot: {
+      width: 6, height: 6, borderRadius: "50%", background: "#6EE7B7",
+      boxShadow: "0 0 6px #6EE7B7", display: "inline-block",
+    },
+    h1: {
+      fontFamily: "var(--font-display)", fontSize: "clamp(36px, 5vw, 56px)",
+      color: "#FFFFFF", lineHeight: 1.1, marginBottom: 20,
+      fontStyle: "normal",
+    },
+    h1accent: { color: "#F59E0B", display: "block" },
+    subtext: {
+      fontSize: 16, color: "rgba(255,255,255,0.6)", lineHeight: 1.7,
+      marginBottom: 36, maxWidth: 480,
+    },
+    // Social proof strip
+    proofStrip: {
+      display: "flex", gap: 32, marginBottom: 40, flexWrap: "wrap",
+    },
+    proofItem: { display: "flex", flexDirection: "column", gap: 2 },
+    proofNum: {
+      fontFamily: "var(--font-mono)", fontSize: 26, fontWeight: 700,
+      color: "#FFFFFF", lineHeight: 1,
+    },
+    proofLabel: { fontSize: 12, color: "rgba(255,255,255,0.45)", letterSpacing: "0.04em" },
+    // Features
+    featuresGrid: { display: "flex", flexDirection: "column", gap: 14, marginBottom: 40 },
+    featureRow: {
+      display: "flex", alignItems: "flex-start", gap: 14,
+      padding: "14px 16px", background: "rgba(255,255,255,0.04)",
+      border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10,
+    },
+    featureIcon: { fontSize: 20, lineHeight: 1, flexShrink: 0, marginTop: 2 },
+    featureTitle: { fontSize: 14, fontWeight: 600, color: "#FFFFFF", marginBottom: 3 },
+    featureDesc: { fontSize: 12.5, color: "rgba(255,255,255,0.5)", lineHeight: 1.5 },
+    // Subjects coming soon
+    subjectLabel: {
+      fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.35)",
+      textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10,
+    },
+    subjectChips: { display: "flex", flexWrap: "wrap", gap: 8 },
+    chipLive: {
+      background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.3)",
+      color: "#6EE7B7", padding: "5px 12px", borderRadius: 20, fontSize: 12, fontWeight: 600,
+      display: "flex", alignItems: "center", gap: 5,
+    },
+    chipSoon: {
+      background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
+      color: "rgba(255,255,255,0.35)", padding: "5px 12px", borderRadius: 20, fontSize: 12,
+    },
+    // Right auth card
+    authCard: {
+      flex: "0 0 380px", background: "rgba(255,255,255,0.03)",
+      border: "1px solid rgba(255,255,255,0.1)",
+      borderRadius: 20, padding: "36px 32px",
+      backdropFilter: "blur(20px)",
+      display: "flex", flexDirection: "column", justifyContent: "center",
+      boxShadow: "0 32px 64px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.08)",
+    },
+    authHeading: {
+      fontFamily: "var(--font-display)", fontSize: 26, color: "#FFFFFF",
+      marginBottom: 6, lineHeight: 1.2,
+    },
+    authSub: { fontSize: 13, color: "rgba(255,255,255,0.45)", marginBottom: 28, lineHeight: 1.5 },
+    // Free trial badge
+    trialBadge: {
+      background: "linear-gradient(135deg, rgba(245,158,11,0.15) 0%, rgba(245,158,11,0.08) 100%)",
+      border: "1px solid rgba(245,158,11,0.25)", borderRadius: 10,
+      padding: "12px 16px", marginBottom: 24, display: "flex", alignItems: "center", gap: 10,
+    },
+    trialIcon: { fontSize: 20 },
+    trialText: { fontSize: 13, color: "rgba(255,255,255,0.8)", lineHeight: 1.4 },
+    trialStrong: { color: "#F59E0B", fontWeight: 700 },
+    // Google button
+    googleBtn: {
+      width: "100%", height: 50, background: "#FFFFFF",
+      border: "none", borderRadius: 10, display: "flex",
+      alignItems: "center", justifyContent: "center", gap: 12,
+      fontSize: 14, fontWeight: 600, color: "#1A1A2E",
+      cursor: "pointer", transition: "all 0.2s",
+      boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+      fontFamily: "var(--font-body)",
+      marginBottom: 12,
+    },
+    fbBtn: {
+      width: "100%", height: 50, background: "rgba(255,255,255,0.06)",
+      border: "1px solid rgba(255,255,255,0.12)", borderRadius: 10,
+      display: "flex", alignItems: "center", justifyContent: "center", gap: 12,
+      fontSize: 14, fontWeight: 600, color: "rgba(255,255,255,0.5)",
+      cursor: "pointer", transition: "all 0.2s", fontFamily: "var(--font-body)",
+      marginBottom: 20,
+    },
+    divider: {
+      display: "flex", alignItems: "center", gap: 12, marginBottom: 20,
+    },
+    dividerLine: { flex: 1, height: 1, background: "rgba(255,255,255,0.1)" },
+    dividerText: { fontSize: 11, color: "rgba(255,255,255,0.25)", whiteSpace: "nowrap" },
+    // Pricing note
+    pricingNote: {
+      background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
+      borderRadius: 8, padding: "12px 14px", marginBottom: 20,
+    },
+    pricingRow: {
+      display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6,
+    },
+    pricingLabel: { fontSize: 12, color: "rgba(255,255,255,0.5)" },
+    pricingValue: { fontSize: 12, fontWeight: 600, color: "#FFFFFF" },
+    pricingFinal: {
+      display: "flex", justifyContent: "space-between", alignItems: "center",
+      paddingTop: 6, borderTop: "1px solid rgba(255,255,255,0.08)",
+    },
+    pricingFinalLabel: { fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.8)" },
+    pricingFinalValue: { fontSize: 18, fontWeight: 700, color: "#F59E0B", fontFamily: "var(--font-mono)" },
+    // Register toggle
+    toggleText: {
+      textAlign: "center", fontSize: 12, color: "rgba(255,255,255,0.35)",
+      marginBottom: 16,
+    },
+    toggleLink: {
+      color: "#818CF8", fontWeight: 600, cursor: "pointer",
+      textDecoration: "underline", textDecorationColor: "rgba(129,140,248,0.3)",
+    },
+    // Trust line
+    trustLine: {
+      textAlign: "center", fontSize: 11, color: "rgba(255,255,255,0.2)",
+      lineHeight: 1.6,
+    },
+    // Error
+    errorBox: {
+      background: "rgba(220,38,38,0.1)", border: "1px solid rgba(220,38,38,0.3)",
+      color: "#FCA5A5", borderRadius: 8, padding: "10px 14px", fontSize: 12.5,
+      marginBottom: 12,
+    },
+  };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#0A1628", display: "flex", flexDirection: "column", position: "relative", overflow: "hidden" }}>
-
-      {/* Background mesh gradient */}
-      <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 0 }}>
-        <div style={{ position: "absolute", top: "-20%", right: "-10%", width: 600, height: 600, borderRadius: "50%", background: "radial-gradient(circle, rgba(99,102,241,0.18) 0%, transparent 70%)" }} />
-        <div style={{ position: "absolute", bottom: "-10%", left: "-5%", width: 500, height: 500, borderRadius: "50%", background: "radial-gradient(circle, rgba(16,185,129,0.12) 0%, transparent 70%)" }} />
-        <div style={{ position: "absolute", top: "40%", left: "30%", width: 300, height: 300, borderRadius: "50%", background: "radial-gradient(circle, rgba(251,191,36,0.06) 0%, transparent 70%)" }} />
-        {/* Subtle grid */}
-        <div style={{ position: "absolute", inset: 0, backgroundImage: "linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)", backgroundSize: "60px 60px" }} />
-      </div>
+    <div style={S.page}>
+      {/* Decorative blobs */}
+      <div style={S.blob1} />
+      <div style={S.blob2} />
 
       {/* Top nav */}
-      <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 32px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 8, background: "linear-gradient(135deg, #6366F1, #10B981)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <span style={{ color: "#fff", fontWeight: 800, fontSize: 14, fontFamily: "var(--font-mono)" }}>V</span>
-          </div>
-          <span style={{ fontFamily: "var(--font-display)", fontSize: 20, color: "#fff", letterSpacing: "0.01em" }}>
-            Vantiq
-          </span>
-        </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", fontFamily: "var(--font-mono)" }}>CUET 2026</span>
-          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#10B981", boxShadow: "0 0 8px #10B981" }} />
-          <span style={{ fontSize: 12, color: "#10B981", fontWeight: 600 }}>English Live</span>
-        </div>
-      </div>
-
-      {/* Main content */}
-      <div style={{ position: "relative", zIndex: 1, flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px 24px" }}>
-        <div style={{ width: "100%", maxWidth: 1040, display: "flex", gap: 64, alignItems: "center", flexWrap: "wrap" }}>
-
-          {/* Left — Hero copy */}
-          <div style={{ flex: "1 1 420px" }}>
-            {/* Badge */}
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(99,102,241,0.15)", border: "1px solid rgba(99,102,241,0.3)", borderRadius: 100, padding: "6px 14px", marginBottom: 28 }}>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#6366F1", display: "inline-block" }} />
-              <span style={{ fontSize: 12, color: "#A5B4FC", fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase" }}>
-                NTA-Standard CUET Preparation
-              </span>
-            </div>
-
-            <h1 style={{ fontFamily: "var(--font-display)", fontSize: "clamp(36px, 5vw, 56px)", color: "#fff", lineHeight: 1.1, marginBottom: 20, letterSpacing: "-0.01em" }}>
-              Crack CUET 2026<br />
-              <span style={{ background: "linear-gradient(135deg, #6366F1, #10B981)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>
-                on your terms.
-              </span>
-            </h1>
-
-            <p style={{ fontSize: 17, color: "rgba(255,255,255,0.55)", lineHeight: 1.7, marginBottom: 32, maxWidth: 440 }}>
-              AI-generated mock tests that match the exact NTA format. Know your weak topics before the exam does.
-            </p>
-
-            {/* Stats row */}
-            <div style={{ display: "flex", gap: 28, marginBottom: 40, flexWrap: "wrap" }}>
-              {stats.map(s => (
-                <div key={s.label}>
-                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 22, fontWeight: 700, color: "#fff", lineHeight: 1 }}>{s.val}</div>
-                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginTop: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>{s.label}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Subject chips */}
-            <div style={{ marginBottom: 8 }}>
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 12, fontWeight: 600 }}>Subjects</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {subjects.map(s => (
-                  <div key={s.code} style={{
-                    display: "flex", alignItems: "center", gap: 6,
-                    padding: "6px 12px", borderRadius: 100,
-                    background: s.status === "live" ? `${s.color}18` : "rgba(255,255,255,0.04)",
-                    border: `1px solid ${s.status === "live" ? `${s.color}50` : "rgba(255,255,255,0.08)"}`,
-                  }}>
-                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: s.status === "live" ? s.color : "rgba(255,255,255,0.2)", boxShadow: s.status === "live" ? `0 0 6px ${s.color}` : "none", display: "inline-block", flexShrink: 0 }} />
-                    <span style={{ fontSize: 12, fontWeight: 600, color: s.status === "live" ? "#fff" : "rgba(255,255,255,0.35)" }}>{s.name}</span>
-                    {s.status === "soon" && <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", fontWeight: 500 }}>soon</span>}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Right — Auth card */}
-          <div style={{ flex: "0 0 340px" }}>
-            <div style={{
-              background: "rgba(255,255,255,0.04)",
-              border: "1px solid rgba(255,255,255,0.1)",
-              borderRadius: 20,
-              padding: "36px 32px",
-              backdropFilter: "blur(20px)",
-              boxShadow: "0 24px 64px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.08)",
-            }}>
-              <div style={{ marginBottom: 28 }}>
-                <h2 style={{ fontFamily: "var(--font-display)", fontSize: 22, color: "#fff", marginBottom: 6 }}>
-                  {mode === "login" ? "Welcome back" : "Start for free"}
-                </h2>
-                <p style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", lineHeight: 1.5 }}>
-                  {mode === "login"
-                    ? "Sign in to resume your preparation"
-                    : "5 free mock tests — no card required"}
-                </p>
-              </div>
-
-              {/* Free tier callout */}
-              {mode === "register" && (
-                <div style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)", borderRadius: 10, padding: "12px 14px", marginBottom: 20, display: "flex", gap: 10, alignItems: "flex-start" }}>
-                  <span style={{ fontSize: 16 }}>🎁</span>
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "#10B981", marginBottom: 2 }}>5 Tests Free</div>
-                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", lineHeight: 1.5 }}>No credit card. Full NTA experience from your first test.</div>
-                  </div>
-                </div>
-              )}
-
-              {/* Google button */}
-              <button
-                onClick={handleGoogle}
-                disabled={loading === "google"}
-                style={{
-                  width: "100%", height: 48, border: "1px solid rgba(255,255,255,0.15)",
-                  borderRadius: 12, background: loading === "google" ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.08)",
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
-                  fontSize: 14, fontWeight: 600, color: "#fff", fontFamily: "var(--font-body)",
-                  cursor: loading === "google" ? "not-allowed" : "pointer",
-                  transition: "all .2s", marginBottom: 12,
-                }}
-                onMouseOver={e => { if (loading !== "google") { e.currentTarget.style.background = "rgba(255,255,255,0.12)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.25)"; } }}
-                onMouseOut={e => { e.currentTarget.style.background = "rgba(255,255,255,0.08)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.15)"; }}
-              >
-                {loading === "google"
-                  ? <span style={{ fontSize: 13, opacity: 0.6 }}>Signing in...</span>
-                  : <React.Fragment><GoogleIcon /> Continue with Google</React.Fragment>
-                }
-              </button>
-
-              {/* Facebook button */}
-              <button
-                onClick={() => showToast("Facebook login coming soon", "info")}
-                title="Coming soon"
-                style={{
-                  width: "100%", height: 48, border: "1px solid rgba(255,255,255,0.08)",
-                  borderRadius: 12, background: "transparent",
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
-                  fontSize: 14, fontWeight: 600, color: "rgba(255,255,255,0.3)", fontFamily: "var(--font-body)",
-                  cursor: "pointer", marginBottom: 24,
-                }}
-              >
-                <FacebookIcon /> Continue with Facebook
-              </button>
-
-              {/* Divider */}
-              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
-                <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.08)" }} />
-                <span style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", textTransform: "uppercase", letterSpacing: "0.05em" }}>secure login</span>
-                <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.08)" }} />
-              </div>
-
-              {error && (
-                <div style={{ background: "rgba(220,38,38,0.12)", border: "1px solid rgba(220,38,38,0.3)", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#FCA5A5", marginBottom: 16 }}>
-                  {error}
-                </div>
-              )}
-
-              {/* Mode toggle */}
-              <p style={{ textAlign: "center", fontSize: 13, color: "rgba(255,255,255,0.3)" }}>
-                {mode === "login"
-                  ? <React.Fragment>New here?{" "}
-                      <span style={{ color: "#6366F1", cursor: "pointer", fontWeight: 600 }} onClick={() => setMode("register")}>
-                        Start for free
-                      </span>
-                    </React.Fragment>
-                  : <React.Fragment>Already registered?{" "}
-                      <span style={{ color: "#6366F1", cursor: "pointer", fontWeight: 600 }} onClick={() => setMode("login")}>
-                        Sign in
-                      </span>
-                    </React.Fragment>
-                }
-              </p>
-
-              {/* Trust signals */}
-              <div style={{ display: "flex", justifyContent: "center", gap: 20, marginTop: 24, paddingTop: 20, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-                {["NTA Verified Pattern", "Instant Results", "Free to start"].map(t => (
-                  <div key={t} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                    <span style={{ color: "#10B981", fontSize: 11 }}>&#10003;</span>
-                    <span style={{ fontSize: 11, color: "rgba(255,255,255,0.25)" }}>{t}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Pricing hint below card */}
-            <div style={{ textAlign: "center", marginTop: 16 }}>
-              <span style={{ fontSize: 12, color: "rgba(255,255,255,0.2)" }}>
-                5 tests free &middot; Full access at &#8377;199 one-time
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Bottom bar */}
-      <div style={{ position: "relative", zIndex: 1, padding: "16px 32px", borderTop: "1px solid rgba(255,255,255,0.05)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-        <span style={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>
-          &copy; 2026 Vantiq Education &middot; Not affiliated with NTA
+      <nav style={S.nav}>
+        <span style={S.navLogo}>
+          Vantiq <span style={S.navLogoAccent}>CUET</span>
         </span>
-        <span style={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>
-          By signing in, you agree to our Terms &amp; Privacy Policy
-        </span>
+        <span style={S.navBadge}>2026 Edition</span>
+      </nav>
+
+      {/* Main split layout */}
+      <div style={S.main}>
+
+        {/* ── Left: Hero ── */}
+        <div style={S.hero}>
+          <div style={S.eyebrow}>
+            <span style={S.dot} />
+            English (101) Live Now
+          </div>
+
+          <h1 style={S.h1}>
+            India&#39;s Smartest
+            <span style={S.h1accent}>CUET Prep Platform</span>
+          </h1>
+
+          <p style={S.subtext}>
+            NTA-pattern mock tests with AI-generated papers and instant analytics.
+            Know exactly where you stand — topic by topic — before exam day.
+          </p>
+
+          {/* Social proof */}
+          <div style={S.proofStrip}>
+            {[
+              { num: "50Q", label: "Per Test Paper" },
+              { num: "6", label: "Topics Covered" },
+              { num: "+5/−1", label: "NTA Marking" },
+              { num: "60min", label: "Timed Exam" },
+            ].map(p => (
+              <div key={p.label} style={S.proofItem}>
+                <span style={S.proofNum}>{p.num}</span>
+                <span style={S.proofLabel}>{p.label}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Features */}
+          <div style={S.featuresGrid}>
+            {features.map(f => (
+              <div key={f.title} style={S.featureRow}>
+                <span style={S.featureIcon}>{f.icon}</span>
+                <div>
+                  <div style={S.featureTitle}>{f.title}</div>
+                  <div style={S.featureDesc}>{f.desc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Subjects */}
+          <div style={S.subjectLabel}>Subjects on this platform</div>
+          <div style={S.subjectChips}>
+            {subjects.map(s => (
+              <span key={s.name} style={s.live ? S.chipLive : S.chipSoon}>
+                {s.live && <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#6EE7B7", display: "inline-block" }} />}
+                {s.name}
+                {!s.live && <span style={{ fontSize: 10, marginLeft: 4, opacity: 0.6 }}>soon</span>}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Right: Auth Card ── */}
+        <div style={S.authCard}>
+          <h2 style={S.authHeading}>Start Preparing Today</h2>
+          <p style={S.authSub}>
+            5 full-length tests free. No credit card needed to begin.
+          </p>
+
+          {/* Free trial badge */}
+          <div style={S.trialBadge}>
+            <span style={S.trialIcon}>&#127381;</span>
+            <div style={S.trialText}>
+              <span style={S.trialStrong}>5 complete mock tests — free.</span>{" "}
+              Then unlock unlimited access at one flat price.
+            </div>
+          </div>
+
+          {/* Google button */}
+          <button
+            onClick={handleGoogle}
+            disabled={loading === "google"}
+            style={S.googleBtn}
+            onMouseOver={e => { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = "0 6px 20px rgba(0,0,0,0.4)"; }}
+            onMouseOut={e => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.3)"; }}
+          >
+            <GoogleIcon />
+            {loading === "google" ? "Signing you in..." : "Continue with Google"}
+          </button>
+
+          {/* Facebook (inactive) */}
+          <button
+            onClick={() => showToast("Facebook login coming soon", "info")}
+            style={S.fbBtn}
+            title="Coming soon"
+            onMouseOver={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.2)"}
+            onMouseOut={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)"}
+          >
+            <FacebookIcon />
+            Continue with Facebook
+          </button>
+
+          {/* Divider */}
+          <div style={S.divider}>
+            <div style={S.dividerLine} />
+            <span style={S.dividerText}>Pricing</span>
+            <div style={S.dividerLine} />
+          </div>
+
+          {/* Pricing breakdown */}
+          <div style={S.pricingNote}>
+            <div style={S.pricingRow}>
+              <span style={S.pricingLabel}>First 5 mock tests</span>
+              <span style={{ ...S.pricingValue, color: "#6EE7B7" }}>Free</span>
+            </div>
+            <div style={S.pricingRow}>
+              <span style={S.pricingLabel}>Unlimited access</span>
+              <span style={S.pricingValue}>One-time unlock</span>
+            </div>
+            <div style={S.pricingFinal}>
+              <span style={S.pricingFinalLabel}>Unlock price</span>
+              <span style={S.pricingFinalValue}>&#8377;199</span>
+            </div>
+          </div>
+
+          {/* Error */}
+          {error && <div style={S.errorBox}>{error}</div>}
+
+          {/* Toggle */}
+          <p style={S.toggleText}>
+            {mode === "login"
+              ? <React.Fragment>New here?{" "}<span style={S.toggleLink} onClick={() => setMode("register")}>Create your account</span></React.Fragment>
+              : <React.Fragment>Have an account?{" "}<span style={S.toggleLink} onClick={() => setMode("login")}>Sign in</span></React.Fragment>
+            }
+          </p>
+
+          {/* Trust */}
+          <p style={S.trustLine}>
+            By continuing you agree to our Terms &amp; Privacy Policy.
+            <br />Your data is safe and never shared.
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -511,6 +649,7 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
   async function handleBegin() {
     setChecking(true);
     try {
+      // Check limit: Cloud Function (authoritative) → Firestore → localStorage fallback
       if (CF_BASE) {
         const r = await fetch(`${CF_BASE}/checkTestLimit`, {
           method: "POST", headers: { "Content-Type": "application/json" },
@@ -521,13 +660,19 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
           logEvent("paywall_triggered", { user_id: user?.uid, tests_used: testsUsed });
           setShowPaywall(true); return;
         }
-      } else if (!unlocked && testsUsed >= FREE_LIMIT) {
-        logEvent("paywall_triggered", { user_id: user?.uid, tests_used: testsUsed });
-        setShowPaywall(true); return;
+      } else {
+        // Fallback: use Firestore count, then localStorage count
+        const effectiveCount = testsUsed || parseInt(localStorage.getItem("cuet_tests_used") || "0");
+        const effectiveUnlocked = unlocked || localStorage.getItem("cuet_unlocked") === "true";
+        if (!effectiveUnlocked && effectiveCount >= FREE_LIMIT) {
+          logEvent("paywall_triggered", { user_id: user?.uid, tests_used: effectiveCount });
+          setShowPaywall(true); return;
+        }
       }
       onBeginTest({ mode });
     } catch(_) {
-      if (!unlocked && testsUsed >= FREE_LIMIT) { setShowPaywall(true); return; }
+      const effectiveCount = testsUsed || parseInt(localStorage.getItem("cuet_tests_used") || "0");
+      if (!unlocked && effectiveCount >= FREE_LIMIT) { setShowPaywall(true); return; }
       onBeginTest({ mode });
     } finally { setChecking(false); }
   }
@@ -1077,6 +1222,17 @@ export default function App() {
     });
   }, []);
 
+  // ── localStorage freemium fallback (works without Firebase credentials)
+  function getLocalTestCount() {
+    try { return parseInt(localStorage.getItem("cuet_tests_used") || "0"); } catch(_) { return 0; }
+  }
+  function incrementLocalTestCount() {
+    try { localStorage.setItem("cuet_tests_used", String(getLocalTestCount() + 1)); } catch(_) {}
+  }
+  function getLocalUnlocked() {
+    try { return localStorage.getItem("cuet_unlocked") === "true"; } catch(_) { return false; }
+  }
+
   async function handleBeginTest(config) {
     setConfig(config); setScreen("generating");
     logEvent("test_started", { user_id: user?.uid, mode: config.mode });
@@ -1084,8 +1240,11 @@ export default function App() {
       const qs = await generateQuestions(config, user?.uid);
       if (!qs || qs.length < 10) throw new Error("Invalid question set");
       setQuestions(qs); setAnswers({}); setScreen("exam");
-      // Optimistic UI update (server is authoritative on limit)
-      await updateDoc(doc(db, "users", user.uid), { testsUsed: (userData?.testsUsed || 0) + 1 });
+      // Update count — Firestore (authoritative) + localStorage (fallback)
+      try {
+        await updateDoc(doc(db, "users", user.uid), { testsUsed: (userData?.testsUsed || 0) + 1 });
+      } catch(_) { /* Firestore not configured yet — localStorage is the fallback */ }
+      incrementLocalTestCount();
       setUserData(p => ({ ...p, testsUsed: (p?.testsUsed || 0) + 1 }));
     } catch(e) {
       if (e.paywall) { showToast("Test limit reached — unlock to continue.", "error"); }
