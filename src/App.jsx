@@ -1,6 +1,6 @@
 /**
  * CUET English Mock Test Platform — App.jsx v2.0
- * React + Firebase + Razorpay + GA4 + Claude AI
+ * React + Firebase + Razorpay + GA4
  * Subject: English 101 | CUET UG 2026
  * All 6 screens: auth, dashboard, generating, exam, results, review
  */
@@ -81,16 +81,28 @@ if (!document.getElementById("cuet-styles")) {
 }
 
 // ── Firebase ──────────────────────────────────────────────────────────────────
-const fbApp = initializeApp({
-  apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId:         import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket:     import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId:             import.meta.env.VITE_FIREBASE_APP_ID,
-});
-const auth = getAuth(fbApp);
-const db   = getFirestore(fbApp);
+// Defensive Firebase init — app runs in localStorage-only mode if credentials missing
+const FIREBASE_CONFIGURED = !!(
+  import.meta.env.VITE_FIREBASE_API_KEY &&
+  import.meta.env.VITE_FIREBASE_PROJECT_ID
+);
+
+let auth, db;
+try {
+  const fbApp = initializeApp({
+    apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
+    authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+    projectId:         import.meta.env.VITE_FIREBASE_PROJECT_ID,
+    storageBucket:     import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+    appId:             import.meta.env.VITE_FIREBASE_APP_ID,
+  });
+  auth = getAuth(fbApp);
+  db   = getFirestore(fbApp);
+} catch(e) {
+  console.warn("[Vantiq] Firebase not configured — running in demo/localStorage mode");
+  auth = null; db = null;
+}
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CF_BASE       = import.meta.env.VITE_CLOUD_FUNCTION_BASE || "";
@@ -187,7 +199,7 @@ function PaywallModal({ user, onSuccess, onClose }) {
             <span style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)" }}>Full Platform Access</span>
             <span style={{ fontSize: 22, fontWeight: 700, color: "var(--navy)", fontFamily: "var(--font-mono)" }}>&#8377;199</span>
           </div>
-          {["Unlimited AI-generated papers", "Practice, Mock and Speed Drill modes", "Topic-wise performance analytics", "One-time payment, lifetime access"].map(f => (
+          {["Unlimited expert-crafted papers", "Practice, Mock and Speed Drill modes", "Topic-wise performance analytics", "One-time payment, lifetime access"].map(f => (
             <div key={f} style={{ display: "flex", gap: 8, marginTop: 6 }}>
               <span style={{ color: "var(--success)" }}>&#10003;</span>
               <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>{f}</span>
@@ -238,18 +250,13 @@ function AuthScreen({ onLogin, showToast }) {
   }
 
   const subjects = [
-    { name: "English (101)", live: true },
-    { name: "Physics", live: false },
-    { name: "Chemistry", live: false },
-    { name: "Mathematics", live: false },
-    { name: "Biology", live: false },
-    { name: "Economics", live: false },
-    { name: "History", live: false },
-    { name: "Political Science", live: false },
+    { name: "English (101)", live: true  },
+    { name: "GAT",           live: false },
+    { name: "Economics",     live: false },
   ];
 
   const features = [
-    { icon: "\u2728", title: "AI-Generated Papers", desc: "Fresh 50-question paper every attempt. No repeats, ever." },
+    { icon: "\u2728", title: "Fresh Test Papers",    desc: "A new 50-question paper every attempt. No repeats, ever." },
     { icon: "\u26A1", title: "Instant Analytics", desc: "Topic-wise breakdown the moment you submit. Know your weak spots immediately." },
     { icon: "\u2705", title: "Exact NTA Pattern", desc: "+5 correct, \u22121 wrong. Same interface as the real exam." },
   ];
@@ -476,7 +483,7 @@ function AuthScreen({ onLogin, showToast }) {
           </h1>
 
           <p style={S.subtext}>
-            NTA-pattern mock tests with AI-generated papers and instant analytics.
+            NTA-pattern mock tests with expert-crafted papers and instant analytics.
             Know exactly where you stand — topic by topic — before exam day.
           </p>
 
@@ -800,7 +807,7 @@ function GeneratingScreen({ config }) {
             <span className="pill pill-navy">English 101</span>
             <span className="pill pill-navy">50Q &middot; 60 min</span>
           </div>
-          <h2 style={{ fontFamily: "var(--font-display)", fontSize: 26, color: "var(--navy)", marginBottom: 8 }}>Building Your Paper</h2>
+          <h2 style={{ fontFamily: "var(--font-display)", fontSize: 26, color: "var(--navy)", marginBottom: 8 }}>Preparing Your Test</h2>
           <p style={{ fontSize: 14, color: "var(--text-secondary)", marginBottom: 32 }}>
             Preparing your test paper. Please do not close this tab.
           </p>
@@ -1057,7 +1064,7 @@ function ResultsScreen({ questions, answers, config, user, onNewTest, onReview }
         </div>
 
         <div className="card" style={{ padding: "20px 24px", marginBottom: 28 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)", marginBottom: 12 }}>Performance Analysis</h3>
+          <h3 style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)", marginBottom: 12 }}>Performance Review</h3>
           {aLoading ? (
             <div>
               <div className="pbar-track"><div className="pbar-fill" /></div>
@@ -1155,7 +1162,7 @@ async function generateQuestions(config, uid) {
     Mock:       "challenging — full NTA exam standard",
     SpeedDrill: "moderate to hard — speed-optimised, clear answers",
   };
-  const prompt = `You are a CUET English (Code 101) question paper generator for NTA UG 2026.
+  const prompt = `Generate a CUET English (Code 101) question paper for NTA UG 2026 standard.
 Generate exactly 50 MCQ questions with this topic distribution:
 - Reading Comprehension: 22 questions (use 3 separate passages, each 250-300 words; one factual, one narrative, one literary)
 - Synonyms and Antonyms: 9 questions
@@ -1205,16 +1212,19 @@ export default function App() {
   const showToast = (message, type = "info") => setToast({ message, type, key: Date.now() });
 
   async function loadUserData(u) {
+    if (!db) return; // Firebase not configured — skip
     try {
       const snap = await getDoc(doc(db, "users", u.uid));
       if (snap.exists()) setUserData(snap.data());
       const q = query(collection(db, "tests"), where("uid", "==", u.uid), orderBy("completedAt", "desc"), limit(10));
       const hs = await getDocs(q);
       setHistory(hs.docs.map(d => d.data()));
-    } catch(e) { showToast("Could not load your data. Please refresh.", "error"); }
+    } catch(e) { /* Firestore unavailable — continue without history */ }
   }
 
   useEffect(() => {
+    // If Firebase not configured — go straight to auth screen (localStorage-only mode)
+    if (!auth) { setAuthLoad(false); setScreen("auth"); return; }
     return onAuthStateChanged(auth, async u => {
       if (u) { setUser(u); await loadUserData(u); setScreen("dashboard"); }
       else { setUser(null); setUserData(null); setHistory([]); setScreen("auth"); }
@@ -1284,7 +1294,7 @@ export default function App() {
     <React.Fragment>
       {toast && <Toast key={toast.key} message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
       {screen === "auth"       && <AuthScreen      onLogin={u => { setUser(u); loadUserData(u); setScreen("dashboard"); }} showToast={showToast} />}
-      {screen === "dashboard"  && <DashboardScreen user={user} userData={userData} testHistory={testHistory} onBeginTest={handleBeginTest} onLogout={() => signOut(auth)} showToast={showToast} />}
+      {screen === "dashboard"  && <DashboardScreen user={user} userData={userData} testHistory={testHistory} onBeginTest={handleBeginTest} onLogout={() => auth ? signOut(auth) : setScreen("auth")} showToast={showToast} />}
       {screen === "generating" && <GeneratingScreen config={testConfig} />}
       {screen === "exam"       && <ExamScreen      questions={questions} config={testConfig} user={user} onSubmit={handleSubmitTest} showToast={showToast} />}
       {screen === "results"    && <ResultsScreen   questions={questions} answers={answers} config={testConfig} user={user} onNewTest={() => setScreen("dashboard")} onReview={() => setScreen("review")} />}
