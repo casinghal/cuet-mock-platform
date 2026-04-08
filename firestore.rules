@@ -1,0 +1,23 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Users: read own doc only; no client writes to unlocked/testsUsed
+    match /users/{uid} {
+      allow read:  if request.auth != null && request.auth.uid == uid;
+      allow create: if request.auth != null && request.auth.uid == uid
+                    && !request.resource.data.keys().hasAny(['unlocked']);
+      // testsUsed incremented client-side on submit — allow only numeric increment
+      allow update: if request.auth != null && request.auth.uid == uid
+                    && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['unlocked', 'paymentId', 'unlockedAt']);
+    }
+    // Tests: create own, read own, no update/delete
+    match /tests/{testId} {
+      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
+      allow read:   if request.auth != null && resource.data.uid == request.auth.uid;
+    }
+    // Payments: server-only (Cloud Functions use admin SDK, bypass rules)
+    match /payments/{paymentId} {
+      allow read, write: if false;
+    }
+  }
+}

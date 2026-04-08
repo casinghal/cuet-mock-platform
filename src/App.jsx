@@ -1,1370 +1,960 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+/**
+ * CUET English Mock Test Platform — App.jsx v2.0
+ * React + Firebase + Razorpay + GA4 + Claude AI
+ * Subject: English 101 | CUET UG 2026
+ * All 6 screens: auth, dashboard, generating, exam, results, review
+ */
 
-// ─── Constants ───────────────────────────────────────────────
-const MODES = {
-  quick:    { label:"Quick Practice", q:15, secs:1080, tag:"15 Questions · 18 Minutes" },
-  standard: { label:"Standard Test",  q:30, secs:2160, tag:"30 Questions · 36 Minutes" },
-  full:     { label:"Full Mock Test", q:50, secs:3600, tag:"50 Questions · 60 Minutes" },
-};
-// Per-combination token ceilings — no explanations in generation (lazy on review)
-// Haiku = 120 tokens/sec, AbortController = 25s = 3000 tokens max safe ceiling
-const MAX_TOKENS = {
-  // Ceilings tuned to Haiku throughput (~150 tok/sec) + 25s proxy timeout
-  // Each value must satisfy: tokens/150 + 2s_latency < 25s → safe ceiling ≈ 3400
-  quick:    { easy:2800, medium:3000, hard:3200 }, // 15Q single call
-  standard: { easy:2800, medium:3000, hard:3200 }, // 15Q per half (2 parallel calls)
-  full:     { easy:2400, medium:2700, hard:3000 }, // 12–13Q per quarter (4 parallel calls)
-};
-const DIFFS = {
-  easy:   { label:"Easy",   color:"#16a34a", bg:"#dcfce7", desc:"Simple vocab, direct questions" },
-  medium: { label:"Medium", color:"#d97706", bg:"#fef3c7", desc:"Moderate inference required" },
-  hard:   { label:"Hard",   color:"#dc2626", bg:"#fee2e2", desc:"GRE-level, complex passages" },
-};
-const TOPICS = {
-  reading_comprehension:  { label:"Reading Comprehension", abbr:"RC", color:"#2563eb" },
-  synonyms_antonyms:      { label:"Synonyms & Antonyms",   abbr:"SA", color:"#7c3aed" },
-  choose_correct_word:    { label:"Choose Correct Word",   abbr:"CW", color:"#059669" },
-  sentence_rearrangement: { label:"Sentence Rearrangement",abbr:"SR", color:"#b45309" },
-  match_following:        { label:"Match the Following",   abbr:"MF", color:"#dc2626" },
-  vocabulary_grammar:     { label:"Vocabulary & Grammar",  abbr:"VG", color:"#db2777" },
-};
-const QS = {
-  not_visited:     { bg:"#ffffff", border:"#9ca3af", text:"#374151" },
-  not_answered:    { bg:"#fca5a5", border:"#dc2626", text:"#7f1d1d" },
-  answered:        { bg:"#86efac", border:"#16a34a", text:"#14532d" },
-  review:          { bg:"#c4b5fd", border:"#7c3aed", text:"#4c1d95" },
-  answered_review: { bg:"#7c3aed", border:"#5b21b6", text:"#ffffff" },
-};
-const TIPS = [
-  "Attempt Reading Comprehension first — it carries the highest weight in CUET English (101).",
-  "For synonyms/antonyms, eliminate two obviously wrong options first, then choose between the remaining two.",
-  "In sentence rearrangement, the opening sentence never begins with a pronoun or a conjunction.",
-  "CUET deducts 1 mark per wrong answer. If you are unsure, skip it — unattempted costs 0.",
-  "For fill-in-the-blank, always read the full sentence before selecting. Context decides.",
-  "Factual RC passages have direct answers. Literary passages require inference from tone and implication.",
-  "Mark for Review if you have a strong instinct — return after finishing all confident questions.",
-  "Target 1.2 minutes per question. 50 questions, 60 minutes — every second matters.",
-];
+import React, { useState, useEffect, useRef } from "react";
+import { initializeApp } from "firebase/app";
+import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "firebase/auth";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, addDoc, collection, query, where, orderBy, limit, getDocs, serverTimestamp } from "firebase/firestore";
 
-
-// ─── Monetisation & Analytics constants ──────────────────────
-const GA_MEASUREMENT_ID  = "G-XXXXXXXXXX";          // TODO: replace with real GA4 Measurement ID
-const RAZORPAY_KEY_ID    = "rzp_test_XXXXXXXXXXXXXXXX"; // TODO: replace with Razorpay test Key ID
-const FREE_LIMIT         = 5;                        // free Standard + Full Mock tests per user
-const GATED_MODES        = ["standard","full"];      // Quick Practice is always free
-const GOOGLE_CLIENT_ID   = "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com"; // TODO: Google Cloud Console → APIs & Services → Credentials → OAuth 2.0 Client ID
-const FACEBOOK_APP_ID    = "YOUR_FACEBOOK_APP_ID";   // TODO: developers.facebook.com → My Apps → create app → Settings → Basic → App ID
-
-// ─── Prompt builders ─────────────────────────────────────────
-function buildTestPrompt(mode, diff) {
-  const d = {
-    quick:    { rc:[1,4],  sa:4,  cw:3,  sr:2, mf:0, vg:2 },
-    standard: { rc:[2,10], sa:6,  cw:7,  sr:4, mf:2, vg:1 },
-  }[mode];
-  const total = MODES[mode].q;
-  const ptypes = ["factual","narrative","literary"].slice(0,d.rc[0]).join(", ");
-  const ddesc = { easy:"simple vocabulary, direct factual questions, straightforward inference", medium:"moderate vocabulary above Class 12 level, some inference required, plausible distractors", hard:"advanced GRE-level vocabulary, complex literary passages, abstract inference, highly plausible distractors" }[diff];
-  return `You are a senior CUET UG English (101) paper setter for the National Testing Agency (NTA), India. Create a complete practice test.
-
-Difficulty: ${diff} — ${ddesc}
-Total: exactly ${total} questions
-
-Distribution:
-- Reading Comprehension: ${d.rc[0]} passage(s), ${d.rc[1]} questions. Types: ${ptypes}. Each passage 120-150 words, original, information-dense.
-- Synonyms & Antonyms: ${d.sa} questions — alternate between SYNONYM and ANTONYM tasks
-- Choose Correct Word: ${d.cw} fill-in-the-blank sentences, one blank each
-- Sentence Rearrangement: ${d.sr} questions — show sentences as P/Q/R/S individually, options are 4 distinct orderings like PQRS, QPSR, etc.
-${d.mf>0?`- Match the Following: ${d.mf} questions — Column A (4 items) + Column B (4 items), 4 match-combination options`:""}
-- Vocabulary & Grammar: ${d.vg} question(s) — error spotting, idiom meaning, or correct usage
-
-RULES:
-1. Exactly ${total} questions total
-2. Every question: exactly 4 options A, B, C, D — exactly one correct answer
-3. All distractors must be plausible — no obviously wrong options
-4. Passages go in a separate "passages" array — questions use passage_id only, never repeat passage text
-5. Do NOT include an explanation field in any question
-
-Return ONLY valid JSON, no markdown fences, no commentary:
-{"passages":[{"id":"P1","type":"factual","text":"..."}],"questions":[{"id":1,"topic":"reading_comprehension","passage_id":"P1","question":"...","options":{"A":"...","B":"...","C":"...","D":"..."},"correct":"A"}]}`;
+// ── Google Fonts ──────────────────────────────────────────────────────────────
+if (!document.getElementById("cuet-fonts")) {
+  const l = document.createElement("link");
+  l.id = "cuet-fonts"; l.rel = "stylesheet";
+  l.href = "https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=DM+Serif+Display:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap";
+  document.head.appendChild(l);
 }
 
-function buildSplitPrompt(diff, part, count) {
-  // part: "first"(17Q) | "second"(17Q) | "third"(16Q) — for Full Mock 3-way split
-  const ddesc = { easy:"simple vocabulary, direct factual questions, straightforward inference", medium:"moderate vocabulary above Class 12 level, some inference required, plausible distractors", hard:"advanced GRE-level vocabulary, complex literary passages, abstract inference, highly plausible distractors" }[diff];
-  const dist = part==="first"
-    ? `- Reading Comprehension: 1 passage (factual, 120-150 words), 3 questions\n- Synonyms & Antonyms: 3 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 3 fill-in-the-blank\n- Sentence Rearrangement: 2 questions (P/Q/R/S format)\n- Match the Following: 1 question\n- Vocabulary & Grammar: 1 question`
-    : part==="second"
-    ? `- Reading Comprehension: 1 passage (narrative, 120-150 words), 3 questions\n- Synonyms & Antonyms: 3 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 3 fill-in-the-blank\n- Sentence Rearrangement: 2 questions (P/Q/R/S format)\n- Match the Following: 1 question\n- Vocabulary & Grammar: 1 question`
-    : part==="third"
-    ? `- Reading Comprehension: 1 passage (literary, 120-150 words), 3 questions\n- Synonyms & Antonyms: 2 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 3 fill-in-the-blank\n- Sentence Rearrangement: 2 questions (P/Q/R/S format)\n- Match the Following: 1 question\n- Vocabulary & Grammar: 1 question`
-    : `- Synonyms & Antonyms: 4 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 4 fill-in-the-blank\n- Sentence Rearrangement: 3 questions (P/Q/R/S format)\n- Match the Following: 1 question`;
-  return `You are a senior CUET UG English (101) paper setter for the National Testing Agency (NTA), India. Create a batch of practice questions.
-
-Difficulty: ${diff} — ${ddesc}
-Total: exactly ${count} questions
-
-Distribution:
-${dist}
-
-RULES:
-1. Exactly ${count} questions total — no more, no less
-2. Every question: exactly 4 options A, B, C, D — exactly one correct
-3. All distractors must be plausible
-4. Passages go in a separate "passages" array — questions use passage_id only
-5. Sentence rearrangement: P/Q/R/S shown as separate labelled sentences, options are ordering strings
-6. Match the Following: Column A (4 items) + Column B (4 items), 4 match-combination options
-7. Do NOT include an explanation field in any question
-
-Return ONLY valid JSON, no markdown, no commentary:
-{"passages":[{"id":"P1","type":"factual","text":"..."}],"questions":[{"id":1,"topic":"reading_comprehension","passage_id":"P1","question":"...","options":{"A":"...","B":"...","C":"...","D":"..."},"correct":"A"}]}`;
+// ── Global CSS ────────────────────────────────────────────────────────────────
+const CSS = `
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --navy:#0F2747;--navy-mid:#1E3A5F;--navy-light:#2D5282;
+  --indigo:#4338CA;--indigo-light:#6366F1;
+  --amber:#D97706;--amber-light:#FCD34D;
+  --success:#059669;--danger:#DC2626;
+  --surface:#FFFFFF;--bg:#F8FAFC;--bg-alt:#F1F5F9;--border:#E2E8F0;
+  --text-primary:#0F172A;--text-secondary:#475569;--text-muted:#94A3B8;
+  --font-body:'Sora',sans-serif;--font-display:'DM Serif Display',serif;--font-mono:'JetBrains Mono',monospace;
+  --card-shadow:0 1px 3px rgba(15,39,71,.08),0 4px 16px rgba(15,39,71,.06);
+}
+body{font-family:var(--font-body);background:var(--bg);color:var(--text-primary);font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
+button{cursor:pointer;border:none;outline:none;font-family:var(--font-body);}
+.btn-primary{background:var(--navy);color:#fff;height:44px;padding:0 24px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;transition:background .15s;}
+.btn-primary:hover{background:var(--navy-light);}
+.btn-primary:disabled{background:var(--text-muted);cursor:not-allowed;}
+.btn-primary.full{width:100%;}
+.btn-amber{background:#FFFBEB;color:var(--amber);border:1px solid #FDE68A;height:36px;padding:0 16px;border-radius:6px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px;transition:background .15s;}
+.btn-amber:hover{background:#FEF3C7;}
+.btn-navy-sm{background:var(--navy);color:#fff;height:36px;padding:0 18px;border-radius:6px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px;transition:background .15s;}
+.btn-navy-sm:hover{background:var(--navy-light);}
+.btn-outline{background:transparent;color:var(--navy);border:1.5px solid var(--navy);height:44px;padding:0 24px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;transition:all .15s;}
+.btn-outline:hover{background:var(--navy);color:#fff;}
+@keyframes indeterminate{0%{transform:translateX(-100%) scaleX(.5)}50%{transform:translateX(0) scaleX(.5)}100%{transform:translateX(100%) scaleX(.5)}}
+.pbar-track{width:100%;height:4px;background:#E0E7FF;border-radius:2px;overflow:hidden;}
+.pbar-fill{height:100%;background:var(--indigo);border-radius:2px;animation:indeterminate 1.6s ease-in-out infinite;transform-origin:left;}
+.option-box{display:flex;align-items:flex-start;gap:12px;padding:14px 16px;border:1.5px solid var(--border);border-radius:4px;cursor:pointer;transition:border-color .12s,background .12s;background:#fff;}
+.option-box:hover{border-color:var(--indigo-light);background:#EEF2FF;}
+.option-box.selected{border-color:var(--indigo);background:#EEF2FF;}
+.option-box.correct{border-color:var(--success);background:#ECFDF5;}
+.option-box.wrong{border-color:var(--danger);background:#FEF2F2;}
+.option-key{width:24px;height:24px;min-width:24px;border:1.5px solid var(--border);border-radius:2px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:var(--text-secondary);font-family:var(--font-mono);}
+.option-box.selected .option-key{background:var(--indigo);border-color:var(--indigo);color:#fff;}
+.option-box.correct .option-key{background:var(--success);border-color:var(--success);color:#fff;}
+.option-box.wrong .option-key{background:var(--danger);border-color:var(--danger);color:#fff;}
+.pill{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:6px;font-size:11px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;}
+.pill-indigo{background:#EEF2FF;color:var(--indigo);}
+.pill-green{background:#ECFDF5;color:var(--success);}
+.pill-amber{background:#FFFBEB;color:var(--amber);}
+.pill-navy{background:#E8EDF5;color:var(--navy);}
+.pill-red{background:#FEF2F2;color:var(--danger);}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--card-shadow);}
+.stat-strip{border-left:4px solid var(--indigo);padding:10px 14px;background:var(--surface);border-radius:0 8px 8px 0;}
+.nta-header{background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 24px;height:52px;flex-shrink:0;}
+.nta-logo{font-family:var(--font-display);font-size:18px;letter-spacing:.02em;}
+.nta-logo span{color:var(--amber-light);}
+.section-bar{background:var(--bg-alt);border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:8px 24px;font-size:12px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--text-secondary);display:flex;align-items:center;gap:12px;}
+@keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(8px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;padding:12px 20px;border-radius:8px;font-size:13px;font-weight:500;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,.2);animation:toastIn .2s ease;}
+.toast.error{background:var(--danger);}
+.modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,.6);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:999;padding:24px;}
+.modal-box{background:#fff;border-radius:16px;padding:32px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(15,39,71,.25);}
+.error-msg{background:#FEF2F2;border:1px solid #FECACA;color:var(--danger);border-radius:8px;padding:10px 14px;font-size:13px;margin-top:8px;}
+::-webkit-scrollbar{width:6px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+`;
+if (!document.getElementById("cuet-styles")) {
+  const s = document.createElement("style"); s.id = "cuet-styles"; s.textContent = CSS;
+  document.head.appendChild(s);
 }
 
-function buildStandardSplitPrompt(diff, half) {
-  // half: "first"(15Q) | "second"(15Q) — for Standard Test 2-way split
-  const ddesc = { easy:"simple vocabulary, direct factual questions, straightforward inference", medium:"moderate vocabulary above Class 12 level, some inference required, plausible distractors", hard:"advanced GRE-level vocabulary, complex literary passages, abstract inference, highly plausible distractors" }[diff];
-  const dist = half==="first"
-    ? `- Reading Comprehension: 1 passage (factual, 120-150 words), 4 questions\n- Synonyms & Antonyms: 3 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 4 fill-in-the-blank\n- Sentence Rearrangement: 2 questions (P/Q/R/S format)\n- Match the Following: 1 question\n- Vocabulary & Grammar: 1 question`
-    : `- Reading Comprehension: 1 passage (narrative/literary, 120-150 words), 4 questions\n- Synonyms & Antonyms: 3 questions (mix SYNONYM/ANTONYM)\n- Choose Correct Word: 3 fill-in-the-blank\n- Sentence Rearrangement: 2 questions (P/Q/R/S format)\n- Match the Following: 1 question\n- Vocabulary & Grammar: 2 questions`;
-  return `You are a senior CUET UG English (101) paper setter for the National Testing Agency (NTA), India. Create a batch of practice questions.
+// ── Firebase ──────────────────────────────────────────────────────────────────
+const fbApp = initializeApp({
+  apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId:         import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket:     import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId:             import.meta.env.VITE_FIREBASE_APP_ID,
+});
+const auth = getAuth(fbApp);
+const db   = getFirestore(fbApp);
 
-Difficulty: ${diff} — ${ddesc}
-Total: exactly 15 questions
+// ── Constants ─────────────────────────────────────────────────────────────────
+const CF_BASE       = import.meta.env.VITE_CLOUD_FUNCTION_BASE || "";
+const RZP_KEY_ID    = import.meta.env.VITE_RAZORPAY_KEY_ID;
+const FREE_LIMIT    = 5;
+const EXAM_SECS     = 3600; // 60 min
+const MARKS_CORRECT = 5;
+const MARKS_WRONG   = -1;
 
-Distribution:
-${dist}
-
-RULES:
-1. Exactly 15 questions total — no more, no less
-2. Every question: exactly 4 options A, B, C, D — exactly one correct
-3. All distractors must be plausible
-4. Passages go in a separate "passages" array — questions use passage_id only
-5. Sentence rearrangement: P/Q/R/S shown as separate labelled sentences, options are ordering strings
-6. Match the Following: Column A (4 items) + Column B (4 items), 4 match-combination options
-7. Do NOT include an explanation field in any question
-
-Return ONLY valid JSON, no markdown, no commentary:
-{"passages":[{"id":"P1","type":"factual","text":"..."}],"questions":[{"id":1,"topic":"reading_comprehension","passage_id":"P1","question":"...","options":{"A":"...","B":"...","C":"...","D":"..."},"correct":"A"}]}`;
+// ── GA4 ───────────────────────────────────────────────────────────────────────
+// All calls wrapped in try/catch — GA4 errors must never break exam or payment flows
+function logEvent(name, params = {}) {
+  try { if (typeof window.gtag === "function") window.gtag("event", name, params); } catch(_) {}
 }
 
-function buildAdvisoryPrompt(res, name) {
-  const tperf = Object.entries(res.topicStats).sort(([,a],[,b])=>(a.correct/a.total||0)-(b.correct/b.total||0)).map(([t,s])=>`${TOPICS[t]?.label||t}: ${s.correct}/${s.total} correct (${s.total?Math.round(s.correct/s.total*100):0}%)`).join("\n");
-  const wrongs = (res.questionResults||[]).filter(q=>q.status==="wrong").slice(0,6).map(q=>`[${TOPICS[q.topic]?.abbr||q.topic}] "${(q.question||"").slice(0,65)}..." — chose ${q.userAnswer}, correct: ${q.correct}`).join("\n");
-  return `CUET English coaching session. Student: ${name} (Class 12, CUET UG 2026).
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function fmtDate(ts) {
+  if (!ts) return "—";
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" }) + ", " +
+         d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+}
+function fmtTimer(s) { return `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`; }
+function scoreColor(p) { return p >= 70 ? "var(--success)" : p >= 45 ? "var(--amber)" : "var(--danger)"; }
 
-Score: ${res.score}/${res.maxScore} (${res.percentage}%)
-Correct: ${res.correct} (+${res.correct*5} marks) | Wrong: ${res.wrong} (-${res.wrong} marks) | Skipped: ${res.unattempted}
-Marking scheme: +5 correct, -1 wrong, 0 skipped
-
-Topic performance (weakest first):
-${tperf}
-
-Sample wrong answers:
-${wrongs||"None — all errors were skipped"}
-
-Write a coaching advisory of 300-360 words across four paragraphs. No bullet points. No headers. No numbered lists.
-
-Para 1: Honest, specific assessment. State what the score means in the context of CUET 2026 competition. Not a pep talk.
-Para 2: Name the 2-3 weakest topic areas. Explain exactly what the wrong answers reveal about the gap. Give one specific practice exercise per gap.
-Para 3: Attempt strategy for the next test — which topic type to start with, rough time allocation per topic type, when to skip and when to guess, the arithmetic of skipping vs risking a wrong answer.
-Para 4: One concrete daily habit for the next 14 days. Name a specific resource, activity, or drill. Not a general suggestion.
-
-Tone: direct, coach-to-student, no flattery, no filler phrases like "great effort" or "you can do it".`;
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function Toast({ message, type, onDismiss }) {
+  useEffect(() => { const t = setTimeout(onDismiss, 3500); return () => clearTimeout(t); }, []);
+  return <div className={"toast" + (type === "error" ? " error" : "")}>{message}</div>;
 }
 
-// ─── Utilities ───────────────────────────────────────────────
-const fmtTime = s => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
+// ── Paywall Modal ─────────────────────────────────────────────────────────────
+function PaywallModal({ user, onSuccess, onClose }) {
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState(null);
 
-function computeResults(questions, answers) {
-  let pts=0,correct=0,wrong=0,unattempted=0;
-  const topicStats={};
-  const questionResults=questions.map(q=>{
-    const ua=answers[q.id], t=q.topic;
-    if(!topicStats[t]) topicStats[t]={total:0,correct:0,wrong:0,unattempted:0};
-    topicStats[t].total++;
-    let status;
-    if(!ua){unattempted++;topicStats[t].unattempted++;status="unattempted";}
-    else if(ua===q.correct){correct++;pts+=5;topicStats[t].correct++;status="correct";}
-    else{wrong++;pts-=1;topicStats[t].wrong++;status="wrong";}
-    return {...q,userAnswer:ua,status};
-  });
-  const max=questions.length*5;
-  return{score:pts,maxScore:max,correct,wrong,unattempted,percentage:max>0?Math.round(Math.max(0,pts)/max*100):0,topicStats,questionResults};
-}
-
-function getQStatus(qId,answers,marked,visited){
-  const ans=!!answers[qId],mk=marked.has(qId),seen=visited.has(qId);
-  if(!seen) return "not_visited";
-  if(ans&&mk) return "answered_review";
-  if(ans) return "answered";
-  if(mk) return "review";
-  return "not_answered";
-}
-
-const getUsers=()=>{try{return JSON.parse(localStorage.getItem("cuet_ux")||"{}");}catch{return{};}};
-const saveUsers=u=>localStorage.setItem("cuet_ux",JSON.stringify(u));
-const getHist=id=>{try{return JSON.parse(localStorage.getItem(`cuet_h_${id}`)||"[]");}catch{return[];}};
-const saveHist=(id,h)=>localStorage.setItem(`cuet_h_${id}`,JSON.stringify(h));
-const getSession=()=>{try{return JSON.parse(localStorage.getItem("cuet_session")||"null");}catch{return null;}};
-const saveSession=u=>localStorage.setItem("cuet_session",JSON.stringify(u));
-const clearSession=()=>localStorage.removeItem("cuet_session");
-
-async function callAI(prompt, max_tokens, retries=2) {
-  for(let attempt=0; attempt<=retries; attempt++){
-    try{
-      const res = await fetch("/.netlify/functions/anthropic-proxy", {
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({prompt, max_tokens}),
+  async function pay() {
+    setLoading(true); setError(null);
+    logEvent("payment_initiated", { user_id: user?.uid });
+    try {
+      const orderRes = await fetch(`${CF_BASE}/createOrder`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uid: user?.uid }),
       });
-      // If HTML response (Netlify error page), throw descriptive error
-      const contentType = res.headers.get("content-type")||"";
-      if(!contentType.includes("application/json")){
-        const text = await res.text();
-        if(text.includes("<html") || text.includes("<!DOCTYPE")){
-          throw new Error("Server returned an error page. Please try again.");
-        }
-        throw new Error("Unexpected server response format.");
-      }
-      const data = await res.json();
-      if(!res.ok){
-        // Rate limit — wait and retry
-        if(res.status===429 && attempt<retries){
-          await new Promise(r=>setTimeout(r, 2000*(attempt+1)));
-          continue;
-        }
-        throw new Error(data.error?.message||`Server error (${res.status})`);
-      }
-      // Detect token truncation — stop_reason "max_tokens" means JSON was cut off
-      if(data.stop_reason==="max_tokens"){
-        throw new Error("Response was cut off. Please try again in a moment, or switch to an easier difficulty level.");
-      }
-      return data;
-    }catch(e){
-      if(attempt===retries) throw e;
-      await new Promise(r=>setTimeout(r, 1500*(attempt+1)));
+      const { order_id } = await orderRes.json();
+      const rzp = new window.Razorpay({
+        key: RZP_KEY_ID, order_id,
+        amount: 19900, currency: "INR",
+        name: "Vantiq CUET", description: "Unlock Full Access",
+        theme: { color: "#0F2747" },
+        prefill: { name: user?.displayName || "", email: user?.email || "" },
+        handler: async (resp) => {
+          try {
+            const vRes = await fetch(`${CF_BASE}/verifyPayment`, {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ...resp, uid: user?.uid }),
+            });
+            const vData = await vRes.json();
+            if (vData.success) {
+              logEvent("payment_success", { user_id: user?.uid, value: 199, currency: "INR" });
+              onSuccess();
+            } else throw new Error("Verification failed");
+          } catch(e) {
+            logEvent("payment_failed", { user_id: user?.uid, reason: e.message });
+            setError("Payment verification failed. Contact support if amount was deducted.");
+          } finally { setLoading(false); }
+        },
+        modal: { ondismiss: () => { logEvent("payment_failed", { reason: "dismissed" }); setLoading(false); } },
+      });
+      rzp.on("payment.failed", r => {
+        logEvent("payment_failed", { reason: r.error.description });
+        setError(r.error.description); setLoading(false);
+      });
+      rzp.open();
+    } catch(e) { setError("Could not create order. Try again."); setLoading(false); }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box" onClick={e => e.stopPropagation()}>
+        <div style={{ textAlign: "center", marginBottom: 24 }}>
+          <div style={{ width: 56, height: 56, borderRadius: "50%", background: "#FEF3C7", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", fontSize: 28 }}>
+            🔓
+          </div>
+          <h2 style={{ fontFamily: "var(--font-display)", fontSize: 24, color: "var(--navy)", marginBottom: 8 }}>
+            Unlock Full Access
+          </h2>
+          <p style={{ color: "var(--text-secondary)", fontSize: 14, lineHeight: 1.6 }}>
+            You have used all 5 free tests. Unlock unlimited access for CUET English 2026.
+          </p>
+        </div>
+        <div style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 10, padding: "16px 20px", marginBottom: 24 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <span style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)" }}>Full Platform Access</span>
+            <span style={{ fontSize: 22, fontWeight: 700, color: "var(--navy)", fontFamily: "var(--font-mono)" }}>&#8377;199</span>
+          </div>
+          {["Unlimited AI-generated papers", "Practice, Mock and Speed Drill modes", "Topic-wise performance analytics", "One-time payment, lifetime access"].map(f => (
+            <div key={f} style={{ display: "flex", gap: 8, marginTop: 6 }}>
+              <span style={{ color: "var(--success)" }}>&#10003;</span>
+              <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>{f}</span>
+            </div>
+          ))}
+        </div>
+        {error && <div className="error-msg">{error}</div>}
+        <button className="btn-primary full" onClick={pay} disabled={loading} style={{ marginTop: 16 }}>
+          {loading ? "Processing..." : "Pay ₹199 · One-time"}
+        </button>
+        <p style={{ textAlign: "center", marginTop: 10, fontSize: 12, color: "var(--text-muted)" }}>
+          Secured by Razorpay &middot; UPI, Cards, Net Banking
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ── AUTH SCREEN ───────────────────────────────────────────────────────────────
+function AuthScreen({ onLogin, showToast }) {
+  const [loading, setLoading] = useState(null);
+  const [error,   setError]   = useState(null);
+  const [mode,    setMode]    = useState("login");
+
+  useEffect(() => { logEvent("page_view", { page: "auth" }); }, []);
+
+  async function ensureUserDoc(user) {
+    const ref = doc(db, "users", user.uid);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) {
+      await setDoc(ref, {
+        uid: user.uid, email: user.email, displayName: user.displayName,
+        photoURL: user.photoURL, testsUsed: 0, unlocked: false, createdAt: serverTimestamp(),
+      });
     }
   }
-}
 
-const parseAI = txt => {
-  const clean = txt.replace(/```json\n?|```\n?/g,"").trim();
-  const p = JSON.parse(clean);
-  return {passages:p.passages||[], questions:p.questions||[]};
-};
+  async function handleGoogle() {
+    setLoading("google"); setError(null);
+    try {
+      const r = await signInWithPopup(auth, new GoogleAuthProvider());
+      const isNew = r._tokenResponse?.isNewUser;
+      await ensureUserDoc(r.user);
+      logEvent(isNew ? "sign_up" : "login", { method: "google" });
+      onLogin(r.user);
+    } catch(e) { setError(e.message || "Google sign-in failed."); }
+    finally { setLoading(null); }
+  }
 
-
-// ─── GA4 ─────────────────────────────────────────────────────
-function loadGA4(){
-  if(window.gtag||document.getElementById("ga4-script")) return;
-  const s=document.createElement("script");
-  s.id="ga4-script"; s.async=true;
-  s.src=`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`;
-  document.head.appendChild(s);
-  window.dataLayer=window.dataLayer||[];
-  window.gtag=function(){window.dataLayer.push(arguments);};
-  window.gtag("js",new Date());
-  window.gtag("config",GA_MEASUREMENT_ID,{send_page_view:false});
-}
-
-function trackEvent(name,params={}){
-  // Wrapped in try/catch — GA4 errors must never break payment or exam flows
-  try{ if(typeof window.gtag==="function") window.gtag("event",name,params); }
-  catch(e){ /* silent */ }
-}
-
-// ─── Paywall helpers ─────────────────────────────────────────
-// NOTE: localStorage is the client-side layer only.
-// Server-side count + unlock will be enforced via Netlify Function
-// when Razorpay verification is wired (Phase 3).
-const getTestCount  = uid => { try{ return parseInt(localStorage.getItem(`cuet_tc_${uid}`)||"0"); }catch{ return 0; } };
-const saveTestCount = (uid,n) => { try{ localStorage.setItem(`cuet_tc_${uid}`,String(n)); }catch{} };
-const isPaidUser    = uid => { try{ return localStorage.getItem(`cuet_paid_${uid}`)==="true"; }catch{ return false; } };
-const setPaidUser   = uid => { try{ localStorage.setItem(`cuet_paid_${uid}`,"true"); }catch{} };
-
-// ─── Social Auth loaders ─────────────────────────────────────
-function loadGSI(){
-  // Google Identity Services — loads only when Client ID is configured
-  if(document.getElementById("gsi-script")||GOOGLE_CLIENT_ID.startsWith("YOUR_")) return;
-  const s=document.createElement("script");
-  s.id="gsi-script"; s.async=true;
-  s.src="https://accounts.google.com/gsi/client";
-  document.head.appendChild(s);
-}
-
-function loadFBSDK(){
-  // Facebook SDK — loads only when App ID is configured
-  if(document.getElementById("fb-script")||FACEBOOK_APP_ID.startsWith("YOUR_")) return;
-  window.fbAsyncInit=function(){
-    window.FB.init({appId:FACEBOOK_APP_ID,cookie:true,xfbml:false,version:"v18.0"});
-  };
-  const s=document.createElement("script");
-  s.id="fb-script"; s.async=true;
-  s.src="https://connect.facebook.net/en_US/sdk.js";
-  document.head.appendChild(s);
-}
-
-// ─── Razorpay ────────────────────────────────────────────────
-function loadRazorpay(){
-  if(window.Razorpay||document.getElementById("rzp-script")) return;
-  const s=document.createElement("script");
-  s.id="rzp-script";
-  s.src="https://checkout.razorpay.com/v1/checkout.js";
-  document.head.appendChild(s);
-}
-
-function openRazorpay({userId,userName,userEmail,onSuccess,onFailure}){
-  if(!window.Razorpay){ onFailure("Razorpay not loaded. Please refresh and try again."); return; }
-  trackEvent("payment_initiated",{currency:"INR",value:199});
-  const options={
-    key:           RAZORPAY_KEY_ID,
-    amount:        19900,             // ₹199 in paise
-    currency:      "INR",
-    name:          "Vantiq Education",
-    description:   "CUET English Mock Tests — Unlimited Access",
-    handler: async function(response){
-      // TODO (Phase 3): POST to /.netlify/functions/verify-payment
-      // and only call onSuccess after server confirms signature.
-      // For now, unlock client-side as placeholder.
-      try{
-        // Placeholder server call — swap this block for real verification
-        // const res = await fetch("/.netlify/functions/verify-payment", {
-        //   method:"POST",
-        //   headers:{"Content-Type":"application/json"},
-        //   body:JSON.stringify({
-        //     razorpay_order_id:    response.razorpay_order_id,
-        //     razorpay_payment_id:  response.razorpay_payment_id,
-        //     razorpay_signature:   response.razorpay_signature,
-        //     userId
-        //   })
-        // });
-        // if(!res.ok) throw new Error("Verification failed");
-        setPaidUser(userId);
-        trackEvent("payment_success",{currency:"INR",value:199,transaction_id:response.razorpay_payment_id});
-        onSuccess();
-      }catch(e){
-        trackEvent("payment_failed",{reason:"verification_error"});
-        onFailure("Payment verification failed. Please contact support with your payment ID: "+response.razorpay_payment_id);
-      }
-    },
-    prefill:{ name:userName||"", email:userEmail||"" },
-    theme:{ color:"#0F1C2E" },
-    modal:{
-      ondismiss: function(){
-        trackEvent("payment_failed",{reason:"dismissed"});
-        onFailure("dismissed");
-      }
-    }
-  };
-  const rzp=new window.Razorpay(options);
-  rzp.on("payment.failed",function(r){
-    trackEvent("payment_failed",{reason:r.error?.reason||"unknown"});
-    onFailure(r.error?.description||"Payment failed. Please try again.");
-  });
-  rzp.open();
-}
-
-// ─── Error classifier for GA4 structured tracking ───────────────
-function classifyGenError(err, mode, difficulty, maxTok, part){
-  const msg = (err.message||"").toLowerCase();
-  let error_type = "unknown";
-  if(msg.includes("cut off")||msg.includes("max_tokens"))  error_type = "json_truncated";
-  else if(msg.includes("timed out")||msg.includes("504"))  error_type = "timeout";
-  else if(msg.includes("429")||msg.includes("rate limit")) error_type = "rate_limit";
-  else if(msg.includes("network")||msg.includes("failed to fetch")) error_type = "network";
-  else if(msg.includes("no questions"))                    error_type = "empty_response";
-  else if(msg.includes("json")||msg.includes("parse"))     error_type = "json_parse";
-  else if(msg.includes("500")||msg.includes("server"))     error_type = "server_error";
-  trackEvent("generation_error",{
-    mode,
-    difficulty,
-    error_type,
-    error_message: err.message?.slice(0,120)||"unknown",
-    max_tokens:    maxTok||0,
-    split_part:    part||"single",
-  });
-}
-
-// ─── Main Component ──────────────────────────────────────────
-export default function CUETPlatform() {
-  // Restore session on mount — fixes page refresh logout
-  const [user,setUser]       = useState(()=>getSession());
-  const [authMode,setAuthMode] = useState("login");
-  const [authForm,setAuthForm] = useState({name:"",email:"",password:""});
-  const [authErr,setAuthErr]   = useState("");
-  const [screen,setScreen]     = useState(()=>getSession()?"dashboard":"auth");
-  const [mode,setMode]         = useState("standard");
-  const [difficulty,setDifficulty] = useState("medium");
-  const [questions,setQuestions]   = useState([]);
-  const [passages,setPassages]     = useState([]);
-  const [currentQ,setCurrentQ]     = useState(0);
-  const [answers,setAnswers]       = useState({});
-  const [markedReview,setMarkedReview] = useState(new Set());
-  const [visited,setVisited]           = useState(new Set());
-  const [selectedOpt,setSelectedOpt]   = useState(null);
-  const [timeLeft,setTimeLeft]         = useState(2160);
-  const [tipIdx,setTipIdx]             = useState(0);
-  const [genStage,setGenStage]         = useState("");
-  const [results,setResults]           = useState(null);
-  const [history,setHistory]           = useState(()=>{ const s=getSession(); return s?getHist(s.id):[]; });
-  const [advisory,setAdvisory]         = useState("");
-  const [loadingAdv,setLoadingAdv]     = useState(false);
-  const [genError,setGenError]         = useState("");
-  const [reviewOpen,setReviewOpen]     = useState(null);
-  const [showWarn,setShowWarn]         = useState(false);
-  const [showReview,setShowReview]     = useState(false);
-  const [showPaywall,setShowPaywall]   = useState(false);
-  const [paywallErr,setPaywallErr]     = useState("");
-  const timerRef  = useRef(null);
-  const submitRef = useRef(null);
-
-
-  // Load GA4 + Razorpay + Social auth scripts on mount
-  useEffect(()=>{ loadGA4(); loadRazorpay(); loadGSI(); loadFBSDK(); },[]);
-
-  // Inject global responsive styles once
-  useEffect(()=>{
-    const style = document.createElement("style");
-    style.id = "cuet-responsive";
-    style.textContent = `
-      * { box-sizing: border-box; }
-      body { margin: 0; padding: 0; }
-      @media (max-width: 768px) {
-        .exam-main { flex-direction: column !important; }
-        .exam-palette { width: 100% !important; max-height: 220px !important; border-left: none !important; border-top: 2px solid #d1d5db !important; order: -1; }
-        .exam-palette-grid { grid-template-columns: repeat(8, 1fr) !important; }
-        .exam-question { padding: 10px !important; }
-        .dashboard-grid-4 { grid-template-columns: repeat(2, 1fr) !important; }
-        .dashboard-grid-3 { grid-template-columns: 1fr !important; }
-        .diff-row { flex-direction: column !important; }
-        .diff-row button { flex: none !important; }
-        .toolbar-row { flex-direction: column !important; gap: 8px !important; }
-        .toolbar-row > div { justify-content: center !important; }
-        .results-grid { grid-template-columns: 1fr !important; }
-        .advisory-scores { flex-wrap: wrap !important; }
-      }
-      @media (max-width: 480px) {
-        .exam-palette-grid { grid-template-columns: repeat(6, 1fr) !important; }
-        .mode-grid { grid-template-columns: 1fr !important; }
-        .stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
-      }
-    `;
-    if(!document.getElementById("cuet-responsive")) document.head.appendChild(style);
-    return ()=>{};
-  },[]);
-
-  // Prevent accidental navigation during exam
-  useEffect(()=>{
-    if(screen==="exam"){
-      const handler = e => { e.preventDefault(); e.returnValue=""; };
-      window.addEventListener("beforeunload", handler);
-      return ()=>window.removeEventListener("beforeunload", handler);
-    }
-  },[screen]);
-
-  // GA4 — track every screen transition
-  useEffect(()=>{ trackEvent("page_view",{page_title:screen,page_location:window.location.href}); },[screen]);
-
-  const doSubmit=useCallback(()=>{
-    clearInterval(timerRef.current);
-    const q=questions[currentQ];
-    const finalAns=selectedOpt&&q?{...answers,[q.id]:selectedOpt}:{...answers};
-    const r=computeResults(questions,finalAns);
-    setResults(r);
-    if(user){
-      const entry={id:Date.now().toString(),date:new Date().toISOString(),mode,difficulty,score:r.score,maxScore:r.maxScore,percentage:r.percentage,correct:r.correct,wrong:r.wrong,unattempted:r.unattempted,qCount:questions.length};
-      const h=[entry,...getHist(user.id)].slice(0,30);
-      saveHist(user.id,h); setHistory(h);
-    }
-    trackEvent("test_completed",{mode,difficulty,score:r.score,max_score:r.maxScore,percentage:r.percentage,correct:r.correct,wrong:r.wrong,unattempted:r.unattempted});
-    setScreen("results");
-  },[questions,currentQ,answers,selectedOpt,user,mode,difficulty]);
-
-  useEffect(()=>{ submitRef.current=doSubmit; },[doSubmit]);
-
-  // Timer with 5-minute warning
-  useEffect(()=>{
-    if(screen==="exam"){
-      setShowWarn(false);
-      timerRef.current=setInterval(()=>{
-        setTimeLeft(t=>{
-          if(t===300) setShowWarn(true);
-          if(t<=1){clearInterval(timerRef.current);submitRef.current?.();return 0;}
-          return t-1;
-        });
-      },1000);
-    }
-    return()=>clearInterval(timerRef.current);
-  },[screen]);
-
-  useEffect(()=>{
-    if(screen==="generating"){const t=setInterval(()=>setTipIdx(i=>(i+1)%TIPS.length),3800);return()=>clearInterval(t);}
-  },[screen]);
-
-  // Auto-generate advisory when results loads
-  useEffect(()=>{
-    if(screen==="results"&&results&&!advisory&&!loadingAdv){
-      setLoadingAdv(true);
-      callAI(buildAdvisoryPrompt(results,user?.name||"Student"),1200)
-        .then(data=>{const txt=data.content.filter(b=>b.type==="text").map(b=>b.text).join("");setAdvisory(txt);})
-        .catch(()=>setAdvisory("Advisory could not be generated at this time."))
-        .finally(()=>setLoadingAdv(false));
-    }
-  },[screen,results]);
-
-  // ─── Social Auth ──────────────────────────────────────────
-  const handleSocialLogin=(name,email,provider)=>{
-    if(!email){
-      setAuthErr(`${provider} did not share your email address. Please check your ${provider} privacy settings or use email login.`);
-      return;
-    }
-    const users=getUsers();
-    const existing=Object.values(users).find(u=>u.email===email.toLowerCase());
-    if(existing){
-      // Returning user — log in
-      const{password:_,...safe}=existing;
-      saveSession(safe);
-      setUser(safe); setHistory(getHist(safe.id));
-      trackEvent("login",{method:provider.toLowerCase()});
-      setScreen("dashboard");
-    }else{
-      // New user via social — create account
-      const nu={id:Date.now().toString(),name,email:email.toLowerCase(),created:new Date().toISOString(),provider};
-      saveUsers({...users,[email.toLowerCase()]:{...nu,social:true}});
-      saveSession(nu);
-      setUser(nu); setHistory([]);
-      trackEvent("sign_up",{method:provider.toLowerCase()});
-      setScreen("dashboard");
-    }
-  };
-
-  const signInWithGoogle=()=>{
-    setAuthErr("");
-    if(GOOGLE_CLIENT_ID.startsWith("YOUR_")){
-      setAuthErr("Google Sign-In is not yet configured. Please use your email and password to sign in.");
-      return;
-    }
-    if(!window.google?.accounts?.oauth2){
-      setAuthErr("Google Sign-In is still loading. Please wait a moment and try again.");
-      return;
-    }
-    const client=window.google.accounts.oauth2.initTokenClient({
-      client_id:GOOGLE_CLIENT_ID,
-      scope:"email profile",
-      callback:async(response)=>{
-        if(response.error){setAuthErr("Google Sign-In failed. Please try again.");return;}
-        try{
-          const res=await fetch("https://www.googleapis.com/oauth2/v3/userinfo",{
-            headers:{Authorization:`Bearer ${response.access_token}`}
-          });
-          const info=await res.json();
-          handleSocialLogin(info.name||info.email,info.email,"Google");
-        }catch{
-          setAuthErr("Could not retrieve your Google profile. Please try again.");
-        }
-      }
-    });
-    client.requestAccessToken({prompt:"select_account"});
-  };
-
-  const signInWithFacebook=()=>{
-    setAuthErr("");
-    if(FACEBOOK_APP_ID.startsWith("YOUR_")){
-      setAuthErr("Facebook Sign-In is not yet configured. Please use your email and password to sign in.");
-      return;
-    }
-    if(!window.FB){
-      setAuthErr("Facebook SDK is still loading. Please wait a moment and try again.");
-      return;
-    }
-    window.FB.login(function(response){
-      if(response.authResponse){
-        window.FB.api("/me",{fields:"name,email"},function(user){
-          if(user&&!user.error){
-            handleSocialLogin(user.name,user.email,"Facebook");
-          }else{
-            setAuthErr("Facebook did not share your email address. Please check your Facebook privacy settings or use email login.");
-          }
-        });
-      }
-      // If user cancelled, do nothing
-    },{scope:"public_profile,email"});
-  };
-
-  // ─── Auth ──────────────────────────────────────────────────
-  const handleAuth=()=>{
-    setAuthErr("");
-    const users=getUsers();
-    const{name,email,password}=authForm;
-    if(!email.trim()||!password){setAuthErr("Email and password are required.");return;}
-    if(authMode==="register"){
-      if(!name.trim()){setAuthErr("Full name is required.");return;}
-      if(users[email.trim()]){setAuthErr("An account already exists with this email.");return;}
-      if(password.length<6){setAuthErr("Password must be at least 6 characters.");return;}
-      const nu={id:Date.now().toString(),name:name.trim(),email:email.trim(),created:new Date().toISOString()};
-      saveUsers({...users,[email.trim()]:{...nu,password}});
-      saveSession(nu);
-      trackEvent("sign_up",{method:"email"});
-      setUser(nu); setHistory([]); setScreen("dashboard");
-    }else{
-      const u=users[email.trim()];
-      if(!u||u.password!==password){setAuthErr("Invalid email or password.");return;}
-      const{password:_,...safe}=u;
-      saveSession(safe);
-      trackEvent("login",{method:"email"});
-      setUser(safe); setHistory(getHist(u.id)); setScreen("dashboard");
-    }
-  };
-
-  const abandonTest=()=>{
-    if(!window.confirm("Exit this test?\n\nYour progress will be saved as Incomplete in your history. You can start a new test with any difficulty from the dashboard.")) return;
-    clearInterval(timerRef.current);
-    // Score whatever has been answered so far
-    const q=questions[currentQ];
-    const finalAns=selectedOpt&&q?{...answers,[q.id]:selectedOpt}:{...answers};
-    const r=computeResults(questions,finalAns);
-    if(user){
-      const entry={id:Date.now().toString(),date:new Date().toISOString(),mode,difficulty,
-        score:r.score,maxScore:r.maxScore,percentage:r.percentage,
-        correct:r.correct,wrong:r.wrong,unattempted:r.unattempted,qCount:questions.length,
-        abandoned:true};
-      const h=[entry,...getHist(user.id)].slice(0,30);
-      saveHist(user.id,h); setHistory(h);
-    }
-    setScreen("dashboard");
-  };
-
-  const handleLogout=()=>{
-    clearInterval(timerRef.current);
-    clearSession();
-    setUser(null); setScreen("auth");
-    setAuthForm({name:"",email:"",password:""});
-    setQuestions([]); setResults(null); setAdvisory("");
-  };
-
-  // ─── Navigation ────────────────────────────────────────────
-  const goTo=useCallback((idx)=>{
-    const qid=questions[idx]?.id;
-    if(qid!=null) setVisited(v=>new Set([...v,qid]));
-    setCurrentQ(idx); setSelectedOpt(answers[questions[idx]?.id]||null);
-  },[questions,answers]);
-
-  const saveAndNext=()=>{
-    const q=questions[currentQ];
-    if(selectedOpt&&q) setAnswers(a=>({...a,[q.id]:selectedOpt}));
-    if(currentQ<questions.length-1) goTo(currentQ+1);
-  };
-  const markAndNext=()=>{
-    const q=questions[currentQ];
-    if(selectedOpt&&q) setAnswers(a=>({...a,[q.id]:selectedOpt}));
-    if(q) setMarkedReview(m=>{const s=new Set(m);s.add(q.id);return s;});
-    if(currentQ<questions.length-1) goTo(currentQ+1);
-  };
-  const clearResponse=()=>{
-    const q=questions[currentQ];
-    setSelectedOpt(null);
-    if(q){setAnswers(a=>{const n={...a};delete n[q.id];return n;});setMarkedReview(m=>{const s=new Set(m);s.delete(q.id);return s;});}
-  };
-
-  // ─── Generate Test ─────────────────────────────────────────
-  const generateTest=async()=>{
-    // ── Paywall gate ──────────────────────────────────────────
-    if(user && GATED_MODES.includes(mode) && !isPaidUser(user.id)){
-      const count=getTestCount(user.id);
-      if(count>=FREE_LIMIT){
-        trackEvent("paywall_triggered",{mode,difficulty,test_count:count});
-        setShowPaywall(true);
-        return;
-      }
-    }
-    // ─────────────────────────────────────────────────────────
-    setGenError(""); setScreen("generating");
-    try{
-      let allPassages=[],allQuestions=[];
-      if(mode==="full"){
-        // 4-way parallel split: 13+13+12+12 = 50Q, each call ~2000 tokens → ~21s safely within 25s limit
-        setGenStage("Preparing your Full Mock paper across all sections. Please wait.");
-        const [d1,d2,d3,d4]=await Promise.all([
-          callAI(buildSplitPrompt(difficulty,"first",13),MAX_TOKENS.full[difficulty]).catch(e=>{classifyGenError(e,mode,difficulty,MAX_TOKENS.full[difficulty],"first");throw e;}),
-          callAI(buildSplitPrompt(difficulty,"second",13),MAX_TOKENS.full[difficulty]).catch(e=>{classifyGenError(e,mode,difficulty,MAX_TOKENS.full[difficulty],"second");throw e;}),
-          callAI(buildSplitPrompt(difficulty,"third",12),MAX_TOKENS.full[difficulty]).catch(e=>{classifyGenError(e,mode,difficulty,MAX_TOKENS.full[difficulty],"third");throw e;}),
-          callAI(buildSplitPrompt(difficulty,"fourth",12),MAX_TOKENS.full[difficulty]).catch(e=>{classifyGenError(e,mode,difficulty,MAX_TOKENS.full[difficulty],"fourth");throw e;}),
-        ]);
-        setGenStage("Finalising your Full Mock Test paper...");
-        const r1=parseAI(d1.content.filter(b=>b.type==="text").map(b=>b.text).join(""));
-        const r2=parseAI(d2.content.filter(b=>b.type==="text").map(b=>b.text).join(""));
-        const r3=parseAI(d3.content.filter(b=>b.type==="text").map(b=>b.text).join(""));
-        const r4=parseAI(d4.content.filter(b=>b.type==="text").map(b=>b.text).join(""));
-        const o2=r1.questions.length;
-        const o3=o2+r2.questions.length;
-        const o4=o3+r3.questions.length;
-        const r2qs=r2.questions.map(q=>({...q,id:q.id+o2}));
-        const r3qs=r3.questions.map(q=>({...q,id:q.id+o3}));
-        const r4qs=r4.questions.map(q=>({...q,id:q.id+o4}));
-        const r2ps=r2.passages.map(p=>({...p,id:p.id+"b"}));
-        const r3ps=r3.passages.map(p=>({...p,id:p.id+"c"}));
-        r2qs.forEach(q=>{if(q.passage_id)q.passage_id=q.passage_id+"b";});
-        r3qs.forEach(q=>{if(q.passage_id)q.passage_id=q.passage_id+"c";});
-        allPassages=[...r1.passages,...r2ps,...r3ps];
-        allQuestions=[...r1.questions,...r2qs,...r3qs,...r4qs];
-      }else if(mode==="standard"){
-        // 2-way parallel split: 15+15 = 30Q, each call ~2000 tokens → ~17s safely within 25s limit
-        setGenStage("Preparing your test paper...");
-        const [d1,d2]=await Promise.all([
-          callAI(buildStandardSplitPrompt(difficulty,"first"),MAX_TOKENS.standard[difficulty]).catch(e=>{classifyGenError(e,mode,difficulty,MAX_TOKENS.standard[difficulty],"first");throw e;}),
-          callAI(buildStandardSplitPrompt(difficulty,"second"),MAX_TOKENS.standard[difficulty]).catch(e=>{classifyGenError(e,mode,difficulty,MAX_TOKENS.standard[difficulty],"second");throw e;}),
-        ]);
-        setGenStage("Finalising your Standard Test paper...");
-        const r1=parseAI(d1.content.filter(b=>b.type==="text").map(b=>b.text).join(""));
-        const r2=parseAI(d2.content.filter(b=>b.type==="text").map(b=>b.text).join(""));
-        const offset=r1.questions.length;
-        const r2qs=r2.questions.map(q=>({...q,id:q.id+offset}));
-        const r2ps=r2.passages.map(p=>({...p,id:p.id+"b"}));
-        r2qs.forEach(q=>{if(q.passage_id)q.passage_id=q.passage_id+"b";});
-        allPassages=[...r1.passages,...r2ps];
-        allQuestions=[...r1.questions,...r2qs];
-      }else{
-        // Quick Practice — single call, 15Q
-        setGenStage("Preparing your test paper...");
-        const data=await callAI(buildTestPrompt(mode,difficulty),MAX_TOKENS[mode][difficulty]).catch(e=>{classifyGenError(e,mode,difficulty,MAX_TOKENS[mode][difficulty],"single");throw e;});
-        const r=parseAI(data.content.filter(b=>b.type==="text").map(b=>b.text).join(""));
-        allPassages=r.passages; allQuestions=r.questions;
-      }
-      if(!allQuestions.length){
-        classifyGenError(new Error("No questions were returned. Please try again."),mode,difficulty,MAX_TOKENS[mode]?.[difficulty]||0,"post_parse");
-        throw new Error("No questions were returned. Please try again.");
-      }
-      setPassages(allPassages); setQuestions(allQuestions);
-      setAnswers({}); setMarkedReview(new Set());
-      setVisited(new Set([allQuestions[0]?.id]));
-      setCurrentQ(0); setSelectedOpt(null);
-      setResults(null); setAdvisory(""); setGenStage("");
-      setTimeLeft(MODES[mode].secs);
-      // Increment free test counter for gated modes
-      if(user && GATED_MODES.includes(mode) && !isPaidUser(user.id)){
-        saveTestCount(user.id, getTestCount(user.id)+1);
-      }
-      trackEvent("test_started",{mode,difficulty,question_count:allQuestions.length});
-      setScreen("exam");
-    }catch(e){
-      // Only fire if not already tracked by a per-call .catch above
-      if(!e.__tracked){
-        classifyGenError(e,mode,difficulty,MAX_TOKENS[mode]?.[difficulty]||0,"outer_catch");
-      }
-      setGenError("Generation failed: "+e.message);
-      setGenStage(""); setScreen("dashboard");
-    }
-  };
-
-  // ─── Advisory ──────────────────────────────────────────────
-  const getAdvisory=async()=>{
-    if(!results) return;
-    setLoadingAdv(true);
-    try{
-      const data=await callAI(buildAdvisoryPrompt(results,user?.name||"Student"),1200);
-      const txt=data.content.filter(b=>b.type==="text").map(b=>b.text).join("");
-      setAdvisory(txt); setScreen("advisory");
-    }catch{
-      setAdvisory("Advisory unavailable. Please try again."); setScreen("advisory");
-    }finally{setLoadingAdv(false);}
-  };
-
-  const q=questions[currentQ];
-  const passage=q?.passage_id?passages.find(p=>p.id===q.passage_id):null;
-  const answeredCount=Object.keys(answers).length;
-  const timerRed=timeLeft<300, timerAmber=timeLeft<600&&!timerRed;
-  const tColor=timerRed?"#dc2626":timerAmber?"#b45309":"#1e3a8a";
-
-  // ════════════════════════════════════════════════════════
-  //  AUTH SCREEN
-  // ════════════════════════════════════════════════════════
-  if(screen==="auth") return(
-    <div style={{minHeight:"100vh",background:"#F8FAFC",fontFamily:"Inter,system-ui,sans-serif"}}>
-      {/* Top nav band */}
-      <div style={{background:"#0F1C2E",padding:"10px 24px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <div style={{background:"white",borderRadius:4,padding:"3px 10px",fontWeight:900,fontSize:13,color:"#0F1C2E",letterSpacing:2}}>NTA</div>
-        <div style={{color:"rgba(255,255,255,0.6)",fontSize:12,fontWeight:500,letterSpacing:"0.06em"}}>CUET (UG) 2026</div>
+  return (
+    <div style={{ minHeight: "100vh", background: "#fff", display: "flex", flexDirection: "column" }}>
+      <div style={{ background: "var(--navy)", height: 52, display: "flex", alignItems: "center", padding: "0 24px" }}>
+        <span className="nta-logo">Vantiq <span>CUET</span></span>
       </div>
-      {/* Center content */}
-      <div style={{maxWidth:400,margin:"0 auto",padding:"56px 24px 24px"}}>
-        <div style={{textAlign:"center",marginBottom:32}}>
-          <h1 style={{margin:"0 0 8px",fontSize:20,fontWeight:700,color:"#0F1C2E",lineHeight:1.3}}>CUET English Mock Test Series — 2026</h1>
-          <p style={{margin:"0 0 4px",fontSize:13,color:"#334155"}}>Section I — Language Proficiency (English)</p>
-          <p style={{margin:0,fontSize:11,color:"#94A3B8",fontWeight:600,letterSpacing:"0.06em",textTransform:"uppercase"}}>Vantiq Education</p>
-        </div>
-        <div style={{background:"white",border:"1px solid #E2E8F0",borderRadius:8,padding:"28px 24px",boxShadow:"0 1px 3px rgba(0,0,0,0.08),0 1px 2px rgba(0,0,0,0.04)"}}>
-          {authMode==="register"&&(
-            <div style={{marginBottom:16}}>
-              <label style={{display:"block",fontSize:11,fontWeight:600,color:"#64748B",marginBottom:5,textTransform:"uppercase",letterSpacing:"0.06em"}}>Full Name</label>
-              <input value={authForm.name} onChange={e=>setAuthForm(f=>({...f,name:e.target.value}))} placeholder="Your full name" style={{width:"100%",padding:"9px 12px",border:"1px solid #E2E8F0",borderRadius:6,fontSize:14,boxSizing:"border-box",outline:"none",color:"#0F1C2E",background:"#F8FAFC"}} onFocus={e=>e.target.style.borderColor="#4338CA"} onBlur={e=>e.target.style.borderColor="#E2E8F0"}/>
-            </div>
-          )}
-          <div style={{marginBottom:16}}>
-            <label style={{display:"block",fontSize:11,fontWeight:600,color:"#64748B",marginBottom:5,textTransform:"uppercase",letterSpacing:"0.06em"}}>Email</label>
-            <input type="email" value={authForm.email} onChange={e=>setAuthForm(f=>({...f,email:e.target.value}))} placeholder="you@email.com" style={{width:"100%",padding:"9px 12px",border:"1px solid #E2E8F0",borderRadius:6,fontSize:14,boxSizing:"border-box",outline:"none",color:"#0F1C2E",background:"#F8FAFC"}} onFocus={e=>e.target.style.borderColor="#4338CA"} onBlur={e=>e.target.style.borderColor="#E2E8F0"}/>
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "40px 24px" }}>
+        <div style={{ width: "100%", maxWidth: 400 }}>
+          <div style={{ marginBottom: 32 }}>
+            <h1 style={{ fontFamily: "var(--font-display)", fontSize: 34, color: "var(--navy)", lineHeight: 1.2, marginBottom: 10 }}>
+              CUET English<br />Mock Test Series
+            </h1>
+            <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>
+              2026 Edition &middot; Subject 101 &middot; 50 Questions &middot; 60 Minutes
+            </p>
           </div>
-          <div style={{marginBottom:authErr?"12px":"20px"}}>
-            <label style={{display:"block",fontSize:11,fontWeight:600,color:"#64748B",marginBottom:5,textTransform:"uppercase",letterSpacing:"0.06em"}}>Password</label>
-            <input type="password" value={authForm.password} onChange={e=>setAuthForm(f=>({...f,password:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&handleAuth()} placeholder="Minimum 6 characters" style={{width:"100%",padding:"9px 12px",border:"1px solid #E2E8F0",borderRadius:6,fontSize:14,boxSizing:"border-box",outline:"none",color:"#0F1C2E",background:"#F8FAFC"}} onFocus={e=>e.target.style.borderColor="#4338CA"} onBlur={e=>e.target.style.borderColor="#E2E8F0"}/>
-          </div>
-          {authErr&&<div style={{background:"#FFF1F1",border:"1px solid #FCA5A5",color:"#DC2626",padding:"9px 12px",borderRadius:6,fontSize:13,marginBottom:16,lineHeight:1.5}}>{authErr}</div>}
-          <button onClick={handleAuth} style={{width:"100%",height:44,background:"#0F1C2E",color:"white",border:"none",borderRadius:6,fontSize:14,fontWeight:600,cursor:"pointer",letterSpacing:"0.02em",transition:"background 0.15s"}} onMouseEnter={e=>e.target.style.background="#1E2D42"} onMouseLeave={e=>e.target.style.background="#0F1C2E"}>
-            Continue
-          </button>
-          {/* Divider */}
-          <div style={{display:"flex",alignItems:"center",gap:12,margin:"20px 0 16px"}}>
-            <div style={{flex:1,height:1,background:"#E2E8F0"}}/>
-            <span style={{fontSize:11,color:"#94A3B8",letterSpacing:"0.04em",whiteSpace:"nowrap"}}>or continue with</span>
-            <div style={{flex:1,height:1,background:"#E2E8F0"}}/>
-          </div>
-          {/* Social login */}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
-            {[{name:"Google",icon:"G"},{name:"Facebook",icon:"f"}].map(({name,icon})=>(
-              <button key={name} onClick={name==="Google"?signInWithGoogle:signInWithFacebook} style={{padding:"9px 12px",border:"1px solid #E2E8F0",borderRadius:6,background:"white",cursor:"pointer",fontSize:13,fontWeight:500,color:"#334155",display:"flex",alignItems:"center",justifyContent:"center",gap:8,transition:"border-color 0.15s"}} onMouseEnter={e=>e.target.style.borderColor="#CBD5E1"} onMouseLeave={e=>e.target.style.borderColor="#E2E8F0"}>
-                <span style={{width:18,height:18,borderRadius:3,background:name==="Google"?"#EA4335":"#1877F2",color:"white",fontSize:11,fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{icon}</span>
-                {`Sign in with ${name}`}
-              </button>
+          <div style={{ display: "flex", gap: 8, marginBottom: 36, flexWrap: "wrap" }}>
+            {["NTA Pattern", "AI-Generated", "Instant Analysis"].map(t => (
+              <span key={t} className="pill pill-navy">{t}</span>
             ))}
           </div>
-          <div style={{textAlign:"center",fontSize:13,color:"#94A3B8"}}>
-            {authMode==="login"?(<>New here?{" "}<button onClick={()=>{setAuthMode("register");setAuthErr("");}} style={{background:"none",border:"none",color:"#4338CA",cursor:"pointer",fontWeight:600,fontSize:13,padding:0,textDecoration:"underline"}}>Create your practice account</button></>):(<>Have an account?{" "}<button onClick={()=>{setAuthMode("login");setAuthErr("");}} style={{background:"none",border:"none",color:"#4338CA",cursor:"pointer",fontWeight:600,fontSize:13,padding:0,textDecoration:"underline"}}>Sign in instead</button></>)}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  // ════════════════════════════════════════════════════════
-  //  DASHBOARD
-  // ════════════════════════════════════════════════════════
-  if(screen==="dashboard"){
-    const best=history.filter(t=>!t.abandoned).length?Math.max(...history.filter(t=>!t.abandoned).map(t=>t.percentage)):null;
-    const avg=history.filter(t=>!t.abandoned).length?Math.round(history.filter(t=>!t.abandoned).reduce((s,t)=>s+t.percentage,0)/history.filter(t=>!t.abandoned).length):null;
-    const totalDone=history.reduce((s,t)=>s+(t.qCount||0),0);
-    const bestColor=best===null?"#4338CA":best>=70?"#059669":best>=50?"#D97706":"#DC2626";
-    const avgColor=avg===null?"#4338CA":avg>=70?"#059669":avg>=50?"#D97706":"#DC2626";
-    return(
-      <div style={{minHeight:"100vh",background:"#F8FAFC",fontFamily:"Inter,system-ui,sans-serif"}}>
-        {/* Header */}
-        <div style={{background:"#0F1C2E",padding:"10px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
-          <div style={{display:"flex",alignItems:"center",gap:14}}>
-            <div style={{background:"white",borderRadius:4,padding:"3px 10px",fontWeight:900,fontSize:13,color:"#0F1C2E",letterSpacing:2}}>NTA</div>
-            <div style={{color:"white"}}>
-              <div style={{fontWeight:600,fontSize:14,lineHeight:1.3}}>CUET (UG) 2026 — English (101)</div>
-              <div style={{fontSize:11,color:"rgba(255,255,255,0.45)"}}>Vantiq Education</div>
-            </div>
-          </div>
-          <div style={{display:"flex",alignItems:"center",gap:14}}>
-            <div style={{textAlign:"right",color:"white"}}>
-              <div style={{fontWeight:600,fontSize:13}}>{user?.name}</div>
-              <div style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>{user?.email}</div>
-            </div>
-            <button onClick={handleLogout} style={{background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",color:"rgba(255,255,255,0.8)",padding:"6px 14px",borderRadius:5,cursor:"pointer",fontSize:12,fontWeight:500,transition:"background 0.15s"}} onMouseEnter={e=>e.target.style.background="rgba(255,255,255,0.15)"} onMouseLeave={e=>e.target.style.background="rgba(255,255,255,0.08)"}>Logout</button>
-          </div>
-        </div>
-
-        <div style={{maxWidth:880,margin:"0 auto",padding:"28px 20px"}}>
-          {/* Stats strip */}
-          {history.filter(t=>!t.abandoned).length>0&&(
-            <div style={{marginBottom:28}}>
-              <div style={{fontSize:11,fontWeight:600,color:"#64748B",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:12}}>Your Practice Summary</div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12}} className="stats-grid">
-                {[
-                  {v:best!==null?best+"%":"—",l:"Best Score",c:bestColor},
-                  {v:avg!==null?avg+"%":"—",l:"Average Score",c:avgColor},
-                  {v:history.length,l:"Tests Taken",c:"#4338CA"},
-                ].map(({v,l,c})=>(
-                  <div key={l} style={{background:"white",border:"1px solid #E2E8F0",borderRadius:8,padding:"16px 18px",borderLeft:`4px solid ${c}`,boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}>
-                    <div style={{fontSize:28,fontWeight:700,color:c,lineHeight:1.1}}>{v}</div>
-                    <div style={{fontSize:11,fontWeight:600,color:"#64748B",marginTop:5,textTransform:"uppercase",letterSpacing:"0.06em"}}>{l}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* New Test Paper */}
-          <div style={{background:"white",border:"1px solid #E2E8F0",borderRadius:8,padding:"24px",boxShadow:"0 1px 3px rgba(0,0,0,0.06)",marginBottom:24}}>
-            <div style={{fontSize:16,fontWeight:600,color:"#0F1C2E",marginBottom:20}}>New Test Paper</div>
-
-            {/* Mode tiles */}
-            <div style={{marginBottom:20}}>
-              <div style={{fontSize:11,fontWeight:600,color:"#64748B",marginBottom:10,textTransform:"uppercase",letterSpacing:"0.06em"}}>Test Mode</div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}} className="mode-grid">
-                {Object.entries(MODES).map(([k,m])=>(
-                  <div key={k} onClick={()=>setMode(k)} style={{border:`${mode===k?"2px solid #4338CA":"1px solid #E2E8F0"}`,borderRadius:8,padding:"14px 12px",cursor:"pointer",background:mode===k?"#EEF2FF":"white",transition:"box-shadow 0.1s,border-color 0.1s",userSelect:"none",position:"relative",boxShadow:mode===k?"none":"0 1px 2px rgba(0,0,0,0.04)"}} onMouseEnter={e=>{if(mode!==k)e.currentTarget.style.boxShadow="0 2px 8px rgba(0,0,0,0.10)";}} onMouseLeave={e=>{if(mode!==k)e.currentTarget.style.boxShadow="0 1px 2px rgba(0,0,0,0.04)";}}>
-                    {mode===k&&<div style={{position:"absolute",top:8,right:8,width:7,height:7,borderRadius:"50%",background:"#4338CA"}}/>}
-                    <div style={{fontWeight:600,fontSize:14,color:mode===k?"#4338CA":"#0F1C2E",marginBottom:3}}>{m.label}</div>
-                    <div style={{fontSize:11,color:"#94A3B8"}}>{m.tag}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Difficulty tiles */}
-            <div style={{marginBottom:24}}>
-              <div style={{fontSize:11,fontWeight:600,color:"#64748B",marginBottom:10,textTransform:"uppercase",letterSpacing:"0.06em"}}>Difficulty Level</div>
-              <div style={{display:"flex",gap:8}} className="diff-row">
-                {Object.entries(DIFFS).map(([k,d])=>(
-                  <button key={k} onClick={()=>setDifficulty(k)} style={{flex:1,padding:"13px 8px",border:`${difficulty===k?"2px solid "+d.color:"1px solid #E2E8F0"}`,borderRadius:8,cursor:"pointer",background:difficulty===k?d.bg:"white",color:difficulty===k?d.color:"#334155",fontWeight:600,fontSize:14,transition:"box-shadow 0.1s",position:"relative",boxShadow:difficulty===k?"none":"0 1px 2px rgba(0,0,0,0.04)"}} onMouseEnter={e=>{if(difficulty!==k)e.currentTarget.style.boxShadow="0 2px 8px rgba(0,0,0,0.10)";}} onMouseLeave={e=>{if(difficulty!==k)e.currentTarget.style.boxShadow="0 1px 2px rgba(0,0,0,0.04)";}}>
-                    {difficulty===k&&<div style={{position:"absolute",top:7,right:7,width:6,height:6,borderRadius:"50%",background:d.color}}/>}
-                    {d.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Free test usage indicator */}
-            {user&&!isPaidUser(user.id)&&(()=>{
-              const used=history.filter(t=>GATED_MODES.includes(t.mode)&&!t.abandoned).length;
-              const remaining=Math.max(0,FREE_LIMIT-used);
-              return(
-                <div style={{fontSize:12,color:remaining===0?"#DC2626":remaining<=2?"#D97706":"#64748B",marginBottom:14,display:"flex",alignItems:"center",gap:5}}>
-                  <span>{remaining===0?"All free tests used.":remaining===1?"1 free Standard/Full Mock test remaining.":`${remaining} of ${FREE_LIMIT} free Standard/Full Mock tests remaining.`}</span>
-                  {remaining===0&&<span style={{color:"#4338CA",fontWeight:600,cursor:"pointer",textDecoration:"underline"}} onClick={()=>setShowPaywall(true)}>Unlock unlimited →</span>}
-                </div>
-              );
-            })()}
-            {genError&&<div style={{background:"#FFF1F1",border:"1px solid #FCA5A5",color:"#DC2626",padding:"10px 14px",borderRadius:6,fontSize:13,marginBottom:16,lineHeight:1.6}}>{genError}<br/><span style={{fontSize:12,color:"#94A3B8"}}>Check your connection and try again. For persistent errors, try Easy difficulty first.</span></div>}
-
-            <button onClick={generateTest} style={{width:"100%",height:44,background:"#0F1C2E",color:"white",border:"none",borderRadius:6,fontSize:14,fontWeight:600,cursor:"pointer",letterSpacing:"0.02em",transition:"background 0.15s"}} onMouseEnter={e=>e.target.style.background="#1E2D42"} onMouseLeave={e=>e.target.style.background="#0F1C2E"}>
-              Begin Test →
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 16 }}>
+            <button
+              onClick={handleGoogle}
+              disabled={loading === "google"}
+              style={{ height: 44, border: "1.5px solid var(--border)", borderRadius: 8, background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, fontSize: 14, fontWeight: 500, color: "var(--text-primary)", fontFamily: "var(--font-body)", cursor: "pointer", transition: "border-color .15s" }}
+              onMouseOver={e => e.currentTarget.style.borderColor = "var(--indigo)"}
+              onMouseOut={e => e.currentTarget.style.borderColor = "var(--border)"}
+            >
+              <GoogleIcon />
+              {loading === "google" ? "Signing in..." : "Continue with Google"}
+            </button>
+            <button
+              onClick={() => showToast("Facebook login coming soon", "info")}
+              title="Facebook login not yet active"
+              style={{ height: 44, border: "1.5px solid var(--border)", borderRadius: 8, background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, fontSize: 14, fontWeight: 500, color: "var(--text-primary)", fontFamily: "var(--font-body)", cursor: "pointer", opacity: 0.6 }}
+            >
+              <FacebookIcon />
+              Continue with Facebook
             </button>
           </div>
+          {error && <div className="error-msg">{error}</div>}
+          <p style={{ textAlign: "center", fontSize: 13, color: "var(--text-muted)", marginTop: 24 }}>
+            {mode === "login"
+              ? <React.Fragment>New here?{" "}<span style={{ color: "var(--indigo)", cursor: "pointer", fontWeight: 500 }} onClick={() => setMode("register")}>Create an account</span></React.Fragment>
+              : <React.Fragment>Have an account?{" "}<span style={{ color: "var(--indigo)", cursor: "pointer", fontWeight: 500 }} onClick={() => setMode("login")}>Sign in</span></React.Fragment>
+            }
+          </p>
+          <p style={{ textAlign: "center", fontSize: 11, color: "var(--text-muted)", marginTop: 20, lineHeight: 1.6 }}>
+            By continuing, you agree to our Terms of Service and Privacy Policy.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-          {/* Test History */}
-          {history.length>0?(
-            <div style={{background:"white",border:"1px solid #E2E8F0",borderRadius:8,padding:"20px 24px",boxShadow:"0 1px 3px rgba(0,0,0,0.06)"}}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
-                <div style={{fontSize:14,fontWeight:600,color:"#0F1C2E"}}>Test History</div>
-                <div style={{fontSize:11,color:"#94A3B8"}}>{history.length} record{history.length!==1?"s":""}</div>
-              </div>
-              <div style={{overflowX:"auto"}}>
-                <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-                  <thead>
-                    <tr style={{borderBottom:"1px solid #E2E8F0"}}>
-                      {["Date & Time","Mode","Difficulty","Score","Correct","Wrong","Skipped"].map(h=>(
-                        <th key={h} style={{padding:"8px 10px",textAlign:"left",fontSize:11,fontWeight:600,color:"#64748B",textTransform:"uppercase",letterSpacing:"0.06em",whiteSpace:"nowrap"}}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {history.map((t,i)=>{
-                      const sc=t.percentage>=70?"#059669":t.percentage>=50?"#D97706":"#DC2626";
-                      return(
-                        <tr key={t.id} style={{borderBottom:"1px solid #F1F5F9"}}>
-                          <td style={{padding:"10px",color:"#64748B",whiteSpace:"nowrap",fontSize:12}}>
-                            {new Date(t.date).toLocaleDateString("en-IN",{day:"2-digit",month:"short"})},{" "}
-                            {new Date(t.date).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})}
-                          </td>
-                          <td style={{padding:"10px"}}>
-                            <span style={{background:"#F1F5F9",color:"#334155",fontSize:11,fontWeight:600,padding:"2px 9px",borderRadius:4,letterSpacing:"0.02em"}}>{t.mode?.charAt(0).toUpperCase()+t.mode?.slice(1)}</span>
-                            {t.abandoned&&<span style={{marginLeft:6,background:"#FEF3C7",color:"#92400E",fontSize:10,fontWeight:600,padding:"1px 7px",borderRadius:4}}>Incomplete</span>}
-                          </td>
-                          <td style={{padding:"10px"}}>
-                            <span style={{background:DIFFS[t.difficulty]?.bg,color:DIFFS[t.difficulty]?.color,padding:"2px 9px",borderRadius:4,fontSize:11,fontWeight:600}}>{t.difficulty?.charAt(0).toUpperCase()+t.difficulty?.slice(1)}</span>
-                          </td>
-                          <td style={{padding:"10px",fontWeight:700,color:sc,fontSize:13}}>{t.percentage}%</td>
-                          <td style={{padding:"10px",color:"#059669",fontWeight:600}}>{t.correct}</td>
-                          <td style={{padding:"10px",color:"#DC2626",fontWeight:600}}>{t.wrong}</td>
-                          <td style={{padding:"10px",color:"#94A3B8"}}>{t.unattempted}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+// ── Google + Facebook icons ───────────────────────────────────────────────────
+function GoogleIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18">
+      <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/>
+      <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.909-2.258c-.806.54-1.837.86-3.047.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/>
+      <path fill="#FBBC05" d="M3.964 10.707A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.707V4.961H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z"/>
+      <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 6.293C4.672 4.163 6.656 3.58 9 3.58z"/>
+    </svg>
+  );
+}
+function FacebookIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24">
+      <path fill="#1877F2" d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+    </svg>
+  );
+}
+
+// ── DASHBOARD SCREEN ──────────────────────────────────────────────────────────
+function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, showToast }) {
+  const [mode,        setMode]        = useState("Mock");
+  const [showPaywall, setShowPaywall] = useState(false);
+  const [checking,    setChecking]    = useState(false);
+
+  const testsUsed = userData?.testsUsed || 0;
+  const unlocked  = userData?.unlocked  || false;
+  const testsLeft = Math.max(0, FREE_LIMIT - testsUsed);
+  const scores    = testHistory.map(t => t.accuracy || 0);
+  const avgScore  = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
+  const bestScore = scores.length ? Math.max(...scores) : null;
+
+  useEffect(() => { logEvent("page_view", { page: "dashboard", user_id: user?.uid }); }, []);
+
+  const MODES = {
+    Practice:   { label: "Practice",    desc: "Topic-wise, concept building" },
+    Mock:       { label: "Mock Exam",   desc: "Full NTA simulation, 60 min" },
+    SpeedDrill: { label: "Speed Drill", desc: "30 min, high-pressure drill" },
+  };
+
+  async function handleBegin() {
+    setChecking(true);
+    try {
+      if (CF_BASE) {
+        const r = await fetch(`${CF_BASE}/checkTestLimit`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ uid: user?.uid }),
+        });
+        const d = await r.json();
+        if (!d.allowed) {
+          logEvent("paywall_triggered", { user_id: user?.uid, tests_used: testsUsed });
+          setShowPaywall(true); return;
+        }
+      } else if (!unlocked && testsUsed >= FREE_LIMIT) {
+        logEvent("paywall_triggered", { user_id: user?.uid, tests_used: testsUsed });
+        setShowPaywall(true); return;
+      }
+      onBeginTest({ mode });
+    } catch(_) {
+      if (!unlocked && testsUsed >= FREE_LIMIT) { setShowPaywall(true); return; }
+      onBeginTest({ mode });
+    } finally { setChecking(false); }
+  }
+
+  function handlePaySuccess() {
+    setShowPaywall(false);
+    showToast("Payment verified! Full access unlocked.", "info");
+    onBeginTest({ mode });
+  }
+
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+      {showPaywall && <PaywallModal user={user} onSuccess={handlePaySuccess} onClose={() => setShowPaywall(false)} />}
+
+      <div className="nta-header">
+        <span className="nta-logo">Vantiq <span>CUET</span></span>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <span style={{ fontSize: 13, opacity: 0.8 }}>{user?.displayName?.split(" ")[0]}</span>
+          <button onClick={onLogout} style={{ background: "transparent", color: "#fff", fontSize: 12, opacity: 0.7, padding: "4px 8px", border: "1px solid rgba(255,255,255,.2)", borderRadius: 4, fontFamily: "var(--font-body)", cursor: "pointer" }}>
+            Sign out
+          </button>
+        </div>
+      </div>
+
+      <div style={{ flex: 1, maxWidth: 900, margin: "0 auto", width: "100%", padding: "28px 24px" }}>
+        <h2 style={{ fontSize: 12, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 16 }}>
+          Your Practice Summary
+        </h2>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12, marginBottom: 36 }}>
+          {[
+            { label: "Tests Taken",  val: testsUsed,  sub: unlocked ? "Unlimited" : `${testsLeft} free left` },
+            { label: "Avg. Score",   val: avgScore != null ? `${avgScore}%` : "—", sub: "across all tests" },
+            { label: "Best Score",   val: bestScore != null ? `${bestScore}%` : "—", sub: "personal best" },
+            { label: "Access",       val: unlocked ? "Pro" : "Free", sub: unlocked ? "Full access" : `${testsLeft} of 5 remaining` },
+          ].map(s => (
+            <div key={s.label} className="stat-strip">
+              <div style={{ fontSize: 22, fontWeight: 700, color: "var(--navy)", fontFamily: "var(--font-mono)" }}>{s.val}</div>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{s.label}</div>
+              <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 1 }}>{s.sub}</div>
             </div>
-          ):(
-            <div style={{textAlign:"center",padding:"48px 20px",background:"white",border:"1px solid #E2E8F0",borderRadius:8}}>
-              <div style={{fontSize:13,fontWeight:600,color:"#0F1C2E",marginBottom:6}}>No tests taken yet</div>
-              <div style={{fontSize:13,color:"#64748B",maxWidth:340,margin:"0 auto"}}>Select a mode and difficulty above to generate your first test and begin tracking your preparation.</div>
+          ))}
+        </div>
+
+        <div className="card" style={{ padding: "24px 28px", marginBottom: 28 }}>
+          <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--navy)", marginBottom: 4 }}>New Test Paper</h3>
+          <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 24 }}>
+            50 questions &middot; 60 min &middot; +5 correct / &minus;1 wrong
+          </p>
+
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 10 }}>Mode</div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {Object.entries(MODES).map(([k, cfg]) => (
+                <div key={k} onClick={() => setMode(k)} style={{ border: `2px solid ${mode === k ? "var(--navy)" : "var(--border)"}`, borderRadius: 10, padding: "12px 18px", cursor: "pointer", minWidth: 140, background: mode === k ? "#EEF2FF" : "#fff", boxShadow: mode === k ? "0 2px 8px rgba(67,56,202,.12)" : "none", transition: "all .15s" }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: "var(--navy)", marginBottom: 4 }}>{cfg.label}</div>
+                  <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>{cfg.desc}</div>
+                </div>
+              ))}
             </div>
+          </div>
+
+          <button className="btn-primary full" onClick={handleBegin} disabled={checking}>
+            {checking ? "Checking..." : "Begin Test →"}
+          </button>
+          {!unlocked && (
+            <p style={{ textAlign: "center", marginTop: 10, fontSize: 12, color: "var(--text-muted)" }}>
+              {testsLeft > 0 ? `${testsLeft} free test${testsLeft !== 1 ? "s" : ""} remaining` : "Free limit reached — unlock above"}
+            </p>
           )}
         </div>
 
-        {/* ── Paywall Modal ─────────────────────────────── */}
-        {showPaywall&&(
-          <div style={{position:"fixed",inset:0,background:"rgba(15,28,46,0.72)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
-            <div style={{background:"white",borderRadius:12,padding:"36px 32px",maxWidth:440,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.25)",fontFamily:"Inter,system-ui,sans-serif",textAlign:"center"}}>
-              {/* Lock icon */}
-              <div style={{width:56,height:56,background:"#EEF2FF",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 20px",fontSize:24}}>🔒</div>
-              <div style={{fontSize:20,fontWeight:700,color:"#0F1C2E",marginBottom:8}}>You've used your {FREE_LIMIT} free tests</div>
-              <div style={{fontSize:14,color:"#64748B",lineHeight:1.7,marginBottom:8}}>
-                Unlock unlimited Standard &amp; Full Mock tests with one-time access.
-              </div>
-              {/* Value prop strip */}
-              <div style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:8,padding:"14px 16px",marginBottom:20,textAlign:"left"}}>
-                {[
-                  "Unlimited Standard + Full Mock tests",
-                  "All 3 difficulty levels — Easy, Medium, Hard",
-                  "Performance coaching after every test",
-                  "Lifetime access — no subscription",
-                ].map(f=>(
-                  <div key={f} style={{display:"flex",alignItems:"center",gap:8,marginBottom:7,fontSize:13,color:"#334155"}}>
-                    <span style={{color:"#059669",fontWeight:700,flexShrink:0}}>✓</span>{f}
-                  </div>
-                ))}
-              </div>
-              {paywallErr&&<div style={{background:"#FFF1F1",border:"1px solid #FCA5A5",color:"#DC2626",padding:"9px 12px",borderRadius:6,fontSize:13,marginBottom:14,lineHeight:1.5,textAlign:"left"}}>{paywallErr}</div>}
-              {/* CTA */}
-              <button
-                onClick={()=>{
-                  setPaywallErr("");
-                  openRazorpay({
-                    userId:user.id,
-                    userName:user.name,
-                    userEmail:user.email,
-                    onSuccess:()=>{ setPaidUser(user.id); setShowPaywall(false); setPaywallErr(""); generateTest(); },
-                    onFailure:(msg)=>{ if(msg!=="dismissed") setPaywallErr(msg||"Payment failed. Please try again."); }
-                  });
-                }}
-                style={{width:"100%",height:48,background:"#0F1C2E",color:"white",border:"none",borderRadius:8,fontSize:15,fontWeight:700,cursor:"pointer",marginBottom:10,transition:"background 0.15s"}}
-                onMouseEnter={e=>e.target.style.background="#1E2D42"}
-                onMouseLeave={e=>e.target.style.background="#0F1C2E"}
-              >
-                Unlock All Tests — ₹199
-              </button>
-              <button
-                onClick={()=>{ setShowPaywall(false); setPaywallErr(""); }}
-                style={{width:"100%",height:40,background:"transparent",color:"#94A3B8",border:"1px solid #E2E8F0",borderRadius:8,fontSize:13,fontWeight:500,cursor:"pointer"}}
-              >
-                Not now
-              </button>
-              <div style={{fontSize:11,color:"#94A3B8",marginTop:12}}>
-                Secured by Razorpay · One-time payment · No subscription
-              </div>
-            </div>
+        <h3 style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)", marginBottom: 14 }}>Recent Tests</h3>
+        {testHistory.length === 0 ? (
+          <div style={{ border: "1px dashed var(--border)", borderRadius: 10, padding: 32, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
+            No tests attempted yet. Start your first test above.
+          </div>
+        ) : (
+          <div className="card" style={{ overflow: "hidden" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: "var(--bg-alt)", borderBottom: "1px solid var(--border)" }}>
+                  {["Date", "Mode", "Score", "Correct", "Accuracy", "Status"].map(h => (
+                    <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontWeight: 600, fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-secondary)" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {testHistory.map((t, i) => {
+                  const p = t.accuracy || 0;
+                  return (
+                    <tr key={i} style={{ borderBottom: i < testHistory.length - 1 ? "1px solid var(--border)" : "none" }}>
+                      <td style={{ padding: "12px 14px", color: "var(--text-secondary)" }}>{fmtDate(t.completedAt)}</td>
+                      <td style={{ padding: "12px 14px" }}><span className="pill pill-navy">{t.mode || "Mock"}</span></td>
+                      <td style={{ padding: "12px 14px", fontWeight: 600, fontFamily: "var(--font-mono)" }}>{t.totalScore ?? "—"}</td>
+                      <td style={{ padding: "12px 14px", fontFamily: "var(--font-mono)" }}>{t.correct}/{t.attempted}</td>
+                      <td style={{ padding: "12px 14px", fontWeight: 600, color: scoreColor(p), fontFamily: "var(--font-mono)" }}>{p}%</td>
+                      <td style={{ padding: "12px 14px" }}>
+                        <span className={"pill " + (p >= 70 ? "pill-green" : p >= 45 ? "pill-amber" : "pill-red")}>
+                          {p >= 70 ? "Strong" : p >= 45 ? "Average" : "Needs Work"}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
-
       </div>
-    );
-  }
-
-  // ════════════════════════════════════════════════════════
-  //  GENERATING SCREEN
-  // ════════════════════════════════════════════════════════
-  if(screen==="generating") return(
-    <div style={{minHeight:"100vh",background:"#F8FAFC",display:"flex",alignItems:"center",justifyContent:"center",padding:20,fontFamily:"Inter,system-ui,sans-serif"}}>
-      <div style={{background:"white",border:"1px solid #E2E8F0",borderRadius:8,padding:"40px 40px",maxWidth:440,width:"100%",boxShadow:"0 4px 16px rgba(0,0,0,0.08)"}}>
-        {/* Tags */}
-        <div style={{display:"flex",gap:8,justifyContent:"center",marginBottom:28}}>
-          <span style={{background:"#EEF2FF",color:"#4338CA",fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:4,textTransform:"uppercase",letterSpacing:"0.06em"}}>{MODES[mode]?.q} Questions</span>
-          <span style={{background:DIFFS[difficulty]?.bg,color:DIFFS[difficulty]?.color,fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:4,textTransform:"uppercase",letterSpacing:"0.06em"}}>{DIFFS[difficulty]?.label}</span>
-        </div>
-        {/* Progress bar */}
-        <div style={{background:"#E2E8F0",borderRadius:4,height:3,overflow:"hidden",marginBottom:24,position:"relative"}}>
-          <div style={{position:"absolute",top:0,height:"100%",background:"#4338CA",borderRadius:4,animation:"indeterminate 2.2s ease-in-out infinite"}}/>
-        </div>
-        {/* Status */}
-        <div style={{textAlign:"center"}}>
-          <div style={{fontSize:15,fontWeight:600,color:"#0F1C2E",marginBottom:6}}>{MODES[mode]?.label}</div>
-          <div style={{fontSize:13,color:"#64748B",lineHeight:1.6}}>Preparing your test paper. Please do not close this tab.</div>
-        </div>
-      </div>
-      <style>{`@keyframes indeterminate{0%{left:-50%;width:50%}50%{left:30%;width:70%}100%{left:100%;width:50%}}`}</style>
     </div>
   );
+}
 
-  // ════════════════════════════════════════════════════════
-  //  EXAM SCREEN
-  // ════════════════════════════════════════════════════════
-  if(screen==="exam"&&q){
-    const qst=qId=>getQStatus(qId,answers,markedReview,visited);
-    const qstyle=qId=>{const s=QS[qst(qId)];return{width:32,height:32,background:s.bg,border:`2px solid ${s.border}`,color:s.text,borderRadius:3,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,cursor:"pointer",flexShrink:0};};
-    return(
-      <div style={{minHeight:"100vh",background:"#EAECEF",fontFamily:"Inter,system-ui,sans-serif",fontSize:14,display:"flex",flexDirection:"column"}}>
-        {/* 5-minute warning */}
-        {showWarn&&(
-          <div style={{background:"#DC2626",color:"white",textAlign:"center",padding:"9px 16px",fontWeight:600,fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:12}}>
-            Only 5 minutes remaining — review your marked questions now.
-            <button onClick={()=>setShowWarn(false)} style={{background:"rgba(255,255,255,0.2)",border:"none",color:"white",padding:"2px 10px",borderRadius:4,cursor:"pointer",fontSize:12}}>Dismiss</button>
+// ── GENERATING SCREEN ─────────────────────────────────────────────────────────
+function GeneratingScreen({ config }) {
+  useEffect(() => { logEvent("page_view", { page: "generating" }); }, []);
+  return (
+    <div style={{ minHeight: "100vh", background: "#fff", display: "flex", flexDirection: "column" }}>
+      <div className="nta-header"><span className="nta-logo">Vantiq <span>CUET</span></span></div>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 24px" }}>
+        <div style={{ width: "100%", maxWidth: 440, textAlign: "center" }}>
+          <div style={{ display: "flex", gap: 8, justifyContent: "center", marginBottom: 32 }}>
+            <span className="pill pill-indigo">{config?.mode || "Mock"}</span>
+            <span className="pill pill-navy">English 101</span>
+            <span className="pill pill-navy">50Q &middot; 60 min</span>
           </div>
-        )}
-        {/* NTA Header */}
-        <div style={{background:"#0F1C2E",padding:"8px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
-          <div style={{display:"flex",alignItems:"center",gap:12}}>
-            <div style={{background:"white",borderRadius:3,padding:"2px 9px",fontWeight:900,fontSize:12,color:"#0F1C2E",letterSpacing:2}}>NTA</div>
-            <div style={{color:"rgba(255,255,255,0.85)",fontSize:12,fontWeight:500}}>CUET (UG) — 2026 | Section I — English (101)</div>
-          </div>
-          <div style={{display:"flex",alignItems:"center",gap:16}}>
-            <div style={{textAlign:"right"}}>
-              <div style={{color:"rgba(255,255,255,0.85)",fontSize:12}}>Candidate: <strong style={{color:"white"}}>{user?.name}</strong></div>
-              <button onClick={abandonTest} style={{background:"none",border:"none",color:"rgba(255,255,255,0.35)",cursor:"pointer",fontSize:11,padding:0,textAlign:"right",display:"block",marginLeft:"auto",textDecoration:"none"}} onMouseEnter={e=>e.target.style.color="rgba(255,255,255,0.7)"} onMouseLeave={e=>e.target.style.color="rgba(255,255,255,0.35)"}>Exit</button>
-            </div>
-            <div style={{background:"white",padding:"5px 14px",borderRadius:4,fontFamily:"'Courier New',monospace",fontSize:18,fontWeight:900,color:tColor,letterSpacing:1,animation:timerRed?"blink 1s infinite":"none",border:`1px solid ${tColor}30`}}>
-              {fmtTime(timeLeft)}
-            </div>
-          </div>
+          <h2 style={{ fontFamily: "var(--font-display)", fontSize: 26, color: "var(--navy)", marginBottom: 8 }}>Building Your Paper</h2>
+          <p style={{ fontSize: 14, color: "var(--text-secondary)", marginBottom: 32 }}>
+            Preparing your test paper. Please do not close this tab.
+          </p>
+          <div className="pbar-track"><div className="pbar-fill" /></div>
         </div>
-        {/* Section label bar */}
-        <div style={{background:"#F1F5F9",padding:"7px 20px",borderBottom:"1px solid #E2E8F0",flexShrink:0}}>
-          <span style={{fontSize:11,fontWeight:600,color:"#64748B",letterSpacing:"0.04em"}}>SECTION: LANGUAGE (ENGLISH) | Multiple Choice (Single Correct) | {DIFFS[difficulty]?.label?.toUpperCase()} DIFFICULTY</span>
-        </div>
-        {/* Main layout */}
-        <div style={{display:"flex",flex:1,overflow:"hidden",minHeight:0}} className="exam-main">
-          {/* Question area */}
-          <div style={{flex:1,padding:14,overflowY:"auto",background:"#EAECEF"}}>
-            {/* Q header */}
-            <div style={{background:"white",border:"1px solid #E2E8F0",borderRadius:6,padding:"9px 14px",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
-              <div style={{display:"flex",alignItems:"center",gap:10}}>
-                <span style={{fontWeight:700,color:"#0F1C2E",fontSize:15}}>Q.{currentQ+1}</span>
-                <span style={{color:"#94A3B8",fontSize:12}}>of {questions.length}</span>
-                <span style={{background:TOPICS[q.topic]?.color+"15",color:TOPICS[q.topic]?.color||"#334155",fontSize:11,fontWeight:600,padding:"2px 8px",borderRadius:4}}>{TOPICS[q.topic]?.label||q.topic}</span>
-              </div>
-              <div style={{fontSize:12,color:"#334155"}}>
-                <span style={{color:"#059669",fontWeight:700}}>+5</span> Correct &nbsp;
-                <span style={{color:"#DC2626",fontWeight:700}}>-1</span> Wrong &nbsp;
-                <span style={{color:"#94A3B8",fontWeight:600}}>0</span> Skipped
-              </div>
-            </div>
-            {/* Passage */}
-            {passage&&(
-              <div style={{background:"#EEF2FF",borderLeft:"3px solid #4338CA",borderRadius:6,padding:"12px 15px",marginBottom:10}}>
-                <div style={{fontSize:10,fontWeight:600,color:"#64748B",letterSpacing:"0.08em",marginBottom:8,textTransform:"uppercase"}}>Read the Following Passage</div>
-                <div style={{maxHeight:200,overflowY:"auto"}}>
-                  <p style={{margin:0,lineHeight:1.8,color:"#1E293B",fontSize:14}}>{passage.text}</p>
-                </div>
-              </div>
-            )}
-            {/* Question text */}
-            <div style={{background:"white",border:"1px solid #E2E8F0",borderRadius:6,padding:"15px",marginBottom:10}}>
-              <p style={{margin:0,fontSize:15,lineHeight:1.85,color:"#1E293B",fontWeight:500}}>{q.question}</p>
-            </div>
-            {/* Options — CUET square boxes */}
-            <div style={{background:"white",border:"1px solid #E2E8F0",borderRadius:6,overflow:"hidden"}}>
-              {["A","B","C","D"].map((opt,oi)=>{
-                const sel=selectedOpt===opt;
-                return(
-                  <div key={opt} onClick={()=>setSelectedOpt(opt)} style={{display:"flex",alignItems:"flex-start",gap:12,padding:"13px 16px",cursor:"pointer",background:sel?"#EEF2FF":"white",borderBottom:oi<3?"1px solid #F1F5F9":"none",borderLeft:sel?"4px solid #4338CA":"4px solid transparent",transition:"background 0.1s",userSelect:"none"}}>
-                    {/* Square indicator — NTA CUET standard */}
-                    <div style={{width:18,height:18,borderRadius:2,flexShrink:0,marginTop:3,border:sel?"2px solid #4338CA":"2px solid #94A3B8",background:sel?"#4338CA":"white",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                      {sel&&<div style={{width:8,height:8,background:"white",borderRadius:1}}/>}
-                    </div>
-                    <span style={{fontSize:14,lineHeight:1.75,color:sel?"#3730A3":"#1E293B"}}>
-                      <strong style={{marginRight:7,color:sel?"#4338CA":"#64748B"}}>{opt}.</strong>{q.options?.[opt]||""}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-          {/* Palette panel */}
-          <div style={{width:200,background:"white",borderLeft:"1px solid #E2E8F0",display:"flex",flexDirection:"column",flexShrink:0,overflow:"hidden"}} className="exam-palette">
-            <div style={{background:"#0F1C2E",color:"white",fontWeight:600,fontSize:11,padding:"8px 10px",textAlign:"center",letterSpacing:"0.08em",textTransform:"uppercase",flexShrink:0}}>Question Palette</div>
-            <div style={{padding:"10px 12px",borderBottom:"1px solid #F1F5F9",display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-              <div style={{width:28,height:28,borderRadius:"50%",background:"#0F1C2E",display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontWeight:700,fontSize:13,flexShrink:0}}>{user?.name?.[0]?.toUpperCase()}</div>
-              <div style={{fontSize:11,fontWeight:600,color:"#0F1C2E",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user?.name}</div>
-            </div>
-            <div style={{flex:1,overflowY:"auto",padding:10}}>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:4,marginBottom:16}} className="exam-palette-grid">
-                {questions.map((qi,idx)=>(
-                  <div key={qi.id} onClick={()=>goTo(idx)} style={{...qstyle(qi.id),outline:idx===currentQ?"3px solid #D97706":"none",outlineOffset:1}}>{idx+1}</div>
-                ))}
-              </div>
-              {/* Colour guide */}
-              <div>
-                <div style={{fontSize:10,fontWeight:600,color:"#94A3B8",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>Colour Guide</div>
-                {[["not_visited","Not Visited"],["not_answered","Not Answered"],["answered","Answered"],["review","Marked – Review"],["answered_review","Answered + Marked"]].map(([s,l])=>(
-                  <div key={s} style={{display:"flex",alignItems:"center",gap:6,marginBottom:5}}>
-                    <div style={{width:14,height:14,background:QS[s].bg,border:`2px solid ${QS[s].border}`,borderRadius:2,flexShrink:0}}/>
-                    <span style={{fontSize:10,color:"#64748B"}}>{l}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            {/* Counters + submit */}
-            <div style={{padding:10,borderTop:"1px solid #E2E8F0",flexShrink:0}}>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:8}}>
-                <div style={{background:"#ECFDF5",padding:"7px",borderRadius:5,textAlign:"center"}}><div style={{fontWeight:700,fontSize:17,color:"#059669"}}>{answeredCount}</div><div style={{fontSize:9,color:"#065F46",textTransform:"uppercase",letterSpacing:"0.04em"}}>Answered</div></div>
-                <div style={{background:"#FEF3C7",padding:"7px",borderRadius:5,textAlign:"center"}}><div style={{fontWeight:700,fontSize:17,color:"#D97706"}}>{questions.length-answeredCount}</div><div style={{fontSize:9,color:"#78350F",textTransform:"uppercase",letterSpacing:"0.04em"}}>Remaining</div></div>
-              </div>
-              <button onClick={()=>{if(window.confirm(`Submit test?\n\nAnswered: ${answeredCount}\nUnattempted: ${questions.length-answeredCount}\n\nThis cannot be undone.`))doSubmit();}} style={{width:"100%",padding:"9px",background:"#DC2626",color:"white",border:"none",borderRadius:4,fontWeight:700,fontSize:12,cursor:"pointer",letterSpacing:"0.04em",transition:"background 0.15s"}} onMouseEnter={e=>e.target.style.background="#B91C1C"} onMouseLeave={e=>e.target.style.background="#DC2626"}>SUBMIT TEST</button>
-            </div>
-          </div>
-        </div>
-        {/* Bottom toolbar */}
-        <div style={{background:"white",borderTop:"1px solid #E2E8F0",padding:"9px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0,flexWrap:"wrap",gap:8}} className="toolbar-row">
-          <div style={{display:"flex",gap:8,alignItems:"center"}}>
-            <button onClick={()=>currentQ>0&&goTo(currentQ-1)} disabled={currentQ===0} style={{padding:"7px 16px",background:"white",border:"1px solid #E2E8F0",borderRadius:5,cursor:currentQ===0?"not-allowed":"pointer",fontSize:13,color:currentQ===0?"#94A3B8":"#334155",fontWeight:500}}>◄ Back</button>
-            <button onClick={clearResponse} style={{padding:"7px 14px",background:"transparent",border:"none",color:"#DC2626",cursor:"pointer",fontSize:13,fontWeight:500,textDecoration:"underline"}}>Clear Response</button>
-          </div>
-          <div style={{display:"flex",gap:8}}>
-            <button onClick={markAndNext} style={{padding:"8px 16px",background:"#D97706",color:"white",border:"none",borderRadius:5,cursor:"pointer",fontSize:13,fontWeight:600,transition:"background 0.15s"}} onMouseEnter={e=>e.target.style.background="#B45309"} onMouseLeave={e=>e.target.style.background="#D97706"}>Mark for Review &amp; Next ►</button>
-            <button onClick={saveAndNext} style={{padding:"8px 20px",background:"#0F1C2E",color:"white",border:"none",borderRadius:5,cursor:"pointer",fontSize:13,fontWeight:600,transition:"background 0.15s"}} onMouseEnter={e=>e.target.style.background="#1E2D42"} onMouseLeave={e=>e.target.style.background="#0F1C2E"}>Save &amp; Next ►</button>
-          </div>
-        </div>
-        <style>{`@keyframes blink{0%,100%{opacity:1}50%{opacity:0.5}}`}</style>
       </div>
-    );
+    </div>
+  );
+}
+
+// ── EXAM SCREEN ───────────────────────────────────────────────────────────────
+function ExamScreen({ questions, config, user, onSubmit, showToast }) {
+  const [current,   setCurrent]   = useState(0);
+  const [answers,   setAnswers]   = useState({});
+  const [marked,    setMarked]    = useState(new Set());
+  const [timeLeft,  setTimeLeft]  = useState(config?.mode === "SpeedDrill" ? 1800 : EXAM_SECS);
+  const [exitModal, setExitModal] = useState(false);
+  const timerRef = useRef(null);
+
+  useEffect(() => { logEvent("page_view", { page: "exam" }); }, []);
+
+  useEffect(() => {
+    timerRef.current = setInterval(() => {
+      setTimeLeft(t => {
+        if (t <= 1) { clearInterval(timerRef.current); submitTest(true); return 0; }
+        return t - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timerRef.current);
+  }, []);
+
+  function submitTest(auto = false) {
+    clearInterval(timerRef.current);
+    logEvent("test_completed", { user_id: user?.uid, mode: config?.mode, answered: Object.keys(answers).length });
+    onSubmit(answers);
   }
 
-  // ════════════════════════════════════════════════════════
-  //  RESULTS SCREEN
-  // ════════════════════════════════════════════════════════
-  if(screen==="results"&&results){
-    const sc=results.percentage>=70?"#059669":results.percentage>=50?"#D97706":"#DC2626";
-    return(
-      <div style={{minHeight:"100vh",background:"#F8FAFC",fontFamily:"Inter,system-ui,sans-serif"}}>
-        {/* Header */}
-        <div style={{background:"#0F1C2E",padding:"10px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
-          <div style={{color:"white",fontWeight:600,fontSize:14}}>Test Performance Report</div>
-          <button onClick={()=>setScreen("dashboard")} style={{background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",color:"rgba(255,255,255,0.8)",padding:"6px 14px",borderRadius:5,cursor:"pointer",fontSize:12,fontWeight:500}}>← Dashboard</button>
-        </div>
+  const q    = questions[current];
+  const warn = timeLeft < 300;
 
-        {!showReview?(
-          <div style={{maxWidth:800,margin:"0 auto",padding:"28px 20px"}}>
-            {/* Score card */}
-            <div style={{background:"white",border:"1px solid #E2E8F0",borderRadius:8,padding:"32px 24px",boxShadow:"0 1px 3px rgba(0,0,0,0.06)",marginBottom:20,textAlign:"center"}}>
-              <div style={{fontSize:11,fontWeight:600,color:"#64748B",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:12}}>Your Score</div>
-              <div style={{fontSize:32,fontWeight:700,color:"#0F1C2E",marginBottom:4}}>{results.score}/{results.maxScore}</div>
-              <div style={{fontSize:48,fontWeight:700,color:sc,lineHeight:1.1,marginBottom:16}}>{results.percentage}%</div>
-              {/* Stat pills */}
-              <div style={{display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap"}}>
-                {[{v:results.correct,l:"Correct",c:"#059669"},{v:results.wrong,l:"Wrong",c:"#DC2626"},{v:results.unattempted,l:"Skipped",c:"#94A3B8"}].map(({v,l,c})=>(
-                  <div key={l} style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:6,padding:"10px 20px",minWidth:90}}>
-                    <div style={{fontSize:22,fontWeight:700,color:c}}>{v}</div>
-                    <div style={{fontSize:11,color:"#64748B",fontWeight:600,marginTop:2}}>{l}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Topic breakdown — table */}
-            <div style={{background:"white",border:"1px solid #E2E8F0",borderRadius:8,padding:"20px 24px",boxShadow:"0 1px 3px rgba(0,0,0,0.06)",marginBottom:20}}>
-              <div style={{fontSize:14,fontWeight:600,color:"#0F1C2E",marginBottom:16}}>Topic Performance</div>
-              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-                <thead>
-                  <tr style={{borderBottom:"1px solid #E2E8F0"}}>
-                    {["Topic","Attempted","Correct","Accuracy"].map(h=>(
-                      <th key={h} style={{padding:"8px 10px",textAlign:"left",fontSize:11,fontWeight:600,color:"#64748B",textTransform:"uppercase",letterSpacing:"0.06em"}}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {Object.entries(results.topicStats).sort(([,a],[,b])=>(a.correct/a.total||0)-(b.correct/b.total||0)).map(([t,s])=>{
-                    const acc=s.total?Math.round(s.correct/s.total*100):0;
-                    const ac=acc>=70?"#059669":acc>=50?"#D97706":"#DC2626";
-                    return(
-                      <tr key={t} style={{borderBottom:"1px solid #F1F5F9"}}>
-                        <td style={{padding:"10px"}}>
-                          <div style={{display:"flex",alignItems:"center",gap:8}}>
-                            <span style={{background:TOPICS[t]?.color+"15",color:TOPICS[t]?.color||"#334155",fontSize:10,fontWeight:600,padding:"1px 7px",borderRadius:4}}>{TOPICS[t]?.abbr||t}</span>
-                            <span style={{fontSize:13,color:"#334155"}}>{TOPICS[t]?.label||t}</span>
-                          </div>
-                        </td>
-                        <td style={{padding:"10px",color:"#64748B",fontSize:13}}>{s.total}</td>
-                        <td style={{padding:"10px",color:"#059669",fontWeight:600,fontSize:13}}>{s.correct}</td>
-                        <td style={{padding:"10px",fontWeight:700,color:ac,fontSize:13}}>{acc}%</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Performance Analysis (auto-generated advisory) */}
-            <div style={{background:"white",border:"1px solid #E2E8F0",borderRadius:8,padding:"20px 24px",boxShadow:"0 1px 3px rgba(0,0,0,0.06)",marginBottom:24,borderLeft:"4px solid #4338CA"}}>
-              <div style={{fontSize:11,fontWeight:600,color:"#64748B",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:12}}>Performance Analysis</div>
-              {loadingAdv?(
-                <div style={{display:"flex",alignItems:"center",gap:10,color:"#64748B",fontSize:13}}>
-                  <div style={{width:16,height:16,border:"2px solid #E2E8F0",borderTop:"2px solid #4338CA",borderRadius:"50%",animation:"spin 0.8s linear infinite",flexShrink:0}}/>
-                  Generating your analysis...
-                </div>
-              ):advisory?(
-                <div style={{fontSize:14,lineHeight:2.0,color:"#334155",whiteSpace:"pre-wrap"}}>{advisory}</div>
-              ):(
-                <div style={{fontSize:13,color:"#94A3B8"}}>Analysis will appear here momentarily.</div>
-              )}
-            </div>
-
-            {/* Action buttons */}
-            <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
-              <button onClick={()=>setShowReview(true)} style={{flex:1,minWidth:160,height:44,background:"white",color:"#0F1C2E",border:"2px solid #0F1C2E",borderRadius:6,fontSize:14,fontWeight:600,cursor:"pointer",transition:"background 0.15s"}} onMouseEnter={e=>{e.currentTarget.style.background="#F8FAFC";}} onMouseLeave={e=>{e.currentTarget.style.background="white";}}>Review Answers</button>
-              <button onClick={()=>setScreen("dashboard")} style={{flex:1,minWidth:160,height:44,background:"#0F1C2E",color:"white",border:"none",borderRadius:6,fontSize:14,fontWeight:600,cursor:"pointer",transition:"background 0.15s"}} onMouseEnter={e=>e.target.style.background="#1E2D42"} onMouseLeave={e=>e.target.style.background="#0F1C2E"}>New Test Paper</button>
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#fff" }}>
+      {exitModal && (
+        <div className="modal-overlay">
+          <div className="modal-box" style={{ maxWidth: 380 }}>
+            <h3 style={{ fontFamily: "var(--font-display)", fontSize: 20, color: "var(--navy)", marginBottom: 8 }}>Exit Test?</h3>
+            <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 24 }}>
+              Your progress will be lost. This test still counts toward your limit.
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button className="btn-outline" style={{ flex: 1, height: 40, fontSize: 13 }} onClick={() => setExitModal(false)}>Stay</button>
+              <button className="btn-primary" style={{ flex: 1, height: 40, fontSize: 13 }} onClick={() => submitTest(true)}>Submit and Exit</button>
             </div>
           </div>
-        ):(
-          // ─── Review Panel ───────────────────────────────────
-          <div style={{maxWidth:920,margin:"0 auto",padding:"28px 20px"}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
-              <div style={{fontSize:14,fontWeight:600,color:"#0F1C2E"}}>Answer Review — {results.questionResults.length} Questions</div>
-              <button onClick={()=>setShowReview(false)} style={{background:"none",border:"1px solid #E2E8F0",color:"#334155",padding:"6px 14px",borderRadius:5,cursor:"pointer",fontSize:12,fontWeight:500}}>← Back to Results</button>
+        </div>
+      )}
+
+      <div className="nta-header">
+        <span className="nta-logo">Vantiq <span>CUET</span></span>
+        <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+          <div style={{ fontFamily: "var(--font-mono)", fontSize: 16, fontWeight: 600, color: warn ? "#FCD34D" : "#fff", background: warn ? "rgba(220,38,38,.15)" : "transparent", padding: warn ? "4px 10px" : "0", borderRadius: 6, transition: "all .3s" }}>
+            &#9201; {fmtTimer(timeLeft)}
+          </div>
+          <div style={{ fontSize: 12, opacity: 0.8, textAlign: "right" }}>
+            <div style={{ fontWeight: 600 }}>{user?.displayName}</div>
+            <button onClick={() => setExitModal(true)} style={{ background: "transparent", border: "none", color: "rgba(255,255,255,.5)", fontSize: 11, cursor: "pointer", fontFamily: "var(--font-body)", padding: 0 }}>
+              Exit Test
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="section-bar">
+        <span>Section I &mdash; Languages (English)</span>
+        <span style={{ marginLeft: "auto" }}>Q {current + 1} of {questions.length}</span>
+        <span className="pill pill-navy" style={{ marginLeft: 8 }}>{Object.keys(answers).length} answered</span>
+      </div>
+
+      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: "28px 32px" }}>
+          {q.passage && (
+            <div style={{ borderLeft: "4px solid var(--indigo)", background: "#F5F7FF", borderRadius: "0 8px 8px 0", padding: "16px 20px", marginBottom: 20, fontSize: 13.5, lineHeight: 1.8, color: "var(--text-primary)" }}>
+              <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".05em", textTransform: "uppercase", color: "var(--indigo)", marginBottom: 8 }}>Reading Passage</div>
+              {q.passage}
             </div>
-            {results.questionResults.map((qr,i)=>{
-              const isOpen=reviewOpen===qr.id;
-              const sc2={correct:"#059669",wrong:"#DC2626",unattempted:"#94A3B8"}[qr.status];
-              const sbg={correct:"#ECFDF5",wrong:"#FFF1F1",unattempted:"#F8FAFC"}[qr.status];
-              const psg=qr.passage_id?passages.find(p=>p.id===qr.passage_id):null;
-              return(
-                <div key={qr.id} style={{border:"1px solid #E2E8F0",borderRadius:8,marginBottom:8,overflow:"hidden",borderLeft:`4px solid ${sc2}`}}>
-                  <div onClick={()=>setReviewOpen(isOpen?null:qr.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 16px",cursor:"pointer",background:sbg,userSelect:"none"}}>
-                    <div style={{width:24,height:24,borderRadius:4,background:sc2,color:"white",fontWeight:700,fontSize:11,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{i+1}</div>
-                    <div style={{flex:1,fontSize:13,color:"#334155",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(qr.question||"").slice(0,100)}{(qr.question||"").length>100?"...":""}</div>
-                    <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-                      <span style={{background:TOPICS[qr.topic]?.color+"15",color:TOPICS[qr.topic]?.color,fontSize:10,fontWeight:600,padding:"1px 6px",borderRadius:4}}>{TOPICS[qr.topic]?.abbr}</span>
-                      <span style={{fontSize:11,fontWeight:600,color:sc2,textTransform:"uppercase",letterSpacing:"0.04em"}}>{qr.status}</span>
-                      <span style={{fontSize:11,color:"#94A3B8"}}>{isOpen?"▲":"▼"}</span>
-                    </div>
-                  </div>
-                  {isOpen&&(
-                    <div style={{background:"white",borderTop:"1px solid #E2E8F0"}}>
-                      {psg&&(
-                        <div style={{background:"#EEF2FF",borderLeft:"3px solid #4338CA",padding:"12px 16px",margin:"14px 16px 0",borderRadius:6,fontSize:13,lineHeight:1.8,color:"#1E293B",maxHeight:140,overflowY:"auto"}}>{psg.text}</div>
-                      )}
-                      <div style={{padding:"14px 16px"}}>
-                        <p style={{margin:"0 0 12px",fontSize:14,fontWeight:500,color:"#1E293B",lineHeight:1.7}}>{qr.question}</p>
-                        {["A","B","C","D"].map(opt=>{
-                          const isC=opt===qr.correct,uW=opt===qr.userAnswer&&!isC;
-                          return(
-                            <div key={opt} style={{padding:"9px 12px",borderRadius:6,marginBottom:5,fontSize:13,background:isC?"#ECFDF5":uW?"#FFF1F1":"#F8FAFC",border:`1px solid ${isC?"#059669":uW?"#DC2626":"#E2E8F0"}`,color:isC?"#065F46":uW?"#7F1D1D":"#334155"}}>
-                              <div style={{display:"flex",alignItems:"center",gap:8}}>
-                                <strong>{opt}.</strong> {qr.options?.[opt]}
-                                {isC&&<span style={{fontSize:11,fontWeight:600,color:"#059669",marginLeft:"auto"}}>Correct Answer</span>}
-                                {uW&&<span style={{fontSize:11,fontWeight:600,color:"#DC2626",marginLeft:"auto"}}>Your Answer</span>}
-                              </div>
-                            </div>
-                          );
-                        })}
-                        {qr.explanation&&<div style={{background:"#F8FAFC",border:"1px solid #E2E8F0",borderRadius:6,padding:"10px 13px",marginTop:10,fontSize:13,color:"#334155",lineHeight:1.65}}><span style={{fontSize:11,fontWeight:600,color:"#64748B",textTransform:"uppercase",letterSpacing:"0.04em",display:"block",marginBottom:4}}>Explanation</span>{qr.explanation}</div>}
-                      </div>
-                    </div>
-                  )}
-                </div>
+          )}
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 14 }}>
+            <span className="pill pill-indigo">{q.topic}</span>
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Q.{current + 1}</span>
+          </div>
+          <div style={{ fontSize: 15, fontWeight: 500, color: "var(--text-primary)", lineHeight: 1.65, marginBottom: 24 }}>{q.question}</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {q.options.map((opt, i) => (
+              <div key={i} className={"option-box" + (answers[current] === i ? " selected" : "")} onClick={() => setAnswers(p => ({ ...p, [current]: i }))}>
+                <span className="option-key">{String.fromCharCode(65 + i)}</span>
+                <span style={{ fontSize: 14, color: "var(--text-primary)", flex: 1 }}>{opt}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ width: 196, borderLeft: "1px solid var(--border)", background: "var(--bg-alt)", overflowY: "auto", padding: 16, flexShrink: 0, display: "flex", flexDirection: "column" }}>
+          <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".05em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 12 }}>Question Palette</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
+            {questions.map((_, i) => {
+              const ans = answers[i] !== undefined, mrk = marked.has(i), cur = i === current;
+              let bg = "#fff", bc = "var(--border)", cl = "var(--text-secondary)";
+              if (ans && mrk) { bg = "#FEF3C7"; bc = "var(--amber)"; cl = "var(--amber)"; }
+              else if (ans)   { bg = "#ECFDF5"; bc = "var(--success)"; cl = "var(--success)"; }
+              else if (mrk)   { bg = "#FFFBEB"; bc = "var(--amber)"; cl = "var(--amber)"; }
+              return (
+                <button key={i} onClick={() => setCurrent(i)} style={{ width: 30, height: 30, border: `2px solid ${cur ? "var(--indigo)" : bc}`, borderRadius: 4, background: bg, color: cl, fontSize: 11, fontWeight: cur ? 700 : 500, fontFamily: "var(--font-mono)", cursor: "pointer", boxShadow: cur ? "0 0 0 2px var(--indigo)" : "none", transition: "all .12s" }}>
+                  {i + 1}
+                </button>
               );
             })}
-            <button onClick={()=>setShowReview(false)} style={{marginTop:8,padding:"10px 24px",background:"#0F1C2E",color:"white",border:"none",borderRadius:6,fontSize:13,fontWeight:600,cursor:"pointer"}}>← Back to Results</button>
           </div>
-        )}
-        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.8, marginBottom: 16 }}>
+            <div>&#x1F7E9; Answered</div><div>&#x1F7E8; Marked</div><div>&#x2B1C; Not visited</div>
+          </div>
+          <button className="btn-primary" onClick={() => submitTest(false)} style={{ width: "100%", fontSize: 12, height: 38, marginTop: "auto" }}>
+            Submit Test
+          </button>
+        </div>
       </div>
-    );
-  }
 
-  // ════════════════════════════════════════════════════════
-  //  ADVISORY SCREEN (kept for fallback)
-  // ════════════════════════════════════════════════════════
-  if(screen==="advisory") return(
-    <div style={{minHeight:"100vh",background:"#F8FAFC",fontFamily:"Inter,system-ui,sans-serif"}}>
-      <div style={{background:"#0F1C2E",padding:"10px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
-        <div style={{color:"white",fontWeight:600,fontSize:14}}>Performance Analysis — CUET English (101)</div>
-        <div style={{display:"flex",gap:8}}>
-          <button onClick={()=>setScreen("results")} style={{background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",color:"rgba(255,255,255,0.8)",padding:"6px 14px",borderRadius:5,cursor:"pointer",fontSize:12,fontWeight:500}}>← Results</button>
-          <button onClick={()=>setScreen("dashboard")} style={{background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,255,255,0.15)",color:"rgba(255,255,255,0.8)",padding:"6px 14px",borderRadius:5,cursor:"pointer",fontSize:12,fontWeight:500}}>Dashboard</button>
-        </div>
-      </div>
-      <div style={{maxWidth:760,margin:"0 auto",padding:"28px 20px"}}>
-        <div style={{background:"white",border:"1px solid #E2E8F0",borderRadius:8,padding:"28px 30px",boxShadow:"0 1px 3px rgba(0,0,0,0.06)",borderLeft:"4px solid #4338CA",marginBottom:16}}>
-          <div style={{fontSize:11,fontWeight:600,color:"#64748B",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:16}}>Performance Analysis — {user?.name}</div>
-          <div style={{fontSize:14,lineHeight:2.0,color:"#334155",whiteSpace:"pre-wrap"}}>{advisory}</div>
-        </div>
-        <div style={{display:"flex",gap:12}}>
-          <button onClick={generateTest} style={{flex:1,height:44,background:"#0F1C2E",color:"white",border:"none",borderRadius:6,fontSize:14,fontWeight:600,cursor:"pointer"}}>Start Next Test →</button>
-          <button onClick={()=>setScreen("dashboard")} style={{flex:1,height:44,background:"white",color:"#334155",border:"1px solid #E2E8F0",borderRadius:6,fontSize:14,fontWeight:500,cursor:"pointer"}}>← Dashboard</button>
+      <div style={{ borderTop: "1px solid var(--border)", background: "#fff", padding: "12px 32px", display: "flex", alignItems: "center", gap: 12 }}>
+        <button className="btn-amber" onClick={() => setMarked(p => { const n = new Set(p); n.has(current) ? n.delete(current) : n.add(current); return n; })}>
+          {marked.has(current) ? "✓ Marked" : "Mark for Review"}
+        </button>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
+          <button
+            onClick={() => current > 0 && setCurrent(c => c - 1)}
+            style={{ height: 36, padding: "0 16px", border: "1.5px solid var(--border)", borderRadius: 6, background: "#fff", fontSize: 13, fontWeight: 500, color: "var(--text-secondary)", cursor: current > 0 ? "pointer" : "not-allowed", opacity: current > 0 ? 1 : 0.4, fontFamily: "var(--font-body)", display: "flex", alignItems: "center", gap: 6 }}
+          >
+            ← Back
+          </button>
+          <button className="btn-navy-sm" onClick={() => { if (current < questions.length - 1) setCurrent(c => c + 1); else showToast("Last question. Submit when ready.", "info"); }}>
+            Save &amp; Next →
+          </button>
         </div>
       </div>
     </div>
   );
+}
 
-  return null;
+// ── RESULTS SCREEN ────────────────────────────────────────────────────────────
+function ResultsScreen({ questions, answers, config, user, onNewTest, onReview }) {
+  const [analysis, setAnalysis]  = useState(null);
+  const [aLoading, setALoading]  = useState(true);
+
+  useEffect(() => { logEvent("page_view", { page: "results" }); }, []);
+
+  let correct = 0, wrong = 0, unanswered = 0, totalScore = 0;
+  questions.forEach((q, i) => {
+    if (answers[i] === undefined) unanswered++;
+    else if (answers[i] === q.correct) { correct++; totalScore += MARKS_CORRECT; }
+    else { wrong++; totalScore += MARKS_WRONG; }
+  });
+  const attempted  = correct + wrong;
+  const maxScore   = questions.length * MARKS_CORRECT;
+  const pct        = Math.round((totalScore / maxScore) * 100);
+  const accuracy   = attempted > 0 ? Math.round((correct / attempted) * 100) : 0;
+
+  const topicStats = {};
+  questions.forEach((q, i) => {
+    if (!topicStats[q.topic]) topicStats[q.topic] = { att: 0, cor: 0 };
+    if (answers[i] !== undefined) {
+      topicStats[q.topic].att++;
+      if (answers[i] === q.correct) topicStats[q.topic].cor++;
+    }
+  });
+  const topicRows = Object.entries(topicStats)
+    .map(([t, s]) => ({ topic: t, attempted: s.att, correct: s.cor, accuracy: s.att > 0 ? Math.round((s.cor / s.att) * 100) : 0 }))
+    .sort((a, b) => a.accuracy - b.accuracy);
+
+  useEffect(() => {
+    async function fetchAnalysis() {
+      setALoading(true);
+      try {
+        const res = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-20250514", max_tokens: 1000,
+            messages: [{ role: "user", content: `You are a CUET English expert. Give a concise 3-4 sentence performance analysis for a student who scored ${pct}% (${correct}/${questions.length} correct, ${wrong} wrong, ${unanswered} unanswered) in ${config?.mode} mode. Weakest topic: ${topicRows[0]?.topic} at ${topicRows[0]?.accuracy}% accuracy. Give specific actionable advice. Be encouraging but honest.` }],
+          }),
+        });
+        const d = await res.json();
+        setAnalysis(d?.content?.[0]?.text || null);
+      } catch(_) { setAnalysis("Review your answers below to identify improvement areas."); }
+      finally { setALoading(false); }
+    }
+    fetchAnalysis();
+  }, []);
+
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+      <div className="nta-header">
+        <span className="nta-logo">Vantiq <span>CUET</span></span>
+        <span className="pill pill-indigo" style={{ fontSize: 11 }}>{config?.mode}</span>
+      </div>
+      <div style={{ flex: 1, maxWidth: 860, margin: "0 auto", width: "100%", padding: "28px 24px" }}>
+        <h1 style={{ fontFamily: "var(--font-display)", fontSize: 26, color: "var(--navy)", marginBottom: 24 }}>
+          Test Performance Report
+        </h1>
+
+        <div className="card" style={{ padding: "28px 32px", marginBottom: 20, display: "flex", alignItems: "center", gap: 32, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--navy)", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 4 }}>Total Score</div>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 48, fontWeight: 700, color: scoreColor(pct), lineHeight: 1 }}>{pct}%</div>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 20, color: "var(--navy)", marginTop: 4 }}>{totalScore} / {maxScore}</div>
+          </div>
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+            {[
+              { l: "Attempted", v: attempted, c: "pill-navy" },
+              { l: "Correct",   v: correct,   c: "pill-green" },
+              { l: "Accuracy",  v: `${accuracy}%`, c: "pill-indigo" },
+              { l: "Wrong",     v: wrong,      c: "pill-red" },
+              { l: "Skipped",   v: unanswered, c: "pill-amber" },
+            ].map(s => (
+              <div key={s.l} style={{ textAlign: "center" }}>
+                <div className={"pill " + s.c} style={{ height: "auto", padding: "4px 12px", fontSize: 18, fontFamily: "var(--font-mono)", fontWeight: 700 }}>{s.v}</div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4, textTransform: "uppercase", letterSpacing: ".04em" }}>{s.l}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="card" style={{ marginBottom: 20, overflow: "hidden" }}>
+          <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)" }}>
+            <h3 style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)" }}>
+              Topic Breakdown <span style={{ fontSize: 11, fontWeight: 400, color: "var(--text-muted)" }}>(weakest first)</span>
+            </h3>
+          </div>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: "var(--bg-alt)" }}>
+                {["Topic", "Attempted", "Correct", "Accuracy %"].map(h => (
+                  <th key={h} style={{ padding: "10px 16px", textAlign: "left", fontWeight: 600, fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-secondary)" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {topicRows.map((r, i) => (
+                <tr key={i} style={{ borderTop: "1px solid var(--border)" }}>
+                  <td style={{ padding: "12px 16px", fontWeight: 500 }}>{r.topic}</td>
+                  <td style={{ padding: "12px 16px", fontFamily: "var(--font-mono)" }}>{r.attempted}</td>
+                  <td style={{ padding: "12px 16px", fontFamily: "var(--font-mono)" }}>{r.correct}</td>
+                  <td style={{ padding: "12px 16px", fontWeight: 700, fontFamily: "var(--font-mono)", color: scoreColor(r.accuracy) }}>{r.accuracy}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="card" style={{ padding: "20px 24px", marginBottom: 28 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)", marginBottom: 12 }}>Performance Analysis</h3>
+          {aLoading ? (
+            <div>
+              <div className="pbar-track"><div className="pbar-fill" /></div>
+              <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 8 }}>Generating personalised analysis...</p>
+            </div>
+          ) : (
+            <p style={{ fontSize: 14, color: "var(--text-secondary)", lineHeight: 1.7 }}>{analysis}</p>
+          )}
+        </div>
+
+        <div style={{ display: "flex", gap: 12 }}>
+          <button className="btn-outline" style={{ flex: 1 }} onClick={onReview}>Review Answers</button>
+          <button className="btn-primary" style={{ flex: 1 }} onClick={onNewTest}>New Test Paper</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── REVIEW SCREEN ─────────────────────────────────────────────────────────────
+function ReviewScreen({ questions, answers, onBack }) {
+  useEffect(() => { logEvent("page_view", { page: "review" }); }, []);
+
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+      <div className="nta-header">
+        <span className="nta-logo">Vantiq <span>CUET</span></span>
+        <button onClick={onBack} style={{ background: "transparent", color: "rgba(255,255,255,.7)", border: "1px solid rgba(255,255,255,.2)", borderRadius: 6, padding: "4px 14px", fontSize: 13, cursor: "pointer", fontFamily: "var(--font-body)" }}>
+          ← Back to Report
+        </button>
+      </div>
+      <div style={{ flex: 1, maxWidth: 800, margin: "0 auto", width: "100%", padding: "28px 24px" }}>
+        <h1 style={{ fontFamily: "var(--font-display)", fontSize: 24, color: "var(--navy)", marginBottom: 24 }}>Answer Review</h1>
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          {questions.map((q, i) => {
+            const ua = answers[i], ok = ua === q.correct, skip = ua === undefined;
+            const bc = skip ? "var(--border)" : ok ? "var(--success)" : "var(--danger)";
+            return (
+              <div key={i} style={{ borderLeft: `4px solid ${bc}`, background: "#fff", borderRadius: "0 10px 10px 0", padding: "20px 20px 16px", boxShadow: "var(--card-shadow)", border: "1px solid var(--border)" }}>
+                <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                  <span className="pill pill-navy" style={{ fontSize: 10 }}>Q.{i + 1}</span>
+                  <span className="pill pill-indigo" style={{ fontSize: 10 }}>{q.topic}</span>
+                  {skip && <span className="pill pill-amber" style={{ fontSize: 10 }}>Skipped</span>}
+                  {!skip && ok && <span className="pill pill-green" style={{ fontSize: 10 }}>+5</span>}
+                  {!skip && !ok && <span className="pill pill-red" style={{ fontSize: 10 }}>&minus;1</span>}
+                </div>
+                {q.passage && (
+                  <div style={{ background: "#F5F7FF", borderLeft: "3px solid var(--indigo)", padding: "10px 14px", borderRadius: "0 6px 6px 0", fontSize: 12.5, lineHeight: 1.7, color: "var(--text-secondary)", marginBottom: 10 }}>
+                    <em>Passage: {q.passage.substring(0, 200)}...</em>
+                  </div>
+                )}
+                <p style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)", lineHeight: 1.6, marginBottom: 14 }}>{q.question}</p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+                  {q.options.map((opt, oi) => {
+                    const isUser = ua === oi, isRight = q.correct === oi;
+                    let cls = "";
+                    if (isRight) cls = "correct";
+                    else if (isUser && !isRight) cls = "wrong";
+                    return (
+                      <div key={oi} className={"option-box" + (cls ? " " + cls : "")} style={{ cursor: "default" }}>
+                        <span className="option-key">{String.fromCharCode(65 + oi)}</span>
+                        <span style={{ fontSize: 13, flex: 1 }}>{opt}</span>
+                        {isRight && <span style={{ fontSize: 11, fontWeight: 600, color: "var(--success)", marginLeft: 8 }}>✓ Correct</span>}
+                        {isUser && !isRight && <span style={{ fontSize: 11, fontWeight: 600, color: "var(--danger)", marginLeft: 8 }}>✗ Your Answer</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{ display: "flex", gap: 16, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-muted)", marginBottom: 8, flexWrap: "wrap" }}>
+                  {!skip && <span>Your Answer: <span style={{ color: ok ? "var(--success)" : "var(--danger)" }}>{String.fromCharCode(65 + ua)} — {q.options[ua]}</span></span>}
+                  <span>Correct Answer: <span style={{ color: "var(--success)" }}>{String.fromCharCode(65 + q.correct)} — {q.options[q.correct]}</span></span>
+                </div>
+                {q.explanation && (
+                  <div style={{ background: "var(--bg-alt)", border: "1px solid var(--border)", borderRadius: 6, padding: "10px 14px", fontSize: 12.5, color: "var(--text-secondary)", lineHeight: 1.65 }}>
+                    <span style={{ fontWeight: 600, color: "var(--navy)", marginRight: 4 }}>Explanation:</span>{q.explanation}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <button className="btn-primary" style={{ marginTop: 28, width: "100%" }} onClick={onBack}>
+          ← Back to Performance Report
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Question Generator ────────────────────────────────────────────────────────
+async function generateQuestions(config, uid) {
+  const mode    = config?.mode || "Mock";
+  const diffMap = {
+    Practice:   "medium — concept building, accessible vocabulary",
+    Mock:       "challenging — full NTA exam standard",
+    SpeedDrill: "moderate to hard — speed-optimised, clear answers",
+  };
+  const prompt = `You are a CUET English (Code 101) question paper generator for NTA UG 2026.
+Generate exactly 50 MCQ questions with this topic distribution:
+- Reading Comprehension: 22 questions (use 3 separate passages, each 250-300 words; one factual, one narrative, one literary)
+- Synonyms and Antonyms: 9 questions
+- Sentence Rearrangement: 7 questions
+- Choosing Correct Word: 7 questions
+- Match the Following: 3 questions
+- Grammar and Vocabulary: 2 questions
+Mode: ${mode} | Difficulty: ${diffMap[mode]}
+Rules: every question has exactly 4 options; correct field is 0-indexed int (0=A,1=B,2=C,3=D); passage field is the full passage text for RC questions, null for all others; every question needs a clear explanation.
+Return ONLY a valid JSON array with no markdown fences and no preamble:
+[{"question":"...","options":["...","...","...","..."],"correct":0,"topic":"Reading Comprehension","passage":"...or null...","explanation":"..."}]`;
+
+  // Production: use Cloud Function proxy (secret stays server-side)
+  if (CF_BASE) {
+    const res = await fetch(`${CF_BASE}/generateQuestions`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ uid, config }),
+    });
+    const d = await res.json();
+    if (d.paywall) throw Object.assign(new Error("Paywall"), { paywall: true });
+    if (!d.questions) throw new Error(d.error || "Generation failed");
+    return d.questions;
+  }
+
+  // Local dev fallback only — set VITE_CLOUD_FUNCTION_BASE before production deploy
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 1000, messages: [{ role: "user", content: prompt }] }),
+  });
+  const d = await res.json();
+  const text = d?.content?.[0]?.text || "[]";
+  return JSON.parse(text.replace(/```json|```/g, "").trim());
+}
+
+// ── ROOT APP ──────────────────────────────────────────────────────────────────
+export default function App() {
+  const [screen,      setScreen]     = useState("auth");
+  const [user,        setUser]       = useState(null);
+  const [userData,    setUserData]   = useState(null);
+  const [testHistory, setHistory]    = useState([]);
+  const [testConfig,  setConfig]     = useState(null);
+  const [questions,   setQuestions]  = useState([]);
+  const [answers,     setAnswers]    = useState({});
+  const [toast,       setToast]      = useState(null);
+  const [authLoading, setAuthLoad]   = useState(true);
+
+  const showToast = (message, type = "info") => setToast({ message, type, key: Date.now() });
+
+  async function loadUserData(u) {
+    try {
+      const snap = await getDoc(doc(db, "users", u.uid));
+      if (snap.exists()) setUserData(snap.data());
+      const q = query(collection(db, "tests"), where("uid", "==", u.uid), orderBy("completedAt", "desc"), limit(10));
+      const hs = await getDocs(q);
+      setHistory(hs.docs.map(d => d.data()));
+    } catch(e) { showToast("Could not load your data. Please refresh.", "error"); }
+  }
+
+  useEffect(() => {
+    return onAuthStateChanged(auth, async u => {
+      if (u) { setUser(u); await loadUserData(u); setScreen("dashboard"); }
+      else { setUser(null); setUserData(null); setHistory([]); setScreen("auth"); }
+      setAuthLoad(false);
+    });
+  }, []);
+
+  async function handleBeginTest(config) {
+    setConfig(config); setScreen("generating");
+    logEvent("test_started", { user_id: user?.uid, mode: config.mode });
+    try {
+      const qs = await generateQuestions(config, user?.uid);
+      if (!qs || qs.length < 10) throw new Error("Invalid question set");
+      setQuestions(qs); setAnswers({}); setScreen("exam");
+      // Optimistic UI update (server is authoritative on limit)
+      await updateDoc(doc(db, "users", user.uid), { testsUsed: (userData?.testsUsed || 0) + 1 });
+      setUserData(p => ({ ...p, testsUsed: (p?.testsUsed || 0) + 1 }));
+    } catch(e) {
+      if (e.paywall) { showToast("Test limit reached — unlock to continue.", "error"); }
+      else { showToast("Could not generate test. Please try again.", "error"); }
+      setScreen("dashboard");
+    }
+  }
+
+  async function handleSubmitTest(submittedAnswers) {
+    setAnswers(submittedAnswers);
+    let correct = 0, wrong = 0, total = 0;
+    questions.forEach((q, i) => {
+      if (submittedAnswers[i] !== undefined) {
+        if (submittedAnswers[i] === q.correct) { correct++; total += MARKS_CORRECT; }
+        else { wrong++; total += MARKS_WRONG; }
+      }
+    });
+    const accuracy = (correct + wrong) > 0 ? Math.round((correct / (correct + wrong)) * 100) : 0;
+    try {
+      await addDoc(collection(db, "tests"), {
+        uid: user.uid, mode: testConfig?.mode, totalScore: total,
+        correct, wrong, attempted: correct + wrong, accuracy, score: accuracy,
+        completedAt: serverTimestamp(),
+      });
+      await loadUserData(user);
+    } catch(_) { /* non-blocking — results still show */ }
+    setScreen("results");
+  }
+
+  if (authLoading) return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#fff" }}>
+      <div className="pbar-track" style={{ width: 200 }}><div className="pbar-fill" /></div>
+    </div>
+  );
+
+  return (
+    <React.Fragment>
+      {toast && <Toast key={toast.key} message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
+      {screen === "auth"       && <AuthScreen      onLogin={u => { setUser(u); loadUserData(u); setScreen("dashboard"); }} showToast={showToast} />}
+      {screen === "dashboard"  && <DashboardScreen user={user} userData={userData} testHistory={testHistory} onBeginTest={handleBeginTest} onLogout={() => signOut(auth)} showToast={showToast} />}
+      {screen === "generating" && <GeneratingScreen config={testConfig} />}
+      {screen === "exam"       && <ExamScreen      questions={questions} config={testConfig} user={user} onSubmit={handleSubmitTest} showToast={showToast} />}
+      {screen === "results"    && <ResultsScreen   questions={questions} answers={answers} config={testConfig} user={user} onNewTest={() => setScreen("dashboard")} onReview={() => setScreen("review")} />}
+      {screen === "review"     && <ReviewScreen    questions={questions} answers={answers} onBack={() => setScreen("results")} />}
+    </React.Fragment>
+  );
 }

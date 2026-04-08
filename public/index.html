@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <meta name="theme-color" content="#0F2747" />
+    <meta name="description" content="CUET English Mock Test Platform — NTA UG 2026. 50 AI-generated questions, 60 minutes, full performance analytics." />
+    <title>Vantiq CUET — English Mock Tests 2026</title>
+
+    <!-- Razorpay SDK (must load before payment button click) -->
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+
+    <!-- GA4 — replace G-XXXXXXXXXX with actual measurement ID -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=%REACT_APP_GA4_MEASUREMENT_ID%"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', '%REACT_APP_GA4_MEASUREMENT_ID%', {
+        send_page_view: false  // App handles page_view events manually
+      });
+      // Mark payment_success as a conversion in GA4 dashboard
+    </script>
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+  </body>
+</html>

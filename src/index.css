@@ -1,0 +1,24 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 16px; }
+body {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  background: #f8fafc;
+  color: #1e293b;
+  -webkit-font-smoothing: antialiased;
+}
+:root {
+  --navy: #1e3a8a;
+  --navy-dark: #172554;
+  --indigo: #4f46e5;
+  --indigo-light: #e0e7ff;
+  --amber: #d97706;
+  --amber-light: #fef3c7;
+  --green: #16a34a;
+  --red: #dc2626;
+  --slate: #f1f5f9;
+  --border: #e2e8f0;
+  --text-muted: #64748b;
+  --font-mono: 'DM Mono', monospace;
+}
+button { font-family: inherit; cursor: pointer; }
+input { font-family: inherit; }
