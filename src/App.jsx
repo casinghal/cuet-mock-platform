@@ -74,6 +74,16 @@ button{cursor:pointer;border:none;outline:none;font-family:var(--font-body);}
 .modal-box{background:#fff;border-radius:16px;padding:32px;max-width:440px;width:100%;box-shadow:0 20px 60px rgba(15,39,71,.25);}
 .error-msg{background:#FEF2F2;border:1px solid #FECACA;color:var(--danger);border-radius:8px;padding:10px 14px;font-size:13px;margin-top:8px;}
 ::-webkit-scrollbar{width:6px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+@media(max-width:700px){
+  .nta-header{padding:0 16px;height:48px;}
+  .nta-logo{font-size:15px;}
+  .section-bar{padding:6px 16px;font-size:11px;}
+  .modal-box{padding:24px 20px;}
+  .btn-primary{font-size:13px;}
+  .option-box{padding:12px 14px;}
+  table{font-size:12px;}
+  th,td{padding:8px 10px !important;}
+}
 `;
 if (!document.getElementById("cuet-styles")) {
   const s = document.createElement("style"); s.id = "cuet-styles"; s.textContent = CSS;
@@ -151,6 +161,17 @@ async function getAuthToken() {
 function authHeaders(token) {
   return token ? { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }
                : { "Content-Type": "application/json" };
+}
+
+// ── Mobile detection hook ─────────────────────────────────────────────────────
+function useMobile() {
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 700);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 700);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
+  return isMobile;
 }
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
@@ -256,6 +277,7 @@ function AuthScreen({ onLogin, showToast }) {
   const [loading, setLoading] = useState(null);
   const [error,   setError]   = useState(null);
   const [mode,    setMode]    = useState("login");
+  const isMobile = useMobile();
 
   useEffect(() => { logEvent("page_view", { page: "auth" }); }, []);
 
@@ -321,7 +343,7 @@ function AuthScreen({ onLogin, showToast }) {
     // Top nav
     nav: {
       display: "flex", alignItems: "center", justifyContent: "space-between",
-      padding: "20px 32px", position: "relative", zIndex: 10,
+      padding: isMobile ? "16px 20px" : "20px 32px", position: "relative", zIndex: 10,
     },
     navLogo: {
       fontFamily: "var(--font-display)", fontSize: 22, color: "#fff",
@@ -335,15 +357,21 @@ function AuthScreen({ onLogin, showToast }) {
     },
     // Main layout
     main: {
-      flex: 1, display: "flex", alignItems: "stretch",
-      padding: "24px 32px 48px", gap: 48,
+      flex: 1, display: "flex",
+      flexDirection: isMobile ? "column" : "row",
+      alignItems: isMobile ? "stretch" : "stretch",
+      padding: isMobile ? "16px 20px 40px" : "24px 32px 48px",
+      gap: isMobile ? 28 : 48,
       position: "relative", zIndex: 10,
       maxWidth: 1100, margin: "0 auto", width: "100%",
     },
     // Left hero panel
     hero: {
-      flex: "1 1 55%", display: "flex", flexDirection: "column",
-      justifyContent: "center", paddingRight: 24,
+      flex: isMobile ? "none" : "1 1 55%",
+      display: isMobile ? "flex" : "flex",
+      flexDirection: "column",
+      justifyContent: "center",
+      paddingRight: isMobile ? 0 : 24,
     },
     eyebrow: {
       display: "inline-flex", alignItems: "center", gap: 8,
@@ -403,9 +431,11 @@ function AuthScreen({ onLogin, showToast }) {
     },
     // Right auth card
     authCard: {
-      flex: "0 0 380px", background: "rgba(255,255,255,0.03)",
+      flex: isMobile ? "none" : "0 0 380px",
+      width: isMobile ? "100%" : undefined,
+      background: "rgba(255,255,255,0.03)",
       border: "1px solid rgba(255,255,255,0.1)",
-      borderRadius: 20, padding: "36px 32px",
+      borderRadius: 20, padding: isMobile ? "28px 24px" : "36px 32px",
       backdropFilter: "blur(20px)",
       display: "flex", flexDirection: "column", justifyContent: "center",
       boxShadow: "0 32px 64px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.08)",
@@ -503,7 +533,8 @@ function AuthScreen({ onLogin, showToast }) {
       {/* Main split layout */}
       <div style={S.main}>
 
-        {/* ── Left: Hero ── */}
+        {/* ── Left: Hero — hidden on mobile ── */}
+        {!isMobile && (
         <div style={S.hero}>
           <div style={S.eyebrow}>
             <span style={S.dot} />
@@ -560,6 +591,7 @@ function AuthScreen({ onLogin, showToast }) {
             ))}
           </div>
         </div>
+        )}
 
         {/* ── Right: Auth Card ── */}
         <div style={S.authCard}>
@@ -650,6 +682,7 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
   const [mode,        setMode]        = useState("Mock");
   const [showPaywall, setShowPaywall] = useState(false);
   const [checking,    setChecking]    = useState(false);
+  const isMobile = useMobile();
 
   const testsUsed = userData?.testsUsed || 0;
   const unlocked  = userData?.unlocked  || false;
@@ -717,7 +750,7 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
         </div>
       </div>
 
-      <div style={{ flex: 1, maxWidth: 900, margin: "0 auto", width: "100%", padding: "28px 24px" }}>
+      <div style={{ flex: 1, maxWidth: 900, margin: "0 auto", width: "100%", padding: isMobile ? "20px 16px" : "28px 24px" }}>
         <h2 style={{ fontSize: 12, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 16 }}>
           Your Practice Summary
         </h2>
@@ -772,7 +805,8 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
           </div>
         ) : (
           <div className="card" style={{ overflow: "hidden" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: isMobile ? 500 : "auto" }}>
               <thead>
                 <tr style={{ background: "var(--bg-alt)", borderBottom: "1px solid var(--border)" }}>
                   {["Date", "Mode", "Score", "Correct", "Accuracy", "Status"].map(h => (
@@ -800,6 +834,7 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
                 })}
               </tbody>
             </table>
+            </div>
           </div>
         )}
       </div>
@@ -838,6 +873,8 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
   const [marked,    setMarked]    = useState(new Set());
   const [timeLeft,  setTimeLeft]  = useState(config?.mode === "SpeedDrill" ? 1800 : EXAM_SECS);
   const [exitModal, setExitModal] = useState(false);
+  const [showPalette, setShowPalette] = useState(false);
+  const isMobile = useMobile();
   const timerRef = useRef(null);
 
   useEffect(() => { logEvent("page_view", { page: "exam" }); }, []);
@@ -899,8 +936,8 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
         <span className="pill pill-navy" style={{ marginLeft: 8 }}>{Object.keys(answers).length} answered</span>
       </div>
 
-      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-        <div style={{ flex: 1, overflowY: "auto", padding: "28px 32px" }}>
+      <div style={{ flex: 1, display: "flex", overflow: "hidden", flexDirection: "column" }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? "20px 16px" : "28px 32px" }}>
           {q.passage && (
             <div style={{ borderLeft: "4px solid var(--indigo)", background: "#F5F7FF", borderRadius: "0 8px 8px 0", padding: "16px 20px", marginBottom: 20, fontSize: 13.5, lineHeight: 1.8, color: "var(--text-primary)" }}>
               <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".05em", textTransform: "uppercase", color: "var(--indigo)", marginBottom: 8 }}>Reading Passage</div>
@@ -911,55 +948,90 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
             <span className="pill pill-indigo">{q.topic}</span>
             <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Q.{current + 1}</span>
           </div>
-          <div style={{ fontSize: 15, fontWeight: 500, color: "var(--text-primary)", lineHeight: 1.65, marginBottom: 24 }}>{q.question}</div>
+          <div style={{ fontSize: isMobile ? 14 : 15, fontWeight: 500, color: "var(--text-primary)", lineHeight: 1.65, marginBottom: 24 }}>{q.question}</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {q.options.map((opt, i) => (
               <div key={i} className={"option-box" + (answers[current] === i ? " selected" : "")} onClick={() => setAnswers(p => ({ ...p, [current]: i }))}>
                 <span className="option-key">{String.fromCharCode(65 + i)}</span>
-                <span style={{ fontSize: 14, color: "var(--text-primary)", flex: 1 }}>{opt}</span>
+                <span style={{ fontSize: isMobile ? 13 : 14, color: "var(--text-primary)", flex: 1 }}>{opt}</span>
               </div>
             ))}
           </div>
         </div>
 
-        <div style={{ width: 196, borderLeft: "1px solid var(--border)", background: "var(--bg-alt)", overflowY: "auto", padding: 16, flexShrink: 0, display: "flex", flexDirection: "column" }}>
-          <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".05em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 12 }}>Question Palette</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
-            {questions.map((_, i) => {
-              const ans = answers[i] !== undefined, mrk = marked.has(i), cur = i === current;
-              let bg = "#fff", bc = "var(--border)", cl = "var(--text-secondary)";
-              if (ans && mrk) { bg = "#FEF3C7"; bc = "var(--amber)"; cl = "var(--amber)"; }
-              else if (ans)   { bg = "#ECFDF5"; bc = "var(--success)"; cl = "var(--success)"; }
-              else if (mrk)   { bg = "#FFFBEB"; bc = "var(--amber)"; cl = "var(--amber)"; }
-              return (
-                <button key={i} onClick={() => setCurrent(i)} style={{ width: 30, height: 30, border: `2px solid ${cur ? "var(--indigo)" : bc}`, borderRadius: 4, background: bg, color: cl, fontSize: 11, fontWeight: cur ? 700 : 500, fontFamily: "var(--font-mono)", cursor: "pointer", boxShadow: cur ? "0 0 0 2px var(--indigo)" : "none", transition: "all .12s" }}>
-                  {i + 1}
-                </button>
-              );
-            })}
+        {/* Desktop sidebar palette */}
+        {!isMobile && (
+          <div style={{ width: 196, borderLeft: "1px solid var(--border)", background: "var(--bg-alt)", overflowY: "auto", padding: 16, flexShrink: 0, display: "flex", flexDirection: "column" }}>
+            <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".05em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 12 }}>Question Palette</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
+              {questions.map((_, i) => {
+                const ans = answers[i] !== undefined, mrk = marked.has(i), cur = i === current;
+                let bg = "#fff", bc = "var(--border)", cl = "var(--text-secondary)";
+                if (ans && mrk) { bg = "#FEF3C7"; bc = "var(--amber)"; cl = "var(--amber)"; }
+                else if (ans)   { bg = "#ECFDF5"; bc = "var(--success)"; cl = "var(--success)"; }
+                else if (mrk)   { bg = "#FFFBEB"; bc = "var(--amber)"; cl = "var(--amber)"; }
+                return (
+                  <button key={i} onClick={() => setCurrent(i)} style={{ width: 30, height: 30, border: `2px solid ${cur ? "var(--indigo)" : bc}`, borderRadius: 4, background: bg, color: cl, fontSize: 11, fontWeight: cur ? 700 : 500, fontFamily: "var(--font-mono)", cursor: "pointer", boxShadow: cur ? "0 0 0 2px var(--indigo)" : "none", transition: "all .12s" }}>
+                    {i + 1}
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.8, marginBottom: 16 }}>
+              <div>&#x1F7E9; Answered</div><div>&#x1F7E8; Marked</div><div>&#x2B1C; Not visited</div>
+            </div>
+            <button className="btn-primary" onClick={() => submitTest(false)} style={{ width: "100%", fontSize: 12, height: 38, marginTop: "auto" }}>
+              Submit Test
+            </button>
           </div>
-          <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.8, marginBottom: 16 }}>
-            <div>&#x1F7E9; Answered</div><div>&#x1F7E8; Marked</div><div>&#x2B1C; Not visited</div>
-          </div>
-          <button className="btn-primary" onClick={() => submitTest(false)} style={{ width: "100%", fontSize: 12, height: 38, marginTop: "auto" }}>
-            Submit Test
-          </button>
-        </div>
+        )}
       </div>
 
-      <div style={{ borderTop: "1px solid var(--border)", background: "#fff", padding: "12px 32px", display: "flex", alignItems: "center", gap: 12 }}>
+      {/* Mobile palette modal */}
+      {isMobile && showPalette && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.7)", zIndex: 998, display: "flex", alignItems: "flex-end" }} onClick={() => setShowPalette(false)}>
+          <div style={{ background: "#fff", borderRadius: "16px 16px 0 0", padding: "20px 16px 32px", width: "100%", maxHeight: "60vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: "var(--navy)" }}>Question Palette</span>
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{Object.keys(answers).length}/{questions.length} answered</span>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 20 }}>
+              {questions.map((_, i) => {
+                const ans = answers[i] !== undefined, mrk = marked.has(i), cur = i === current;
+                let bg = "#fff", bc = "var(--border)", cl = "var(--text-secondary)";
+                if (ans && mrk) { bg = "#FEF3C7"; bc = "var(--amber)"; cl = "var(--amber)"; }
+                else if (ans)   { bg = "#ECFDF5"; bc = "var(--success)"; cl = "var(--success)"; }
+                else if (mrk)   { bg = "#FFFBEB"; bc = "var(--amber)"; cl = "var(--amber)"; }
+                return (
+                  <button key={i} onClick={() => { setCurrent(i); setShowPalette(false); }} style={{ width: 36, height: 36, border: `2px solid ${cur ? "var(--indigo)" : bc}`, borderRadius: 4, background: bg, color: cl, fontSize: 12, fontWeight: cur ? 700 : 500, fontFamily: "var(--font-mono)", cursor: "pointer" }}>
+                    {i + 1}
+                  </button>
+                );
+              })}
+            </div>
+            <button className="btn-primary full" onClick={() => { setShowPalette(false); submitTest(false); }}>Submit Test</button>
+          </div>
+        </div>
+      )}
+
+      <div style={{ borderTop: "1px solid var(--border)", background: "#fff", padding: isMobile ? "10px 16px" : "12px 32px", display: "flex", alignItems: "center", gap: isMobile ? 8 : 12 }}>
         <button className="btn-amber" onClick={() => setMarked(p => { const n = new Set(p); n.has(current) ? n.delete(current) : n.add(current); return n; })}>
-          {marked.has(current) ? "✓ Marked" : "Mark for Review"}
+          {marked.has(current) ? "✓ Marked" : "Mark"}
         </button>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
+        {isMobile && (
+          <button onClick={() => setShowPalette(true)} style={{ height: 36, padding: "0 12px", border: "1.5px solid var(--border)", borderRadius: 6, background: "#fff", fontSize: 12, fontWeight: 600, color: "var(--navy)", cursor: "pointer", fontFamily: "var(--font-body)" }}>
+            Questions ({Object.keys(answers).length}/{questions.length})
+          </button>
+        )}
+        <div style={{ marginLeft: "auto", display: "flex", gap: isMobile ? 8 : 10 }}>
           <button
             onClick={() => current > 0 && setCurrent(c => c - 1)}
-            style={{ height: 36, padding: "0 16px", border: "1.5px solid var(--border)", borderRadius: 6, background: "#fff", fontSize: 13, fontWeight: 500, color: "var(--text-secondary)", cursor: current > 0 ? "pointer" : "not-allowed", opacity: current > 0 ? 1 : 0.4, fontFamily: "var(--font-body)", display: "flex", alignItems: "center", gap: 6 }}
+            style={{ height: 36, padding: "0 14px", border: "1.5px solid var(--border)", borderRadius: 6, background: "#fff", fontSize: 13, fontWeight: 500, color: "var(--text-secondary)", cursor: current > 0 ? "pointer" : "not-allowed", opacity: current > 0 ? 1 : 0.4, fontFamily: "var(--font-body)", display: "flex", alignItems: "center", gap: 4 }}
           >
-            ← Back
+            ← {!isMobile && "Back"}
           </button>
           <button className="btn-navy-sm" onClick={() => { if (current < questions.length - 1) setCurrent(c => c + 1); else showToast("Last question. Submit when ready.", "info"); }}>
-            Save &amp; Next →
+            {isMobile ? "Next →" : "Save & Next →"}
           </button>
         </div>
       </div>
