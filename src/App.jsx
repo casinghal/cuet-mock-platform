@@ -9,9 +9,11 @@ const MODES = {
 // Per-combination token ceilings — no explanations in generation (lazy on review)
 // Haiku = 120 tokens/sec, AbortController = 25s = 3000 tokens max safe ceiling
 const MAX_TOKENS = {
-  quick:    { easy:1600, medium:2000, hard:2500 },
-  standard: { easy:1600, medium:2000, hard:2500 }, // per 15Q split-half
-  full:     { easy:2000, medium:2400, hard:2900 }, // per 17Q split-third
+  // Ceilings tuned to Haiku throughput (~150 tok/sec) + 25s proxy timeout
+  // Each value must satisfy: tokens/150 + 2s_latency < 25s → safe ceiling ≈ 3400
+  quick:    { easy:2800, medium:3000, hard:3200 }, // 15Q single call
+  standard: { easy:2800, medium:3000, hard:3200 }, // 15Q per half (2 parallel calls)
+  full:     { easy:2400, medium:2700, hard:3000 }, // 12–13Q per quarter (4 parallel calls)
 };
 const DIFFS = {
   easy:   { label:"Easy",   color:"#16a34a", bg:"#dcfce7", desc:"Simple vocab, direct questions" },
@@ -50,6 +52,8 @@ const GA_MEASUREMENT_ID  = "G-XXXXXXXXXX";          // TODO: replace with real G
 const RAZORPAY_KEY_ID    = "rzp_test_XXXXXXXXXXXXXXXX"; // TODO: replace with Razorpay test Key ID
 const FREE_LIMIT         = 5;                        // free Standard + Full Mock tests per user
 const GATED_MODES        = ["standard","full"];      // Quick Practice is always free
+const GOOGLE_CLIENT_ID   = "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com"; // TODO: Google Cloud Console → APIs & Services → Credentials → OAuth 2.0 Client ID
+const FACEBOOK_APP_ID    = "YOUR_FACEBOOK_APP_ID";   // TODO: developers.facebook.com → My Apps → create app → Settings → Basic → App ID
 
 // ─── Prompt builders ─────────────────────────────────────────
 function buildTestPrompt(mode, diff) {
@@ -230,6 +234,10 @@ async function callAI(prompt, max_tokens, retries=2) {
         }
         throw new Error(data.error?.message||`Server error (${res.status})`);
       }
+      // Detect token truncation — stop_reason "max_tokens" means JSON was cut off
+      if(data.stop_reason==="max_tokens"){
+        throw new Error("Response was cut off. Please try again in a moment, or switch to an easier difficulty level.");
+      }
       return data;
     }catch(e){
       if(attempt===retries) throw e;
@@ -273,6 +281,28 @@ const saveTestCount = (uid,n) => { try{ localStorage.setItem(`cuet_tc_${uid}`,St
 const isPaidUser    = uid => { try{ return localStorage.getItem(`cuet_paid_${uid}`)==="true"; }catch{ return false; } };
 const setPaidUser   = uid => { try{ localStorage.setItem(`cuet_paid_${uid}`,"true"); }catch{} };
 
+// ─── Social Auth loaders ─────────────────────────────────────
+function loadGSI(){
+  // Google Identity Services — loads only when Client ID is configured
+  if(document.getElementById("gsi-script")||GOOGLE_CLIENT_ID.startsWith("YOUR_")) return;
+  const s=document.createElement("script");
+  s.id="gsi-script"; s.async=true;
+  s.src="https://accounts.google.com/gsi/client";
+  document.head.appendChild(s);
+}
+
+function loadFBSDK(){
+  // Facebook SDK — loads only when App ID is configured
+  if(document.getElementById("fb-script")||FACEBOOK_APP_ID.startsWith("YOUR_")) return;
+  window.fbAsyncInit=function(){
+    window.FB.init({appId:FACEBOOK_APP_ID,cookie:true,xfbml:false,version:"v18.0"});
+  };
+  const s=document.createElement("script");
+  s.id="fb-script"; s.async=true;
+  s.src="https://connect.facebook.net/en_US/sdk.js";
+  document.head.appendChild(s);
+}
+
 // ─── Razorpay ────────────────────────────────────────────────
 function loadRazorpay(){
   if(window.Razorpay||document.getElementById("rzp-script")) return;
@@ -289,7 +319,7 @@ function openRazorpay({userId,userName,userEmail,onSuccess,onFailure}){
     key:           RAZORPAY_KEY_ID,
     amount:        19900,             // ₹199 in paise
     currency:      "INR",
-    name:          "Accuron Education",
+    name:          "Vantiq Education",
     description:   "CUET English Mock Tests — Unlimited Access",
     handler: async function(response){
       // TODO (Phase 3): POST to /.netlify/functions/verify-payment
@@ -333,6 +363,27 @@ function openRazorpay({userId,userName,userEmail,onSuccess,onFailure}){
   rzp.open();
 }
 
+// ─── Error classifier for GA4 structured tracking ───────────────
+function classifyGenError(err, mode, difficulty, maxTok, part){
+  const msg = (err.message||"").toLowerCase();
+  let error_type = "unknown";
+  if(msg.includes("cut off")||msg.includes("max_tokens"))  error_type = "json_truncated";
+  else if(msg.includes("timed out")||msg.includes("504"))  error_type = "timeout";
+  else if(msg.includes("429")||msg.includes("rate limit")) error_type = "rate_limit";
+  else if(msg.includes("network")||msg.includes("failed to fetch")) error_type = "network";
+  else if(msg.includes("no questions"))                    error_type = "empty_response";
+  else if(msg.includes("json")||msg.includes("parse"))     error_type = "json_parse";
+  else if(msg.includes("500")||msg.includes("server"))     error_type = "server_error";
+  trackEvent("generation_error",{
+    mode,
+    difficulty,
+    error_type,
+    error_message: err.message?.slice(0,120)||"unknown",
+    max_tokens:    maxTok||0,
+    split_part:    part||"single",
+  });
+}
+
 // ─── Main Component ──────────────────────────────────────────
 export default function CUETPlatform() {
   // Restore session on mount — fixes page refresh logout
@@ -367,8 +418,8 @@ export default function CUETPlatform() {
   const submitRef = useRef(null);
 
 
-  // Load GA4 + Razorpay scripts on mount
-  useEffect(()=>{ loadGA4(); loadRazorpay(); },[]);
+  // Load GA4 + Razorpay + Social auth scripts on mount
+  useEffect(()=>{ loadGA4(); loadRazorpay(); loadGSI(); loadFBSDK(); },[]);
 
   // Inject global responsive styles once
   useEffect(()=>{
@@ -459,6 +510,85 @@ export default function CUETPlatform() {
         .finally(()=>setLoadingAdv(false));
     }
   },[screen,results]);
+
+  // ─── Social Auth ──────────────────────────────────────────
+  const handleSocialLogin=(name,email,provider)=>{
+    if(!email){
+      setAuthErr(`${provider} did not share your email address. Please check your ${provider} privacy settings or use email login.`);
+      return;
+    }
+    const users=getUsers();
+    const existing=Object.values(users).find(u=>u.email===email.toLowerCase());
+    if(existing){
+      // Returning user — log in
+      const{password:_,...safe}=existing;
+      saveSession(safe);
+      setUser(safe); setHistory(getHist(safe.id));
+      trackEvent("login",{method:provider.toLowerCase()});
+      setScreen("dashboard");
+    }else{
+      // New user via social — create account
+      const nu={id:Date.now().toString(),name,email:email.toLowerCase(),created:new Date().toISOString(),provider};
+      saveUsers({...users,[email.toLowerCase()]:{...nu,social:true}});
+      saveSession(nu);
+      setUser(nu); setHistory([]);
+      trackEvent("sign_up",{method:provider.toLowerCase()});
+      setScreen("dashboard");
+    }
+  };
+
+  const signInWithGoogle=()=>{
+    setAuthErr("");
+    if(GOOGLE_CLIENT_ID.startsWith("YOUR_")){
+      setAuthErr("Google Sign-In is not yet configured. Please use your email and password to sign in.");
+      return;
+    }
+    if(!window.google?.accounts?.oauth2){
+      setAuthErr("Google Sign-In is still loading. Please wait a moment and try again.");
+      return;
+    }
+    const client=window.google.accounts.oauth2.initTokenClient({
+      client_id:GOOGLE_CLIENT_ID,
+      scope:"email profile",
+      callback:async(response)=>{
+        if(response.error){setAuthErr("Google Sign-In failed. Please try again.");return;}
+        try{
+          const res=await fetch("https://www.googleapis.com/oauth2/v3/userinfo",{
+            headers:{Authorization:`Bearer ${response.access_token}`}
+          });
+          const info=await res.json();
+          handleSocialLogin(info.name||info.email,info.email,"Google");
+        }catch{
+          setAuthErr("Could not retrieve your Google profile. Please try again.");
+        }
+      }
+    });
+    client.requestAccessToken({prompt:"select_account"});
+  };
+
+  const signInWithFacebook=()=>{
+    setAuthErr("");
+    if(FACEBOOK_APP_ID.startsWith("YOUR_")){
+      setAuthErr("Facebook Sign-In is not yet configured. Please use your email and password to sign in.");
+      return;
+    }
+    if(!window.FB){
+      setAuthErr("Facebook SDK is still loading. Please wait a moment and try again.");
+      return;
+    }
+    window.FB.login(function(response){
+      if(response.authResponse){
+        window.FB.api("/me",{fields:"name,email"},function(user){
+          if(user&&!user.error){
+            handleSocialLogin(user.name,user.email,"Facebook");
+          }else{
+            setAuthErr("Facebook did not share your email address. Please check your Facebook privacy settings or use email login.");
+          }
+        });
+      }
+      // If user cancelled, do nothing
+    },{scope:"public_profile,email"});
+  };
 
   // ─── Auth ──────────────────────────────────────────────────
   const handleAuth=()=>{
@@ -554,10 +684,10 @@ export default function CUETPlatform() {
         // 4-way parallel split: 13+13+12+12 = 50Q, each call ~2000 tokens → ~21s safely within 25s limit
         setGenStage("Preparing your Full Mock paper across all sections. Please wait.");
         const [d1,d2,d3,d4]=await Promise.all([
-          callAI(buildSplitPrompt(difficulty,"first",13),MAX_TOKENS.full[difficulty]),
-          callAI(buildSplitPrompt(difficulty,"second",13),MAX_TOKENS.full[difficulty]),
-          callAI(buildSplitPrompt(difficulty,"third",12),MAX_TOKENS.full[difficulty]),
-          callAI(buildSplitPrompt(difficulty,"fourth",12),MAX_TOKENS.full[difficulty]),
+          callAI(buildSplitPrompt(difficulty,"first",13),MAX_TOKENS.full[difficulty]).catch(e=>{classifyGenError(e,mode,difficulty,MAX_TOKENS.full[difficulty],"first");throw e;}),
+          callAI(buildSplitPrompt(difficulty,"second",13),MAX_TOKENS.full[difficulty]).catch(e=>{classifyGenError(e,mode,difficulty,MAX_TOKENS.full[difficulty],"second");throw e;}),
+          callAI(buildSplitPrompt(difficulty,"third",12),MAX_TOKENS.full[difficulty]).catch(e=>{classifyGenError(e,mode,difficulty,MAX_TOKENS.full[difficulty],"third");throw e;}),
+          callAI(buildSplitPrompt(difficulty,"fourth",12),MAX_TOKENS.full[difficulty]).catch(e=>{classifyGenError(e,mode,difficulty,MAX_TOKENS.full[difficulty],"fourth");throw e;}),
         ]);
         setGenStage("Finalising your Full Mock Test paper...");
         const r1=parseAI(d1.content.filter(b=>b.type==="text").map(b=>b.text).join(""));
@@ -580,8 +710,8 @@ export default function CUETPlatform() {
         // 2-way parallel split: 15+15 = 30Q, each call ~2000 tokens → ~17s safely within 25s limit
         setGenStage("Preparing your test paper...");
         const [d1,d2]=await Promise.all([
-          callAI(buildStandardSplitPrompt(difficulty,"first"),MAX_TOKENS.standard[difficulty]),
-          callAI(buildStandardSplitPrompt(difficulty,"second"),MAX_TOKENS.standard[difficulty]),
+          callAI(buildStandardSplitPrompt(difficulty,"first"),MAX_TOKENS.standard[difficulty]).catch(e=>{classifyGenError(e,mode,difficulty,MAX_TOKENS.standard[difficulty],"first");throw e;}),
+          callAI(buildStandardSplitPrompt(difficulty,"second"),MAX_TOKENS.standard[difficulty]).catch(e=>{classifyGenError(e,mode,difficulty,MAX_TOKENS.standard[difficulty],"second");throw e;}),
         ]);
         setGenStage("Finalising your Standard Test paper...");
         const r1=parseAI(d1.content.filter(b=>b.type==="text").map(b=>b.text).join(""));
@@ -595,11 +725,14 @@ export default function CUETPlatform() {
       }else{
         // Quick Practice — single call, 15Q
         setGenStage("Preparing your test paper...");
-        const data=await callAI(buildTestPrompt(mode,difficulty),MAX_TOKENS[mode][difficulty]);
+        const data=await callAI(buildTestPrompt(mode,difficulty),MAX_TOKENS[mode][difficulty]).catch(e=>{classifyGenError(e,mode,difficulty,MAX_TOKENS[mode][difficulty],"single");throw e;});
         const r=parseAI(data.content.filter(b=>b.type==="text").map(b=>b.text).join(""));
         allPassages=r.passages; allQuestions=r.questions;
       }
-      if(!allQuestions.length) throw new Error("No questions were returned. Please try again.");
+      if(!allQuestions.length){
+        classifyGenError(new Error("No questions were returned. Please try again."),mode,difficulty,MAX_TOKENS[mode]?.[difficulty]||0,"post_parse");
+        throw new Error("No questions were returned. Please try again.");
+      }
       setPassages(allPassages); setQuestions(allQuestions);
       setAnswers({}); setMarkedReview(new Set());
       setVisited(new Set([allQuestions[0]?.id]));
@@ -613,6 +746,10 @@ export default function CUETPlatform() {
       trackEvent("test_started",{mode,difficulty,question_count:allQuestions.length});
       setScreen("exam");
     }catch(e){
+      // Only fire if not already tracked by a per-call .catch above
+      if(!e.__tracked){
+        classifyGenError(e,mode,difficulty,MAX_TOKENS[mode]?.[difficulty]||0,"outer_catch");
+      }
       setGenError("Generation failed: "+e.message);
       setGenStage(""); setScreen("dashboard");
     }
@@ -652,7 +789,7 @@ export default function CUETPlatform() {
         <div style={{textAlign:"center",marginBottom:32}}>
           <h1 style={{margin:"0 0 8px",fontSize:20,fontWeight:700,color:"#0F1C2E",lineHeight:1.3}}>CUET English Mock Test Series — 2026</h1>
           <p style={{margin:"0 0 4px",fontSize:13,color:"#334155"}}>Section I — Language Proficiency (English)</p>
-          <p style={{margin:0,fontSize:11,color:"#94A3B8",fontWeight:600,letterSpacing:"0.06em",textTransform:"uppercase"}}>Accuron Education</p>
+          <p style={{margin:0,fontSize:11,color:"#94A3B8",fontWeight:600,letterSpacing:"0.06em",textTransform:"uppercase"}}>Vantiq Education</p>
         </div>
         <div style={{background:"white",border:"1px solid #E2E8F0",borderRadius:8,padding:"28px 24px",boxShadow:"0 1px 3px rgba(0,0,0,0.08),0 1px 2px rgba(0,0,0,0.04)"}}>
           {authMode==="register"&&(
@@ -682,9 +819,9 @@ export default function CUETPlatform() {
           {/* Social login */}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
             {[{name:"Google",icon:"G"},{name:"Facebook",icon:"f"}].map(({name,icon})=>(
-              <button key={name} onClick={()=>alert("Social login is coming soon. Please use email to sign in.")} style={{padding:"9px 12px",border:"1px solid #E2E8F0",borderRadius:6,background:"white",cursor:"pointer",fontSize:13,fontWeight:500,color:"#334155",display:"flex",alignItems:"center",justifyContent:"center",gap:8,transition:"border-color 0.15s"}} onMouseEnter={e=>e.target.style.borderColor="#CBD5E1"} onMouseLeave={e=>e.target.style.borderColor="#E2E8F0"}>
+              <button key={name} onClick={name==="Google"?signInWithGoogle:signInWithFacebook} style={{padding:"9px 12px",border:"1px solid #E2E8F0",borderRadius:6,background:"white",cursor:"pointer",fontSize:13,fontWeight:500,color:"#334155",display:"flex",alignItems:"center",justifyContent:"center",gap:8,transition:"border-color 0.15s"}} onMouseEnter={e=>e.target.style.borderColor="#CBD5E1"} onMouseLeave={e=>e.target.style.borderColor="#E2E8F0"}>
                 <span style={{width:18,height:18,borderRadius:3,background:name==="Google"?"#EA4335":"#1877F2",color:"white",fontSize:11,fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>{icon}</span>
-                {name}
+                {`Sign in with ${name}`}
               </button>
             ))}
           </div>
@@ -713,7 +850,7 @@ export default function CUETPlatform() {
             <div style={{background:"white",borderRadius:4,padding:"3px 10px",fontWeight:900,fontSize:13,color:"#0F1C2E",letterSpacing:2}}>NTA</div>
             <div style={{color:"white"}}>
               <div style={{fontWeight:600,fontSize:14,lineHeight:1.3}}>CUET (UG) 2026 — English (101)</div>
-              <div style={{fontSize:11,color:"rgba(255,255,255,0.45)"}}>Accuron Education</div>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.45)"}}>Vantiq Education</div>
             </div>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:14}}>
