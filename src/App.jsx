@@ -80,6 +80,19 @@ if (!document.getElementById("cuet-styles")) {
   document.head.appendChild(s);
 }
 
+// ── GA4 — inject gtag if measurement ID is provided ──────────────────────────
+const GA4_ID = import.meta.env.VITE_GA4_MEASUREMENT_ID;
+if (GA4_ID && !document.getElementById("gtag-init")) {
+  const sc = document.createElement("script");
+  sc.id = "gtag-init"; sc.async = true;
+  sc.src = `https://www.googletagmanager.com/gtag/js?id=${GA4_ID}`;
+  document.head.appendChild(sc);
+  window.dataLayer = window.dataLayer || [];
+  window.gtag = function() { window.dataLayer.push(arguments); };
+  window.gtag("js", new Date());
+  window.gtag("config", GA4_ID, { send_page_view: false });
+}
+
 // ── Firebase ──────────────────────────────────────────────────────────────────
 // Defensive Firebase init — app runs in localStorage-only mode if credentials missing
 const FIREBASE_CONFIGURED = !!(
@@ -128,6 +141,18 @@ function fmtDate(ts) {
 function fmtTimer(s) { return `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`; }
 function scoreColor(p) { return p >= 70 ? "var(--success)" : p >= 45 ? "var(--amber)" : "var(--danger)"; }
 
+// ── Auth Token — required for all Cloud Function calls ────────────────────────
+async function getAuthToken() {
+  try {
+    if (!auth?.currentUser) return null;
+    return await auth.currentUser.getIdToken();
+  } catch(_) { return null; }
+}
+function authHeaders(token) {
+  return token ? { "Content-Type": "application/json", "Authorization": `Bearer ${token}` }
+               : { "Content-Type": "application/json" };
+}
+
 // ── Toast ─────────────────────────────────────────────────────────────────────
 function Toast({ message, type, onDismiss }) {
   useEffect(() => { const t = setTimeout(onDismiss, 3500); return () => clearTimeout(t); }, []);
@@ -143,11 +168,18 @@ function PaywallModal({ user, onSuccess, onClose }) {
     setLoading(true); setError(null);
     logEvent("payment_initiated", { user_id: user?.uid });
     try {
+      const token = await getAuthToken();
+      const hdrs  = authHeaders(token);
+
+      // Step 1: Create order server-side
       const orderRes = await fetch(`${CF_BASE}/createOrder`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ uid: user?.uid }),
+        method: "POST", headers: hdrs, body: JSON.stringify({}),
       });
-      const { order_id } = await orderRes.json();
+      const orderData = await orderRes.json();
+      if (!orderRes.ok) throw new Error(orderData.error || "Could not create order");
+      const order_id = orderData.id; // CF returns { id, amount, currency }
+
+      // Step 2: Open Razorpay checkout
       const rzp = new window.Razorpay({
         key: RZP_KEY_ID, order_id,
         amount: 19900, currency: "INR",
@@ -156,15 +188,16 @@ function PaywallModal({ user, onSuccess, onClose }) {
         prefill: { name: user?.displayName || "", email: user?.email || "" },
         handler: async (resp) => {
           try {
+            // Step 3: Verify HMAC server-side before unlocking
             const vRes = await fetch(`${CF_BASE}/verifyPayment`, {
-              method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ ...resp, uid: user?.uid }),
+              method: "POST", headers: hdrs,
+              body: JSON.stringify(resp), // { razorpay_order_id, razorpay_payment_id, razorpay_signature }
             });
             const vData = await vRes.json();
-            if (vData.success) {
+            if (vData.unlocked) {
               logEvent("payment_success", { user_id: user?.uid, value: 199, currency: "INR" });
               onSuccess();
-            } else throw new Error("Verification failed");
+            } else throw new Error(vData.error || "Verification failed");
           } catch(e) {
             logEvent("payment_failed", { user_id: user?.uid, reason: e.message });
             setError("Payment verification failed. Contact support if amount was deducted.");
@@ -177,7 +210,7 @@ function PaywallModal({ user, onSuccess, onClose }) {
         setError(r.error.description); setLoading(false);
       });
       rzp.open();
-    } catch(e) { setError("Could not create order. Try again."); setLoading(false); }
+    } catch(e) { setError(e.message || "Could not create order. Try again."); setLoading(false); }
   }
 
   return (
@@ -658,9 +691,9 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
     try {
       // Check limit: Cloud Function (authoritative) → Firestore → localStorage fallback
       if (CF_BASE) {
+        const token = await getAuthToken();
         const r = await fetch(`${CF_BASE}/checkTestLimit`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ uid: user?.uid }),
+          method: "POST", headers: authHeaders(token), body: JSON.stringify({}),
         });
         const d = await r.json();
         if (!d.allowed) {
@@ -988,15 +1021,18 @@ function ResultsScreen({ questions, answers, config, user, onNewTest, onReview }
     async function fetchAnalysis() {
       setALoading(true);
       try {
-        const res = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: "claude-sonnet-4-20250514", max_tokens: 1000,
-            messages: [{ role: "user", content: `You are a CUET English expert. Give a concise 3-4 sentence performance analysis for a student who scored ${pct}% (${correct}/${questions.length} correct, ${wrong} wrong, ${unanswered} unanswered) in ${config?.mode} mode. Weakest topic: ${topicRows[0]?.topic} at ${topicRows[0]?.accuracy}% accuracy. Give specific actionable advice. Be encouraging but honest.` }],
-          }),
+        if (!CF_BASE) {
+          setAnalysis("Review your answers below to identify improvement areas. Focus on your weakest topic first.");
+          return;
+        }
+        const token = await getAuthToken();
+        const prompt = `You are a CUET English expert. Give a concise 3-4 sentence performance analysis for a student who scored ${pct}% (${correct}/${questions.length} correct, ${wrong} wrong, ${unanswered} unanswered) in ${config?.mode} mode. Weakest topic: ${topicRows[0]?.topic} at ${topicRows[0]?.accuracy}% accuracy. Give specific actionable advice. Be encouraging but honest. Do not mention AI or any generation tool.`;
+        const res = await fetch(`${CF_BASE}/generateAdvisory`, {
+          method: "POST", headers: authHeaders(token),
+          body: JSON.stringify({ prompt }),
         });
         const d = await res.json();
-        setAnalysis(d?.content?.[0]?.text || null);
+        setAnalysis(d?.text || "Keep practising — consistency leads to improvement.");
       } catch(_) { setAnalysis("Review your answers below to identify improvement areas."); }
       finally { setALoading(false); }
     }
@@ -1177,8 +1213,9 @@ Return ONLY a valid JSON array with no markdown fences and no preamble:
 
   // Production: use Cloud Function proxy (secret stays server-side)
   if (CF_BASE) {
+    const token = await getAuthToken();
     const res = await fetch(`${CF_BASE}/generateQuestions`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
+      method: "POST", headers: authHeaders(token),
       body: JSON.stringify({ uid, config }),
     });
     const d = await res.json();
@@ -1187,14 +1224,8 @@ Return ONLY a valid JSON array with no markdown fences and no preamble:
     return d.questions;
   }
 
-  // Local dev fallback only — set VITE_CLOUD_FUNCTION_BASE before production deploy
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 1000, messages: [{ role: "user", content: prompt }] }),
-  });
-  const d = await res.json();
-  const text = d?.content?.[0]?.text || "[]";
-  return JSON.parse(text.replace(/```json|```/g, "").trim());
+  // No CF_BASE configured — cannot generate without server proxy
+  throw new Error("Cloud Function URL not configured. Set VITE_CLOUD_FUNCTION_BASE in environment variables.");
 }
 
 // ── ROOT APP ──────────────────────────────────────────────────────────────────

@@ -27,8 +27,8 @@ async function verifyToken(req, res) {
   catch(e) { res.status(401).json({error:"Invalid token"}); return null; }
 }
 
-// 1. generateQuestions
-exports.generateQuestions = functions.runWith({timeoutSeconds:120,memory:"256MB"}).https.onRequest(async(req,res)=>{
+// 1. generateQuestions — builds prompt server-side from config
+exports.generateQuestions = functions.runWith({timeoutSeconds:120,memory:"512MB"}).https.onRequest(async(req,res)=>{
   setCORS(res);
   if(req.method==="OPTIONS"){res.status(204).send("");return;}
   if(req.method!=="POST"){res.status(405).json({error:"Method not allowed"});return;}
@@ -37,18 +37,37 @@ exports.generateQuestions = functions.runWith({timeoutSeconds:120,memory:"256MB"
   try {
     const snap=await db.collection("users").doc(uid).get();
     const ud=snap.data()||{};
-    if(!ud.unlocked&&(ud.testsUsed||0)>=FREE_LIMIT){ res.status(402).json({error:"free_limit_reached"}); return; }
+    if(!ud.unlocked&&(ud.testsUsed||0)>=FREE_LIMIT){ res.status(402).json({error:"free_limit_reached",paywall:true}); return; }
   } catch(e){ res.status(500).json({error:"Access check failed"}); return; }
-  const {prompt,maxTokens=3200}=req.body;
-  if(!prompt){res.status(400).json({error:"prompt required"});return;}
+
+  const config=req.body.config||{};
+  const mode=config.mode||"Mock";
+  const diffMap={
+    Practice:"medium — concept building, accessible vocabulary",
+    Mock:"challenging — full NTA exam standard",
+    SpeedDrill:"moderate to hard — speed-optimised, clear answers",
+  };
+  const prompt=`Generate a CUET English (Code 101) question paper for NTA UG 2026 standard.
+Generate exactly 50 MCQ questions with this topic distribution:
+- Reading Comprehension: 22 questions (use 3 separate passages, each 250-300 words; one factual, one narrative, one literary)
+- Synonyms and Antonyms: 9 questions
+- Sentence Rearrangement: 7 questions
+- Choosing Correct Word: 7 questions
+- Match the Following: 3 questions
+- Grammar and Vocabulary: 2 questions
+Mode: ${mode} | Difficulty: ${diffMap[mode]||"challenging — full NTA exam standard"}
+Rules: every question has exactly 4 options; correct field is 0-indexed int (0=A,1=B,2=C,3=D); passage field is the full passage text for RC questions, null for all others; every question needs a clear 2-3 sentence explanation.
+Return ONLY a valid JSON object with no markdown fences and no preamble:
+{"questions":[{"question":"...","options":["...","...","...","..."],"correct":0,"topic":"Reading Comprehension","passage":"...or null...","explanation":"..."}]}`;
+
   const KEY=functions.config().anthropic?.api_key||process.env.ANTHROPIC_API_KEY;
   if(!KEY){res.status(500).json({error:"Generation service not configured"});return;}
   try {
     const r=await axios.post("https://api.anthropic.com/v1/messages",
-      {model:"claude-sonnet-4-20250514",max_tokens:maxTokens,messages:[{role:"user",content:prompt}]},
+      {model:"claude-sonnet-4-20250514",max_tokens:6000,messages:[{role:"user",content:prompt}]},
       {headers:{"Content-Type":"application/json","x-api-key":KEY,"anthropic-version":"2023-06-01"},timeout:110000}
     );
-    if(r.data?.stop_reason==="max_tokens"){res.status(500).json({error:"Response cut off. Try Easy difficulty or shorter mode."});return;}
+    if(r.data?.stop_reason==="max_tokens"){res.status(500).json({error:"Response cut off. Please try again."});return;}
     const raw=r.data?.content?.[0]?.text||"";
     const cleaned=raw.replace(/```json\n?/g,"").replace(/```\n?/g,"").trim();
     let parsed;
@@ -58,7 +77,7 @@ exports.generateQuestions = functions.runWith({timeoutSeconds:120,memory:"256MB"
   } catch(e){
     functions.logger.error("Anthropic error:",e.response?.data||e.message);
     const s=e.response?.status;
-    res.status(500).json({error:s===529?"AI service busy. Wait 30s and retry.":s===401?"API key error. Contact support.":"Generation failed. Please try again."});
+    res.status(500).json({error:s===529?"Service busy. Wait 30s and retry.":s===401?"API key error. Contact support.":"Generation failed. Please try again."});
   }
 });
 
@@ -79,7 +98,22 @@ exports.generateAdvisory = functions.runWith({timeoutSeconds:60,memory:"128MB"})
   } catch(e){ res.status(200).json({text:"Analysis unavailable. Focus on weak topics before next test."}); }
 });
 
-// 3. createOrder
+// 3. checkTestLimit — used by Dashboard before showing Begin Test
+exports.checkTestLimit = functions.runWith({timeoutSeconds:10,memory:"128MB"}).https.onRequest(async(req,res)=>{
+  setCORS(res);
+  if(req.method==="OPTIONS"){res.status(204).send("");return;}
+  if(req.method!=="POST"){res.status(405).json({error:"Method not allowed"});return;}
+  const decoded=await verifyToken(req,res); if(!decoded) return;
+  const uid=decoded.uid;
+  try {
+    const snap=await db.collection("users").doc(uid).get();
+    const ud=snap.data()||{};
+    const allowed=!!(ud.unlocked)||(ud.testsUsed||0)<FREE_LIMIT;
+    res.status(200).json({allowed,testsUsed:ud.testsUsed||0,unlocked:ud.unlocked||false});
+  } catch(e){ res.status(500).json({error:"Limit check failed"}); }
+});
+
+// 4. createOrder
 exports.createOrder = functions.runWith({timeoutSeconds:30,memory:"128MB"}).https.onRequest(async(req,res)=>{
   setCORS(res);
   if(req.method==="OPTIONS"){res.status(204).send("");return;}
