@@ -981,7 +981,6 @@ export default function CUETPlatform() {
             </div>
           )}
         </div>
-      </div>
 
         {/* ── Paywall Modal ─────────────────────────────── */}
         {showPaywall&&(
@@ -1038,6 +1037,7 @@ export default function CUETPlatform() {
           </div>
         )}
 
+      </div>
     );
   }
 
