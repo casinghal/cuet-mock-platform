@@ -251,7 +251,7 @@ function AuthScreen({ onLogin, showToast }) {
 
   const subjects = [
     { name: "English (101)", live: true  },
-    { name: "GAT",           live: false },
+    { name: "General Aptitude Test (GAT)", live: false },
     { name: "Economics",     live: false },
   ];
 
@@ -727,7 +727,7 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
         <div className="card" style={{ padding: "24px 28px", marginBottom: 28 }}>
           <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--navy)", marginBottom: 4 }}>New Test Paper</h3>
           <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 24 }}>
-            50 questions &middot; 60 min &middot; +5 correct / &minus;1 wrong
+            50 questions · 60 min · +5 correct / −1 wrong
           </p>
 
           <div style={{ marginBottom: 20 }}>
@@ -1068,7 +1068,7 @@ function ResultsScreen({ questions, answers, config, user, onNewTest, onReview }
           {aLoading ? (
             <div>
               <div className="pbar-track"><div className="pbar-fill" /></div>
-              <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 8 }}>Generating personalised analysis...</p>
+              <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 8 }}>Preparing your performance breakdown...</p>
             </div>
           ) : (
             <p style={{ fontSize: 14, color: "var(--text-secondary)", lineHeight: 1.7 }}>{analysis}</p>
