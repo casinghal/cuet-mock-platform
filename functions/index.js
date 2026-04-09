@@ -75,10 +75,18 @@ Return ONLY a valid JSON object with no markdown fences and no preamble:
     if(!parsed.questions||!Array.isArray(parsed.questions)){res.status(500).json({error:"Invalid question format"});return;}
     res.status(200).json({questions:parsed.questions});
   } catch(e){
-    functions.logger.error("Anthropic error:",e.response?.status, e.response?.data||e.message);
     const s=e.response?.status;
-    const msg=s===529?"Service busy. Wait 30s and retry.":s===401?"API key error. Contact support.":s===404?"Model not found. Contact support.":s===400?"Bad request: "+(e.response?.data?.error?.message||"unknown"):"Generation failed. Please try again.";
-    res.status(500).json({error:msg});
+    const detail=e.response?.data||e.message||"unknown";
+    functions.logger.error("Anthropic error: status=",s,"detail=",JSON.stringify(detail));
+    const msg=s===529?"Service busy. Wait 30s and retry.":
+              s===401?"API key error. Contact support.":
+              s===404?"Model not found. Contact support.":
+              s===400?"Bad request: "+(e.response?.data?.error?.message||"unknown"):
+              s===413?"Request too large. Contact support.":
+              s===422?"Invalid request: "+(e.response?.data?.error?.message||"unknown"):
+              !s?"Network/timeout error: "+String(e.message).substring(0,80):
+              "API error "+s+": "+String(detail).substring(0,80);
+    res.status(500).json({error:msg,debug_status:s||"no_response"});
   }
 });
 
