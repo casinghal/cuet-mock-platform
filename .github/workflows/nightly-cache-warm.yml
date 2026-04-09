@@ -3,7 +3,8 @@ name: Nightly Cache Warm
 on:
   # Primary trigger: 2:00 AM IST = 8:30 PM UTC
   schedule:
-    - cron: '30 20 * * *'
+    - cron: '30 20 * * *'  # 2:00 AM IST primary fill
+    - cron: '0 6 * * *'    # 11:30 AM IST midday top-up
 
   # Manual trigger — backup, run from GitHub Actions tab anytime
   workflow_dispatch:
