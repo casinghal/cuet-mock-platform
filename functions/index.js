@@ -258,7 +258,7 @@ exports.generateAdvisory = functions.runWith({ timeoutSeconds: 60, memory: "128M
 });
 
 // 3. checkTestLimit
-exports.checkTestLimit = functions.runWith({ timeoutSeconds: 10, memory: "128MB" }).https.onRequest(async (req, res) => {
+exports.checkTestLimit = functions.runWith({ timeoutSeconds: 20, memory: "256MB" }).https.onRequest(async (req, res) => {
   setCORS(res);
   if (req.method === "OPTIONS") { res.status(204).send(""); return; }
   if (req.method !== "POST")    { res.status(405).json({ error: "Method not allowed" }); return; }
