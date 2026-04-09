@@ -127,17 +127,20 @@ exports.triggerCacheWarm = functions
     const KEY = functions.config().anthropic?.api_key || process.env.ANTHROPIC_API_KEY;
     if (!KEY) { res.status(500).json({ error: "No API key configured" }); return; }
     const cutoff = new Date(Date.now() - CACHE_TTL_MS);
+    // Count by mode only (avoids composite index requirement)
     const status = {};
     for (const mode of MODES) {
-      const snap   = await db.collection("questionCache").where("mode", "==", mode).where("createdAt", ">", cutoff).get();
-      status[mode] = { current: snap.size, needed: Math.max(0, CACHE_SIZE - snap.size) };
+      const snap = await db.collection("questionCache").where("mode", "==", mode).get();
+      const fresh = snap.docs.filter(d => d.data().createdAt?.toDate() > cutoff);
+      status[mode] = { current: fresh.length, needed: Math.max(0, CACHE_SIZE - fresh.length) };
     }
     res.status(200).json({ message: "Cache warming started", status });
     (async () => {
       functions.logger.info("CACHE_WARM_START");
       for (const mode of MODES) {
-        const existing = await db.collection("questionCache").where("mode", "==", mode).where("createdAt", ">", cutoff).get();
-        const needed   = Math.max(0, CACHE_SIZE - existing.size);
+        const existing = await db.collection("questionCache").where("mode", "==", mode).get();
+        const fresh    = existing.docs.filter(d => d.data().createdAt?.toDate() > cutoff);
+        const needed   = Math.max(0, CACHE_SIZE - fresh.length);
         for (let i = 0; i < needed; i++) {
           try {
             const questions = await generateQuestionSet(mode, KEY);
@@ -182,9 +185,10 @@ exports.generateQuestions = functions
     functions.logger.info("GENERATION_START", { uid, mode, usedCount: usedSetIds.length });
     let cacheDoc = null;
     try {
-      const allSnap   = await db.collection("questionCache").where("mode", "==", mode).where("createdAt", ">", cutoff).get();
+      const allSnap   = await db.collection("questionCache").where("mode", "==", mode).get();
+      // Filter by TTL client-side to avoid composite index requirement
       const usedSet   = new Set(usedSetIds);
-      const available = allSnap.docs.filter(d => !usedSet.has(d.id));
+      const available = allSnap.docs.filter(d => !usedSet.has(d.id) && d.data().createdAt?.toDate() > cutoff);
       if (available.length > 0) cacheDoc = available[Math.floor(Math.random() * available.length)];
     } catch (e) { functions.logger.error("CACHE_QUERY_FAILED", { uid, error: e.message }); res.status(500).json({ error: "Could not load your test. Please try again." }); return; }
     if (!cacheDoc) {
