@@ -193,7 +193,7 @@ exports.triggerCacheWarm = functions
                 questionCount: questions.length,
               });
               functions.logger.info("CACHE_SET_STORED", { mode, set: i + 1, count: questions.length });
-              await new Promise(r => setTimeout(r, 2000));
+              await new Promise(r => setTimeout(r, 500));
             } catch (e) {
               functions.logger.error("CACHE_SET_FAILED", { mode, set: i + 1, error: e.message });
             }
