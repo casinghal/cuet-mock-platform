@@ -103,26 +103,40 @@ exports.generateQuestions = functions
     };
     const difficultyLabel = diffMap[mode] || "challenging — full NTA exam standard";
 
+    // TRUNCATION FIX: passages stored once, questions reference by passageId (0/1/2)
+    // Server reconstructs full format before returning to client
+    // This reduces output from ~14000 tokens to ~5500 tokens — well within 8000 limit
     const prompt = `You are an NTA CUET English (101) question paper generator.
-Generate exactly 50 MCQ questions. Return ONLY a JSON object — no markdown, no preamble, no text outside JSON.
+Return ONLY a JSON object — no markdown, no preamble, no text outside JSON.
 
 JSON schema:
-{"questions":[{"question":"...","options":["A","B","C","D"],"correct":0,"topic":"Reading Comprehension","passage":"250-300 word passage text or null for non-RC","explanation":"2-3 sentence explanation"}]}
+{
+  "passages": [
+    {"id": 0, "text": "250-300 word passage 1 — factual topic"},
+    {"id": 1, "text": "250-300 word passage 2 — narrative topic"},
+    {"id": 2, "text": "250-300 word passage 3 — literary topic"}
+  ],
+  "questions": [
+    {"question":"...","options":["A","B","C","D"],"correct":0,"topic":"Reading Comprehension","passageId":0,"explanation":"2-3 sentence explanation"},
+    {"question":"...","options":["A","B","C","D"],"correct":1,"topic":"Synonyms and Antonyms","passageId":null,"explanation":"..."}
+  ]
+}
 
 Topic distribution (MANDATORY — exactly these counts):
-- Reading Comprehension: 22 questions (3 passages: 1 factual, 1 narrative, 1 literary — 250-300 words each; all questions sharing a passage must have identical passage text)
-- Synonyms and Antonyms: 9 questions
-- Sentence Rearrangement: 7 questions
-- Choosing Correct Word: 7 questions
-- Match the Following: 3 questions
-- Grammar and Vocabulary: 2 questions
+- Reading Comprehension: 22 questions — passageId 0 (8 questions), passageId 1 (7 questions), passageId 2 (7 questions)
+- Synonyms and Antonyms: 9 questions — passageId null
+- Sentence Rearrangement: 7 questions — passageId null
+- Choosing Correct Word: 7 questions — passageId null
+- Match the Following: 3 questions — passageId null
+- Grammar and Vocabulary: 2 questions — passageId null
 
 Rules:
 1. "correct" is 0-indexed (0=A, 1=B, 2=C, 3=D)
 2. Every question has exactly 4 options
-3. Explanation: 2-3 sentences — why correct is right, why main distractor is wrong
-4. Mode: ${mode} | Difficulty: ${difficultyLabel}
-5. No repeated questions. Unique content only.
+3. Each passage must be 250-300 words — factual, narrative, literary genres
+4. Explanation: 2 sentences only — why correct answer is right
+5. Mode: ${mode} | Difficulty: ${difficultyLabel}
+6. Total questions: exactly 50
 
 Return ONLY the JSON object. Begin with { — nothing before it.`;
 
@@ -177,14 +191,29 @@ Return ONLY the JSON object. Begin with { — nothing before it.`;
         return;
       }
 
+      // Reconstruct full format: inject passage text into each RC question
+      // Client receives the same format as before — no App.jsx changes needed
+      const passages = parsed.passages || [];
+      const questions = parsed.questions.map(q => ({
+        question:    q.question,
+        options:     q.options,
+        correct:     q.correct,
+        topic:       q.topic,
+        explanation: q.explanation,
+        passage:     q.passageId != null && passages[q.passageId]
+                       ? passages[q.passageId].text
+                       : (q.passage || null)
+      }));
+
       functions.logger.info("GENERATION_COMPLETE", {
         uid, mode,
-        questionCount: parsed.questions.length,
+        questionCount: questions.length,
+        passageCount: passages.length,
         durationMs: Date.now() - startTime,
         model: "claude-haiku-4-5-20251001"
       });
 
-      res.status(200).json({ questions: parsed.questions });
+      res.status(200).json({ questions });
 
     } catch (e) {
       const durationMs = Date.now() - startTime;
