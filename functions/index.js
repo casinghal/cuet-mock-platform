@@ -1,15 +1,18 @@
 /**
  * Firebase Cloud Functions — Vantiq CUET Platform
- * v4.9.0 — Cache-first architecture with per-student deduplication
+ * TWO-TIER ARCHITECTURE:
  *
- * LIMITS:
- * - FREE_LIMIT: 4 tests before paywall
- * - DAILY_TEST_LIMIT: 15 tests per day (paid users only)
- * - Cache: 30 sets per mode, filled via triggerCacheWarm endpoint
- * - Per-student deduplication: usedCacheSetIds[]
+ * TIER 1 — QuickPractice (FREE FOREVER)
+ * - 15 questions, no timer, rotating question types
+ * - Never counted toward freemium limit or daily limit
+ * - Labelled "Always Free" — permanent hook to platform
  *
- * NOTE: warmQuestionCache (scheduled) excluded — needs Cloud Scheduler setup
- * Use triggerCacheWarm HTTP endpoint to fill cache manually or via cron job
+ * TIER 2 — Mock Exam (Free ×4, then ₹199)
+ * - 50 questions, 60 min, full NTA simulation
+ * - Counts toward freemium limit (4 free) and daily limit (15/day)
+ *
+ * CACHE: 30 sets per mode × 2 modes = 60 sets total
+ * SCHEDULE: Nightly 2AM IST via GitHub Actions cron
  */
 const functions = require("firebase-functions");
 const admin     = require("firebase-admin");
@@ -24,7 +27,7 @@ const UNLOCK_AMOUNT    = 19900;
 const CACHE_SIZE       = 30;
 const CACHE_TTL_MS     = 7 * 24 * 60 * 60 * 1000;
 const DAILY_TEST_LIMIT = 15;
-const MODES            = ["Practice", "Mock", "SpeedDrill"];
+const MODES            = ["QuickPractice", "Mock"];
 
 function todayIST() {
   return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
@@ -72,40 +75,75 @@ async function callAnthropic(prompt, maxTokens, apiKey) {
   return parsed.questions || parsed;
 }
 
-function buildPrompts(mode) {
-  const diffMap = {
-    Practice:   "medium — concept building, accessible vocabulary",
-    Mock:       "challenging — full NTA exam standard",
-    SpeedDrill: "moderate — speed-optimised, clear question stems",
-  };
-  const diff = diffMap[mode] || diffMap.Mock;
+function buildPrompt(mode) {
+  if (mode === "QuickPractice") {
+    return `You are an NTA CUET English (101) question generator.
+Generate exactly 15 MCQ questions for a quick practice session. Return ONLY a JSON object — no markdown, no preamble.
+
+JSON schema:
+{"questions":[{"question":"...","options":["A","B","C","D"],"correct":0,"topic":"Reading Comprehension","passage":"short passage text or null","explanation":"1-2 sentences"}]}
+
+Topic distribution (MANDATORY — exactly these counts):
+- Reading Comprehension: 5 questions (1 short passage, 120-150 words, factual or narrative)
+- Synonyms and Antonyms: 3 questions (passage = null)
+- Sentence Rearrangement: 3 questions (passage = null)
+- Choosing Correct Word: 2 questions (passage = null)
+- Grammar and Vocabulary: 2 questions (passage = null)
+
+Rules:
+1. correct is 0-indexed (0=A,1=B,2=C,3=D)
+2. All RC questions must share identical passage text
+3. Difficulty: accessible — suitable for first-time platform visitors
+4. Return ONLY the JSON object. Begin with { — nothing before it.`;
+  }
+
+  // Mock Exam — full 50 question set in two batches (this prompt is for batch A)
+  return null; // Mock uses buildMockPrompts() below
+}
+
+function buildMockPrompts() {
   const promptA = `You are an NTA CUET English (101) question paper generator.
 Generate exactly 28 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
+
 JSON schema:
 {"questions":[{"question":"...","options":["A","B","C","D"],"correct":0,"topic":"Reading Comprehension","passage":"full passage text or null","explanation":"2-3 sentences"}]}
+
 Topic distribution (MANDATORY):
 - Reading Comprehension: 15 questions across 2 passages (Passage 1: factual 250-300 words × 8q, Passage 2: narrative 250-300 words × 7q)
 - Synonyms and Antonyms: 9 questions (passage = null)
 - Sentence Rearrangement: 4 questions (passage = null)
-Rules: correct is 0-indexed. All RC questions sharing a passage must have identical passage text. Explanation: 2-3 sentences. Mode: ${mode} | Difficulty: ${diff}
+
+Rules: correct is 0-indexed. All questions sharing a passage must have identical passage text. Explanation: 2-3 sentences. Difficulty: challenging — full NTA exam standard.
 Return ONLY the JSON object. Begin with { — nothing before it.`;
+
   const promptB = `You are an NTA CUET English (101) question paper generator.
 Generate exactly 22 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
+
 JSON schema:
 {"questions":[{"question":"...","options":["A","B","C","D"],"correct":0,"topic":"Reading Comprehension","passage":"full passage text or null","explanation":"2-3 sentences"}]}
+
 Topic distribution (MANDATORY):
 - Reading Comprehension: 7 questions (Passage 3: literary/philosophical 250-300 words × 7q)
 - Sentence Rearrangement: 3 questions (passage = null)
 - Choosing Correct Word: 7 questions (passage = null)
 - Match the Following: 3 questions (passage = null)
 - Grammar and Vocabulary: 2 questions (passage = null)
-Rules: correct is 0-indexed. All RC questions sharing a passage must have identical passage text. Explanation: 2-3 sentences. Mode: ${mode} | Difficulty: ${diff}
+
+Rules: correct is 0-indexed. All questions sharing a passage must have identical passage text. Explanation: 2-3 sentences. Difficulty: challenging — full NTA exam standard.
 Return ONLY the JSON object. Begin with { — nothing before it.`;
+
   return { promptA, promptB };
 }
 
 async function generateQuestionSet(mode, apiKey) {
-  const { promptA, promptB } = buildPrompts(mode);
+  if (mode === "QuickPractice") {
+    const prompt = buildPrompt("QuickPractice");
+    const questions = await callAnthropic(prompt, 2000, apiKey);
+    if (questions.length < 12) throw new Error(`INCOMPLETE_SET:${questions.length}`);
+    return questions;
+  }
+  // Mock — batched parallel
+  const { promptA, promptB } = buildMockPrompts();
   const [batchA, batchB] = await Promise.all([
     callAnthropic(promptA, 4500, apiKey),
     callAnthropic(promptB, 3500, apiKey),
@@ -115,7 +153,7 @@ async function generateQuestionSet(mode, apiKey) {
   return questions;
 }
 
-// ─── MANUAL CACHE TRIGGER ────────────────────────────────────────────────────
+// ─── MANUAL/SCHEDULED CACHE TRIGGER ─────────────────────────────────────────
 exports.triggerCacheWarm = functions
   .runWith({ timeoutSeconds: 540, memory: "512MB" })
   .https.onRequest(async (req, res) => {
@@ -126,36 +164,45 @@ exports.triggerCacheWarm = functions
       const cfg         = functions.config();
       const expectedKey = cfg.admin?.key || process.env.ADMIN_KEY || "";
       if (!adminKey || adminKey !== expectedKey) {
-        res.status(403).json({ error: "Forbidden", received: adminKey.substring(0,4), expected_prefix: expectedKey.substring(0,4) }); return;
+        res.status(403).json({ error: "Forbidden" }); return;
       }
       const KEY = cfg.anthropic?.api_key || process.env.ANTHROPIC_API_KEY;
       if (!KEY) { res.status(500).json({ error: "No API key configured" }); return; }
       const cutoff = new Date(Date.now() - CACHE_TTL_MS);
       const status = {};
       for (const mode of MODES) {
-        const snap = await db.collection("questionCache").where("mode", "==", mode).get();
+        const snap  = await db.collection("questionCache").where("mode", "==", mode).get();
         const fresh = snap.docs.filter(d => d.data().createdAt?.toDate() > cutoff);
         status[mode] = { current: fresh.length, needed: Math.max(0, CACHE_SIZE - fresh.length) };
       }
-      res.status(200).json({ message: "Cache warming started", status });
+      res.status(200).json({ message: "Cache warming started", timestamp: new Date().toISOString(), status });
+      // Background generation — fire and forget
       (async () => {
-        functions.logger.info("CACHE_WARM_START");
+        functions.logger.info("CACHE_WARM_START", { trigger: req.headers["x-admin-key"] ? "api" : "unknown" });
         for (const mode of MODES) {
-          const existing = await db.collection("questionCache").where("mode", "==", mode).get();
-          const fresh    = existing.docs.filter(d => d.data().createdAt?.toDate() > cutoff);
-          const needed   = Math.max(0, CACHE_SIZE - fresh.length);
+          const snap  = await db.collection("questionCache").where("mode", "==", mode).get();
+          const fresh = snap.docs.filter(d => d.data().createdAt?.toDate() > cutoff);
+          const needed = Math.max(0, CACHE_SIZE - fresh.length);
+          functions.logger.info("CACHE_MODE_STATUS", { mode, current: fresh.length, needed });
           for (let i = 0; i < needed; i++) {
             try {
               const questions = await generateQuestionSet(mode, KEY);
-              await db.collection("questionCache").add({ mode, questions, createdAt: admin.firestore.FieldValue.serverTimestamp(), questionCount: questions.length });
+              await db.collection("questionCache").add({
+                mode, questions,
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                questionCount: questions.length,
+              });
+              functions.logger.info("CACHE_SET_STORED", { mode, set: i + 1, count: questions.length });
               await new Promise(r => setTimeout(r, 2000));
-            } catch (e) { functions.logger.error("CACHE_SET_FAILED", { mode, error: e.message }); }
+            } catch (e) {
+              functions.logger.error("CACHE_SET_FAILED", { mode, set: i + 1, error: e.message });
+            }
           }
         }
         functions.logger.info("CACHE_WARM_COMPLETE");
       })();
     } catch (e) {
-      functions.logger.error("TRIGGER_CACHE_CRASHED", { error: e.message, stack: e.stack });
+      functions.logger.error("TRIGGER_CACHE_CRASHED", { error: e.message });
       res.status(500).json({ error: "Function error: " + e.message });
     }
   });
@@ -176,43 +223,71 @@ exports.generateQuestions = functions
       const snap = await db.collection("users").doc(uid).get();
       userDoc    = snap.data() || {};
     } catch (e) { res.status(500).json({ error: "Could not verify access. Please try again." }); return; }
-    const isUnlocked = !!(userDoc.unlocked);
-    const testsUsed  = userDoc.testsUsed || 0;
-    if (!isUnlocked && testsUsed >= FREE_LIMIT) { res.status(402).json({ error: "free_limit_reached", paywall: true }); return; }
-    if (isUnlocked) {
-      const today      = todayIST();
-      const dailyCount = (userDoc.dailyTests || {})[today] || 0;
-      if (dailyCount >= DAILY_TEST_LIMIT) {
-        res.status(429).json({ error: "Don't stress yourself too much today. Attempt more tests tomorrow.", code: "daily_limit_reached" }); return;
+
+    const mode = (req.body.config || {}).mode || "Mock";
+
+    // QuickPractice: free forever, no limits checked
+    if (mode !== "QuickPractice") {
+      const isUnlocked = !!(userDoc.unlocked);
+      const testsUsed  = userDoc.testsUsed || 0;
+      if (!isUnlocked && testsUsed >= FREE_LIMIT) {
+        res.status(402).json({ error: "free_limit_reached", paywall: true }); return;
+      }
+      if (isUnlocked) {
+        const today      = todayIST();
+        const dailyCount = (userDoc.dailyTests || {})[today] || 0;
+        if (dailyCount >= DAILY_TEST_LIMIT) {
+          res.status(429).json({ error: "Don't stress yourself too much today. Attempt more tests tomorrow.", code: "daily_limit_reached" }); return;
+        }
       }
     }
-    const mode       = (req.body.config || {}).mode || "Mock";
+
     const usedSetIds = userDoc.usedCacheSetIds || [];
     const cutoff     = new Date(Date.now() - CACHE_TTL_MS);
     functions.logger.info("GENERATION_START", { uid, mode, usedCount: usedSetIds.length });
+
     let cacheDoc = null;
     try {
       const allSnap   = await db.collection("questionCache").where("mode", "==", mode).get();
-      // Filter by TTL client-side to avoid composite index requirement
       const usedSet   = new Set(usedSetIds);
       const available = allSnap.docs.filter(d => !usedSet.has(d.id) && d.data().createdAt?.toDate() > cutoff);
       if (available.length > 0) cacheDoc = available[Math.floor(Math.random() * available.length)];
-    } catch (e) { functions.logger.error("CACHE_QUERY_FAILED", { uid, error: e.message }); res.status(500).json({ error: "Could not load your test. Please try again." }); return; }
+    } catch (e) {
+      functions.logger.error("CACHE_QUERY_FAILED", { uid, error: e.message });
+      res.status(500).json({ error: "Could not load your test. Please try again." }); return;
+    }
+
     if (!cacheDoc) {
       functions.logger.info("CACHE_EXHAUSTED_FOR_USER", { uid, mode });
-      res.status(503).json({ error: "You have completed all available tests for this mode. More tests are being prepared — please check back later.", code: "no_tests_available" }); return;
+      res.status(503).json({
+        error: mode === "QuickPractice"
+          ? "Quick Practice is being refreshed. Please try again in a few minutes."
+          : "You have completed all available tests for this mode. More tests are being prepared — please check back later.",
+        code: "no_tests_available"
+      }); return;
     }
+
     const questions = cacheDoc.data().questions;
     const setId     = cacheDoc.id;
     const today     = todayIST();
+
+    // Only increment counters for Mock (not QuickPractice)
     try {
-      await db.collection("users").doc(uid).update({
-        testsUsed: admin.firestore.FieldValue.increment(1),
-        lastTestAt: admin.firestore.FieldValue.serverTimestamp(),
-        usedCacheSetIds: admin.firestore.FieldValue.arrayUnion(setId),
-        [`dailyTests.${today}`]: admin.firestore.FieldValue.increment(1),
-      });
+      if (mode === "QuickPractice") {
+        await db.collection("users").doc(uid).update({
+          lastTestAt: admin.firestore.FieldValue.serverTimestamp(),
+          usedCacheSetIds: admin.firestore.FieldValue.arrayUnion(setId),
+        });
+      } else {
+        await db.collection("users").doc(uid).update({
+          testsUsed: admin.firestore.FieldValue.increment(1),
+          lastTestAt: admin.firestore.FieldValue.serverTimestamp(),
+          usedCacheSetIds: admin.firestore.FieldValue.arrayUnion(setId),
+          [`dailyTests.${today}`]: admin.firestore.FieldValue.increment(1),
+        });
+      }
     } catch (e) { functions.logger.error("COUNTER_UPDATE_FAIL", { uid }); }
+
     functions.logger.info("GENERATION_COMPLETE", { uid, mode, setId, source: "cache", questionCount: questions.length, durationMs: Date.now() - startTime });
     res.status(200).json({ questions });
   });
@@ -251,8 +326,17 @@ exports.checkTestLimit = functions.runWith({ timeoutSeconds: 20, memory: "256MB"
     const dailyBlocked    = isUnlocked && dailyCount >= DAILY_TEST_LIMIT;
     const allowed         = !freemiumBlocked && !dailyBlocked;
     const testsRemaining  = isUnlocked ? Math.max(0, DAILY_TEST_LIMIT - dailyCount) : Math.max(0, FREE_LIMIT - testsUsed);
-    const limitLabel      = isUnlocked ? `${testsRemaining} tests remaining today` : `${testsRemaining} free tests remaining`;
-    res.status(200).json({ allowed, isUnlocked, testsUsed, freeLimit: FREE_LIMIT, freeRemaining: isUnlocked ? null : Math.max(0, FREE_LIMIT - testsUsed), dailyLimit: DAILY_TEST_LIMIT, dailyCount, dailyRemaining: isUnlocked ? Math.max(0, DAILY_TEST_LIMIT - dailyCount) : null, testsRemaining, limitLabel });
+    const limitLabel      = isUnlocked ? `${testsRemaining} mock tests remaining today` : `${testsRemaining} free mock tests remaining`;
+    res.status(200).json({
+      allowed, isUnlocked, testsUsed,
+      freeLimit: FREE_LIMIT,
+      freeRemaining: isUnlocked ? null : Math.max(0, FREE_LIMIT - testsUsed),
+      dailyLimit: DAILY_TEST_LIMIT,
+      dailyCount,
+      dailyRemaining: isUnlocked ? Math.max(0, DAILY_TEST_LIMIT - dailyCount) : null,
+      testsRemaining, limitLabel,
+      quickPracticeAlwaysFree: true,
+    });
   } catch (e) { res.status(500).json({ error: "Limit check failed" }); }
 });
 

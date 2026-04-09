@@ -1,0 +1,90 @@
+name: Nightly Cache Warm
+
+on:
+  # Primary trigger: 2:00 AM IST = 8:30 PM UTC
+  schedule:
+    - cron: '30 20 * * *'
+
+  # Manual trigger — backup, run from GitHub Actions tab anytime
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Reason for manual trigger'
+        required: false
+        default: 'Manual cache refill'
+
+jobs:
+  warm-cache:
+    name: Warm Question Cache
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger cache warm
+        id: warm
+        run: |
+          echo "Triggering cache warm at $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+
+          response=$(curl -s -w "\n%{http_code}" -X POST \
+            https://us-central1-vantiq-cuet.cloudfunctions.net/triggerCacheWarm \
+            -H "x-admin-key: ${{ secrets.CACHE_ADMIN_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d "{}" \
+            --max-time 30)
+
+          http_code=$(echo "$response" | tail -1)
+          body=$(echo "$response" | head -n -1)
+
+          echo "HTTP Status: $http_code"
+          echo "Response: $body"
+          echo "http_code=$http_code" >> $GITHUB_OUTPUT
+          echo "body=$body" >> $GITHUB_OUTPUT
+
+          if [ "$http_code" != "200" ]; then
+            echo "ERROR: Cache warm failed with HTTP $http_code"
+            exit 1
+          fi
+
+          echo "Cache warming started successfully"
+
+      - name: Wait and verify
+        if: steps.warm.outputs.http_code == '200'
+        run: |
+          echo "Cache warming is running in background..."
+          echo "Response received: ${{ steps.warm.outputs.body }}"
+          echo "Sets will be generated over the next 15-20 minutes"
+          echo "Check Firebase Console for progress"
+
+  retry-on-failure:
+    name: Retry Cache Warm (if primary failed)
+    runs-on: ubuntu-latest
+    needs: warm-cache
+    if: failure()
+
+    steps:
+      - name: Wait 5 minutes before retry
+        run: sleep 300
+
+      - name: Retry cache warm
+        run: |
+          echo "Primary run failed — retrying at $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+
+          response=$(curl -s -w "\n%{http_code}" -X POST \
+            https://us-central1-vantiq-cuet.cloudfunctions.net/triggerCacheWarm \
+            -H "x-admin-key: ${{ secrets.CACHE_ADMIN_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d "{}" \
+            --max-time 30)
+
+          http_code=$(echo "$response" | tail -1)
+          body=$(echo "$response" | head -n -1)
+
+          echo "Retry HTTP Status: $http_code"
+          echo "Retry Response: $body"
+
+          if [ "$http_code" != "200" ]; then
+            echo "CRITICAL: Retry also failed. Manual intervention required."
+            echo "Cache may be empty. Students may see 'tests being prepared' message."
+            exit 1
+          fi
+
+          echo "Retry succeeded — cache warming started"
