@@ -64,7 +64,7 @@ Return ONLY a valid JSON object with no markdown fences and no preamble:
   if(!KEY){res.status(500).json({error:"Generation service not configured"});return;}
   try {
     const r=await axios.post("https://api.anthropic.com/v1/messages",
-      {model:"claude-sonnet-4-20250514",max_tokens:6000,messages:[{role:"user",content:prompt}]},
+      {model:"claude-sonnet-4-6",max_tokens:6000,messages:[{role:"user",content:prompt}]},
       {headers:{"Content-Type":"application/json","x-api-key":KEY,"anthropic-version":"2023-06-01"},timeout:110000}
     );
     if(r.data?.stop_reason==="max_tokens"){res.status(500).json({error:"Response cut off. Please try again."});return;}
@@ -75,9 +75,10 @@ Return ONLY a valid JSON object with no markdown fences and no preamble:
     if(!parsed.questions||!Array.isArray(parsed.questions)){res.status(500).json({error:"Invalid question format"});return;}
     res.status(200).json({questions:parsed.questions});
   } catch(e){
-    functions.logger.error("Anthropic error:",e.response?.data||e.message);
+    functions.logger.error("Anthropic error:",e.response?.status, e.response?.data||e.message);
     const s=e.response?.status;
-    res.status(500).json({error:s===529?"Service busy. Wait 30s and retry.":s===401?"API key error. Contact support.":"Generation failed. Please try again."});
+    const msg=s===529?"Service busy. Wait 30s and retry.":s===401?"API key error. Contact support.":s===404?"Model not found. Contact support.":s===400?"Bad request: "+(e.response?.data?.error?.message||"unknown"):"Generation failed. Please try again.";
+    res.status(500).json({error:msg});
   }
 });
 
@@ -91,7 +92,7 @@ exports.generateAdvisory = functions.runWith({timeoutSeconds:60,memory:"128MB"})
   const KEY=functions.config().anthropic?.api_key||process.env.ANTHROPIC_API_KEY;
   try {
     const r=await axios.post("https://api.anthropic.com/v1/messages",
-      {model:"claude-sonnet-4-20250514",max_tokens:500,messages:[{role:"user",content:prompt}]},
+      {model:"claude-sonnet-4-6",max_tokens:500,messages:[{role:"user",content:prompt}]},
       {headers:{"Content-Type":"application/json","x-api-key":KEY,"anthropic-version":"2023-06-01"},timeout:55000}
     );
     res.status(200).json({text:r.data?.content?.[0]?.text||"Keep practising — consistency is key."});
