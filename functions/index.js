@@ -1,11 +1,16 @@
 /**
  * Firebase Cloud Functions — Vantiq CUET Platform
- * SKILL-07-V2 BATCHED PARALLEL GENERATION
+ * SKILL-07-V2 — HYBRID CACHE ARCHITECTURE
  *
- * generateQuestions: 2 parallel Haiku calls → merge → ~15s total
- * Batch A: 28 questions (RC1×8, RC2×7, S&A×9, Rearrangement×4)
- * Batch B: 22 questions (RC3×7, Rearrangement×3, CorrectWord×7, Match×3, Grammar×2)
- * Total wall time = max(batchA, batchB) ≈ 12–18s
+ * CACHE STRATEGY:
+ * - warmQuestionCache: Scheduled 2AM IST daily — pre-generates 20 sets per mode (60 total)
+ * - generateQuestions: Serves from Firestore cache instantly (<1s) — falls back to live generation
+ * - Cache TTL: 7 days | Cache size: 20 sets per mode | Replacement: background regeneration
+ *
+ * PERFORMANCE TARGETS:
+ * - Cache hit (normal): < 1 second
+ * - Cache miss (fallback): 12-18 seconds (batched parallel Haiku)
+ * - Cache fill (background): non-blocking, student never waits
  */
 const functions = require("firebase-functions");
 const admin     = require("firebase-admin");
@@ -14,9 +19,12 @@ const crypto    = require("crypto");
 const Razorpay  = require("razorpay");
 
 admin.initializeApp();
-const db         = admin.firestore();
+const db            = admin.firestore();
 const FREE_LIMIT    = 5;
 const UNLOCK_AMOUNT = 19900;
+const CACHE_SIZE    = 20;   // sets per mode
+const CACHE_TTL_MS  = 7 * 24 * 60 * 60 * 1000; // 7 days
+const MODES         = ["Practice", "Mock", "SpeedDrill"];
 
 function setCORS(res) {
   res.set("Access-Control-Allow-Origin",  "*");
@@ -31,7 +39,7 @@ async function verifyToken(req, res) {
   catch (e) { res.status(401).json({ error: "Invalid token" }); return null; }
 }
 
-// Multi-pass JSON extractor — handles fences, preamble, trailing commas
+// Multi-pass JSON extractor
 function extractJSON(rawText) {
   let cleaned = rawText.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
   const firstBrace   = cleaned.indexOf("{");
@@ -46,11 +54,11 @@ function extractJSON(rawText) {
   try { return JSON.parse(cleaned); } catch (e1) {}
   const fixed = cleaned.replace(/,\s*([}\]])/g, "$1");
   try { return JSON.parse(fixed); } catch (e2) {}
-  functions.logger.error("JSON_EXTRACT_FAILED", { raw_preview: rawText.substring(0, 500) });
+  functions.logger.error("JSON_EXTRACT_FAILED", { raw_preview: rawText.substring(0, 300) });
   throw new Error("JSON extraction failed");
 }
 
-// Single Anthropic call helper
+// Anthropic API call helper
 async function callAnthropic(prompt, maxTokens, apiKey) {
   const r = await axios.post(
     "https://api.anthropic.com/v1/messages",
@@ -62,7 +70,171 @@ async function callAnthropic(prompt, maxTokens, apiKey) {
   return parsed.questions || parsed;
 }
 
-// 1. generateQuestions — BATCHED PARALLEL (SKILL-07-V2)
+// Build prompts for batched generation
+function buildPrompts(mode) {
+  const diffMap = {
+    Practice:   "medium — concept building, accessible vocabulary",
+    Mock:       "challenging — full NTA exam standard",
+    SpeedDrill: "moderate — speed-optimised, clear question stems",
+  };
+  const diff = diffMap[mode] || diffMap.Mock;
+
+  const promptA = `You are an NTA CUET English (101) question paper generator.
+Generate exactly 28 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
+
+JSON schema:
+{"questions":[{"question":"...","options":["A","B","C","D"],"correct":0,"topic":"Reading Comprehension","passage":"full passage text or null","explanation":"2-3 sentences"}]}
+
+Topic distribution (MANDATORY):
+- Reading Comprehension: 15 questions across 2 passages (Passage 1: factual 250-300 words × 8q, Passage 2: narrative 250-300 words × 7q)
+- Synonyms and Antonyms: 9 questions (passage = null)
+- Sentence Rearrangement: 4 questions (passage = null)
+
+Rules:
+1. correct is 0-indexed (0=A,1=B,2=C,3=D)
+2. All questions sharing a passage must have identical passage text
+3. Explanation: 2-3 sentences only
+4. Mode: ${mode} | Difficulty: ${diff}
+5. Return ONLY the JSON object. Begin with { — nothing before it.`;
+
+  const promptB = `You are an NTA CUET English (101) question paper generator.
+Generate exactly 22 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
+
+JSON schema:
+{"questions":[{"question":"...","options":["A","B","C","D"],"correct":0,"topic":"Reading Comprehension","passage":"full passage text or null","explanation":"2-3 sentences"}]}
+
+Topic distribution (MANDATORY):
+- Reading Comprehension: 7 questions (Passage 3: literary/philosophical 250-300 words × 7q)
+- Sentence Rearrangement: 3 questions (passage = null)
+- Choosing Correct Word: 7 questions (passage = null)
+- Match the Following: 3 questions (passage = null)
+- Grammar and Vocabulary: 2 questions (passage = null)
+
+Rules:
+1. correct is 0-indexed (0=A,1=B,2=C,3=D)
+2. All questions sharing a passage must have identical passage text
+3. Explanation: 2-3 sentences only
+4. Mode: ${mode} | Difficulty: ${diff}
+5. Return ONLY the JSON object. Begin with { — nothing before it.`;
+
+  return { promptA, promptB };
+}
+
+// Generate one full question set (batched parallel)
+async function generateQuestionSet(mode, apiKey) {
+  const { promptA, promptB } = buildPrompts(mode);
+  const [batchA, batchB] = await Promise.all([
+    callAnthropic(promptA, 4500, apiKey),
+    callAnthropic(promptB, 3500, apiKey),
+  ]);
+  const questions = [...batchA, ...batchB];
+  if (questions.length < 40) throw new Error(`INCOMPLETE_SET:${questions.length}`);
+  return questions;
+}
+
+// ─── SCHEDULED CACHE WARMER — runs 2AM IST (8:30 PM UTC) daily ──────────────
+exports.warmQuestionCache = functions
+  .runWith({ timeoutSeconds: 540, memory: "1GB" })  // 9 min budget for 60 sets
+  .pubsub.schedule("30 20 * * *")                    // 8:30 PM UTC = 2:00 AM IST
+  .timeZone("UTC")
+  .onRun(async (context) => {
+    const KEY = functions.config().anthropic?.api_key || process.env.ANTHROPIC_API_KEY;
+    if (!KEY) { functions.logger.error("CACHE_WARM_FAILED: no API key"); return; }
+
+    functions.logger.info("CACHE_WARM_START", { timestamp: new Date().toISOString() });
+    let totalGenerated = 0;
+    let totalFailed = 0;
+
+    for (const mode of MODES) {
+      // Check how many fresh sets already exist
+      const existing = await db.collection("questionCache")
+        .where("mode", "==", mode)
+        .where("used", "==", false)
+        .where("createdAt", ">", new Date(Date.now() - CACHE_TTL_MS))
+        .get();
+
+      const needed = Math.max(0, CACHE_SIZE - existing.size);
+      functions.logger.info(`CACHE_MODE_${mode}`, { existing: existing.size, needed });
+
+      // Generate needed sets sequentially (avoid rate limits)
+      for (let i = 0; i < needed; i++) {
+        try {
+          const questions = await generateQuestionSet(mode, KEY);
+          await db.collection("questionCache").add({
+            mode,
+            questions,
+            used: false,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            questionCount: questions.length,
+          });
+          totalGenerated++;
+          functions.logger.info(`CACHE_SET_STORED`, { mode, set: i + 1, count: questions.length });
+          // Small delay between sets to avoid Anthropic rate limits
+          await new Promise(r => setTimeout(r, 2000));
+        } catch (e) {
+          totalFailed++;
+          functions.logger.error(`CACHE_SET_FAILED`, { mode, set: i + 1, error: e.message });
+        }
+      }
+    }
+
+    functions.logger.info("CACHE_WARM_COMPLETE", { totalGenerated, totalFailed, timestamp: new Date().toISOString() });
+  });
+
+// ─── MANUAL CACHE TRIGGER — call this via HTTP to fill cache on demand ───────
+exports.triggerCacheWarm = functions
+  .runWith({ timeoutSeconds: 540, memory: "1GB" })
+  .https.onRequest(async (req, res) => {
+    setCORS(res);
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+
+    // Simple admin check — only callable with a secret header
+    const adminKey = req.headers["x-admin-key"] || "";
+    const expectedKey = functions.config().admin?.key || process.env.ADMIN_KEY || "";
+    if (!adminKey || adminKey !== expectedKey) {
+      res.status(403).json({ error: "Forbidden" }); return;
+    }
+
+    const KEY = functions.config().anthropic?.api_key || process.env.ANTHROPIC_API_KEY;
+    if (!KEY) { res.status(500).json({ error: "No API key configured" }); return; }
+
+    // Return immediately — cache fills in background
+    res.status(200).json({ message: "Cache warming started in background", modes: MODES, targetPerMode: CACHE_SIZE });
+
+    // Fill cache asynchronously after response sent
+    (async () => {
+      let totalGenerated = 0;
+      functions.logger.info("MANUAL_CACHE_WARM_START", { timestamp: new Date().toISOString() });
+
+      for (const mode of MODES) {
+        const existing = await db.collection("questionCache")
+          .where("mode", "==", mode)
+          .where("used", "==", false)
+          .where("createdAt", ">", new Date(Date.now() - CACHE_TTL_MS))
+          .get();
+
+        const needed = Math.max(0, CACHE_SIZE - existing.size);
+
+        for (let i = 0; i < needed; i++) {
+          try {
+            const questions = await generateQuestionSet(mode, KEY);
+            await db.collection("questionCache").add({
+              mode, questions, used: false,
+              createdAt: admin.firestore.FieldValue.serverTimestamp(),
+              questionCount: questions.length,
+            });
+            totalGenerated++;
+            await new Promise(r => setTimeout(r, 2000));
+          } catch (e) {
+            functions.logger.error("MANUAL_CACHE_SET_FAILED", { mode, error: e.message });
+          }
+        }
+      }
+      functions.logger.info("MANUAL_CACHE_WARM_COMPLETE", { totalGenerated });
+    })();
+  });
+
+// ─── 1. generateQuestions — HYBRID CACHE + LIVE FALLBACK ─────────────────────
 exports.generateQuestions = functions
   .runWith({ timeoutSeconds: 120, memory: "512MB" })
   .https.onRequest(async (req, res) => {
@@ -75,6 +247,7 @@ exports.generateQuestions = functions
     if (!decoded) return;
     const uid = decoded.uid;
 
+    // Freemium gate
     try {
       const snap = await db.collection("users").doc(uid).get();
       const ud = snap.data() || {};
@@ -86,98 +259,76 @@ exports.generateQuestions = functions
     }
 
     const mode = (req.body.config || {}).mode || "Mock";
-    const diffMap = {
-      Practice:   "medium — concept building, accessible vocabulary",
-      Mock:       "challenging — full NTA exam standard",
-      SpeedDrill: "moderate — speed-optimised, clear question stems",
-    };
-    const diff = diffMap[mode] || diffMap.Mock;
-
-    const KEY = functions.config().anthropic?.api_key || process.env.ANTHROPIC_API_KEY;
+    const KEY  = functions.config().anthropic?.api_key || process.env.ANTHROPIC_API_KEY;
     if (!KEY) { res.status(500).json({ error: "Generation service not configured. Contact support." }); return; }
 
     functions.logger.info("GENERATION_START", { uid, mode, timestamp: new Date().toISOString() });
 
-    // BATCH A — 28 questions
-    const promptA = `You are an NTA CUET English (101) question paper generator.
-Generate exactly 28 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
+    let questions = null;
+    let source = "live";
 
-JSON schema:
-{"questions":[{"question":"...","options":["A","B","C","D"],"correct":0,"topic":"Reading Comprehension","passage":"full passage text or null","explanation":"2-3 sentences"}]}
-
-Topic distribution for THIS batch (MANDATORY):
-- Reading Comprehension: 15 questions across 2 passages (Passage 1: factual 250-300 words × 8q, Passage 2: narrative 250-300 words × 7q)
-- Synonyms and Antonyms: 9 questions (no passage — passage field = null)
-- Sentence Rearrangement: 4 questions (no passage — passage field = null)
-
-Rules:
-1. correct is 0-indexed (0=A,1=B,2=C,3=D)
-2. All questions sharing a passage must have identical passage text
-3. Explanation: 2-3 sentences only
-4. Mode: ${mode} | Difficulty: ${diff}
-5. Return ONLY the JSON object. Begin with { — nothing before it.`;
-
-    // BATCH B — 22 questions
-    const promptB = `You are an NTA CUET English (101) question paper generator.
-Generate exactly 22 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
-
-JSON schema:
-{"questions":[{"question":"...","options":["A","B","C","D"],"correct":0,"topic":"Reading Comprehension","passage":"full passage text or null","explanation":"2-3 sentences"}]}
-
-Topic distribution for THIS batch (MANDATORY):
-- Reading Comprehension: 7 questions (Passage 3: literary/philosophical 250-300 words × 7q)
-- Sentence Rearrangement: 3 questions (no passage — passage field = null)
-- Choosing Correct Word: 7 questions (no passage — passage field = null)
-- Match the Following: 3 questions (no passage — passage field = null)
-- Grammar and Vocabulary: 2 questions (no passage — passage field = null)
-
-Rules:
-1. correct is 0-indexed (0=A,1=B,2=C,3=D)
-2. All questions sharing a passage must have identical passage text
-3. Explanation: 2-3 sentences only
-4. Mode: ${mode} | Difficulty: ${diff}
-5. Return ONLY the JSON object. Begin with { — nothing before it.`;
-
-    let questions;
+    // ── STEP 1: Try to serve from cache ──────────────────────────────────────
     try {
-      // Run both batches in parallel
-      const [batchA, batchB] = await Promise.all([
-        callAnthropic(promptA, 4500, KEY),
-        callAnthropic(promptB, 3500, KEY),
-      ]);
+      const cacheSnap = await db.collection("questionCache")
+        .where("mode", "==", mode)
+        .where("used", "==", false)
+        .where("createdAt", ">", new Date(Date.now() - CACHE_TTL_MS))
+        .limit(1)
+        .get();
 
-      questions = [...batchA, ...batchB];
+      if (!cacheSnap.empty) {
+        const cacheDoc = cacheSnap.docs[0];
+        questions = cacheDoc.data().questions;
+        source = "cache";
 
-      functions.logger.info("GENERATION_COMPLETE", {
-        uid, mode,
-        questionCount: questions.length,
-        durationMs: Date.now() - startTime,
-        model: "claude-haiku-4-5-20251001 (batched)"
-      });
+        // Mark this set as used
+        await cacheDoc.ref.update({ used: true, usedAt: admin.firestore.FieldValue.serverTimestamp(), usedBy: uid });
 
-    } catch (e) {
-      const durationMs = Date.now() - startTime;
-      const status = e.response?.status;
-      const errorType = e.message === "TRUNCATION" ? "TRUNCATION"
-        : e.message === "JSON extraction failed" ? "PARSE_FAIL"
-        : status === 401 ? "AUTH_FAIL"
-        : durationMs > 100000 ? "TIMEOUT"
-        : "API_ERROR";
+        functions.logger.info("CACHE_HIT", { uid, mode, durationMs: Date.now() - startTime });
 
-      functions.logger.error("GENERATION_FAILED", { uid, errorType, status, durationMs });
-
-      const msg = status === 401 ? "API key error. Contact support."
-        : status === 529 ? "Service is busy. Please wait 30 seconds and try again."
-        : errorType === "TIMEOUT" ? "Generation timed out. Please try again."
-        : errorType === "PARSE_FAIL" ? "Failed to parse questions. Please try again."
-        : "Could not generate your test. Please try again.";
-
-      res.status(500).json({ error: msg }); return;
+        // Trigger background regeneration to refill the slot
+        // Fire-and-forget — does not block the response
+        generateQuestionSet(mode, KEY)
+          .then(async (newQuestions) => {
+            await db.collection("questionCache").add({
+              mode, questions: newQuestions, used: false,
+              createdAt: admin.firestore.FieldValue.serverTimestamp(),
+              questionCount: newQuestions.length,
+            });
+            functions.logger.info("CACHE_REFILLED", { mode, count: newQuestions.length });
+          })
+          .catch((e) => functions.logger.error("CACHE_REFILL_FAILED", { mode, error: e.message }));
+      }
+    } catch (cacheErr) {
+      functions.logger.warn("CACHE_READ_FAILED", { uid, error: cacheErr.message });
+      // Fall through to live generation
     }
 
-    if (!questions || questions.length < 40) {
-      functions.logger.error("INCOMPLETE_SET", { uid, count: questions?.length, durationMs: Date.now() - startTime });
-      res.status(500).json({ error: "Incomplete question set. Please try again." }); return;
+    // ── STEP 2: Live generation fallback if cache missed ─────────────────────
+    if (!questions) {
+      functions.logger.info("CACHE_MISS", { uid, mode });
+      try {
+        questions = await generateQuestionSet(mode, KEY);
+        source = "live";
+      } catch (e) {
+        const durationMs = Date.now() - startTime;
+        const status = e.response?.status;
+        const errorType = e.message.startsWith("INCOMPLETE_SET") ? "INCOMPLETE_SET"
+          : e.message === "TRUNCATION" ? "TRUNCATION"
+          : e.message === "JSON extraction failed" ? "PARSE_FAIL"
+          : status === 401 ? "AUTH_FAIL"
+          : durationMs > 100000 ? "TIMEOUT"
+          : "API_ERROR";
+
+        functions.logger.error("GENERATION_FAILED", { uid, errorType, status, durationMs });
+
+        const msg = status === 401 ? "API key error. Contact support."
+          : status === 529 ? "Service is busy. Please wait 30 seconds and try again."
+          : errorType === "TIMEOUT" ? "Generation timed out. Please try again."
+          : "Could not generate your test. Please try again.";
+
+        res.status(500).json({ error: msg }); return;
+      }
     }
 
     // Increment test counter atomically
@@ -190,10 +341,16 @@ Rules:
       functions.logger.error("COUNTER_UPDATE_FAIL", { uid });
     }
 
+    functions.logger.info("GENERATION_COMPLETE", {
+      uid, mode, source,
+      questionCount: questions.length,
+      durationMs: Date.now() - startTime,
+    });
+
     res.status(200).json({ questions });
   });
 
-// 2. generateAdvisory — Sonnet (short output, quality matters)
+// 2. generateAdvisory
 exports.generateAdvisory = functions.runWith({ timeoutSeconds: 60, memory: "128MB" }).https.onRequest(async (req, res) => {
   setCORS(res);
   if (req.method === "OPTIONS") { res.status(204).send(""); return; }
