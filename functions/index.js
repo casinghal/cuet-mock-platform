@@ -24,7 +24,7 @@ admin.initializeApp();
 const db               = admin.firestore();
 const FREE_LIMIT       = 4;
 const UNLOCK_AMOUNT    = 19900;
-const CACHE_SIZE       = 30;
+const CACHE_SIZE       = 60;
 const CACHE_TTL_MS     = 7 * 24 * 60 * 60 * 1000;
 const DAILY_TEST_LIMIT = 15;
 const MODES            = ["QuickPractice", "Mock"];
