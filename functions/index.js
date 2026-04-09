@@ -4,7 +4,7 @@
  *
  * LIMITS:
  * - FREE_LIMIT: 4 tests per subject before paywall
- * - DAILY_TEST_LIMIT: 8 tests per subject per day (paid users only)
+ * - DAILY_TEST_LIMIT: 15 tests per subject per day (paid users only)
  * - Cache: 20 sets per mode, refreshed nightly
  * - Per-student deduplication: usedCacheSetIds[] — never repeat a set
  */
@@ -20,7 +20,7 @@ const FREE_LIMIT       = 4;    // tests before paywall
 const UNLOCK_AMOUNT    = 19900;
 const CACHE_SIZE       = 20;
 const CACHE_TTL_MS     = 7 * 24 * 60 * 60 * 1000;
-const DAILY_TEST_LIMIT = 8;    // paid users only — per subject per day
+const DAILY_TEST_LIMIT = 15;    // paid users only — per subject per day
 const MODES            = ["Practice", "Mock", "SpeedDrill"];
 
 function todayIST() {
