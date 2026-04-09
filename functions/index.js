@@ -28,7 +28,7 @@ async function verifyToken(req, res) {
 }
 
 // 1. generateQuestions — builds prompt server-side from config
-exports.generateQuestions = functions.runWith({timeoutSeconds:120,memory:"512MB"}).https.onRequest(async(req,res)=>{
+exports.generateQuestions = functions.runWith({timeoutSeconds:120,memory:"256MB"}).https.onRequest(async(req,res)=>{
   setCORS(res);
   if(req.method==="OPTIONS"){res.status(204).send("");return;}
   if(req.method!=="POST"){res.status(405).json({error:"Method not allowed"});return;}
