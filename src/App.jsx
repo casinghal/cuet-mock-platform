@@ -245,7 +245,7 @@ function PaywallModal({ user, onSuccess, onClose }) {
             Unlock Full Access
           </h2>
           <p style={{ color: "var(--text-secondary)", fontSize: 14, lineHeight: 1.6 }}>
-            You have used all 5 free tests. Unlock unlimited access for CUET English 2026.
+            You have used all 4 free Mock Exams. Unlock unlimited access for CUET English 2026.
           </p>
         </div>
         <div style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 10, padding: "16px 20px", marginBottom: 24 }}>
@@ -253,7 +253,7 @@ function PaywallModal({ user, onSuccess, onClose }) {
             <span style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)" }}>Full Platform Access</span>
             <span style={{ fontSize: 22, fontWeight: 700, color: "var(--navy)", fontFamily: "var(--font-mono)" }}>&#8377;199</span>
           </div>
-          {["Unlimited expert-crafted papers", "Practice, Mock and Speed Drill modes", "Topic-wise performance analytics", "One-time payment, lifetime access"].map(f => (
+          {["Unlimited Mock Exams every day", "Quick Practice always free, forever", "Topic-wise performance analytics", "One-time payment, unlimited till 30 June"].map(f => (
             <div key={f} style={{ display: "flex", gap: 8, marginTop: 6 }}>
               <span style={{ color: "var(--success)" }}>&#10003;</span>
               <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>{f}</span>
@@ -597,14 +597,14 @@ function AuthScreen({ onLogin, showToast }) {
         <div style={S.authCard}>
           <h2 style={S.authHeading}>Start Preparing Today</h2>
           <p style={S.authSub}>
-            5 full-length tests free. No credit card needed to begin.
+            4 full-length Mock Exams free. No credit card needed to begin.
           </p>
 
           {/* Free trial badge */}
           <div style={S.trialBadge}>
             <span style={S.trialIcon}>&#127381;</span>
             <div style={S.trialText}>
-              <span style={S.trialStrong}>5 complete mock tests — free.</span>{" "}
+              <span style={S.trialStrong}>4 full Mock Exams — free.</span>{" "}
               Then unlock unlimited access at one flat price.
             </div>
           </div>
@@ -676,15 +676,19 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
   useEffect(() => { logEvent("page_view", { page: "dashboard", user_id: user?.uid }); }, []);
 
   const MODES = {
-    Practice:   { label: "Practice",    desc: "Topic-wise, concept building" },
-    Mock:       { label: "Mock Exam",   desc: "Full NTA simulation, 60 min" },
-    SpeedDrill: { label: "Speed Drill", desc: "30 min, high-pressure drill" },
+    QuickPractice: { label: "Quick Practice", desc: "15 questions · Always Free", free: true },
+    Mock:          { label: "Mock Exam",       desc: "50 questions · 60 min · NTA standard", free: false },
   };
 
   async function handleBegin() {
+    // QuickPractice is always free — no limit check needed
+    if (mode === "QuickPractice") {
+      onBeginTest({ mode });
+      return;
+    }
+
     setChecking(true);
     try {
-      // Check limit: Cloud Function (authoritative) → Firestore → localStorage fallback
       if (CF_BASE) {
         const token = await getAuthToken();
         const r = await fetch(`${CF_BASE}/checkTestLimit`, {
@@ -696,7 +700,6 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
           setShowPaywall(true); return;
         }
       } else {
-        // Fallback: use Firestore count, then localStorage count
         const effectiveCount = testsUsed || parseInt(localStorage.getItem("cuet_tests_used") || "0");
         const effectiveUnlocked = unlocked || localStorage.getItem("cuet_unlocked") === "true";
         if (!effectiveUnlocked && effectiveCount >= FREE_LIMIT) {
@@ -742,7 +745,7 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
             { label: "Tests Taken",  val: testsUsed,  sub: unlocked ? "Unlimited" : `${testsLeft} free left` },
             { label: "Avg. Score",   val: avgScore != null ? `${avgScore}%` : "—", sub: "across all tests" },
             { label: "Best Score",   val: bestScore != null ? `${bestScore}%` : "—", sub: "personal best" },
-            { label: "Access",       val: unlocked ? "Pro" : "Free", sub: unlocked ? "Full access" : `${testsLeft} of 5 remaining` },
+            { label: "Access",       val: unlocked ? "Pro" : "Free", sub: unlocked ? "Unlimited till 30 Jun" : `${testsLeft} of 4 Mock Exams free` },
           ].map(s => (
             <div key={s.label} className="stat-strip">
               <div style={{ fontSize: 22, fontWeight: 700, color: "var(--navy)", fontFamily: "var(--font-mono)" }}>{s.val}</div>
@@ -755,14 +758,27 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
         <div className="card" style={{ padding: "24px 28px", marginBottom: 28 }}>
           <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--navy)", marginBottom: 4 }}>New Test Paper</h3>
           <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 24 }}>
-            50 questions · 60 min · +5 correct / −1 wrong
+            Choose a format and begin.
           </p>
 
           <div style={{ marginBottom: 20 }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 10 }}>Mode</div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               {Object.entries(MODES).map(([k, cfg]) => (
-                <div key={k} onClick={() => setMode(k)} style={{ border: `2px solid ${mode === k ? "var(--navy)" : "var(--border)"}`, borderRadius: 10, padding: "12px 18px", cursor: "pointer", minWidth: 140, background: mode === k ? "#EEF2FF" : "#fff", boxShadow: mode === k ? "0 2px 8px rgba(67,56,202,.12)" : "none", transition: "all .15s" }}>
+                <div key={k} onClick={() => setMode(k)} style={{
+                  border: `2px solid ${mode === k ? "var(--navy)" : "var(--border)"}`,
+                  borderRadius: 10, padding: "12px 18px", cursor: "pointer", minWidth: 160,
+                  background: mode === k ? "#EEF2FF" : "#fff",
+                  boxShadow: mode === k ? "0 2px 8px rgba(67,56,202,.12)" : "none",
+                  transition: "all .15s", position: "relative",
+                }}>
+                  {cfg.free && (
+                    <div style={{
+                      position: "absolute", top: -10, right: 10,
+                      background: "var(--success)", color: "#fff",
+                      fontSize: 9, fontWeight: 700, padding: "2px 7px",
+                      borderRadius: 20, letterSpacing: ".04em", textTransform: "uppercase",
+                    }}>Always Free</div>
+                  )}
                   <div style={{ fontWeight: 600, fontSize: 13, color: "var(--navy)", marginBottom: 4 }}>{cfg.label}</div>
                   <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>{cfg.desc}</div>
                 </div>
@@ -770,12 +786,20 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
             </div>
           </div>
 
-          <button className="btn-primary full" onClick={handleBegin} disabled={checking}>
+          <button className="btn-primary full" onClick={handleBegin} disabled={checking && mode !== "QuickPractice"}>
             {checking ? "Checking..." : "Begin Test →"}
           </button>
-          {!unlocked && (
+          {mode === "QuickPractice" ? (
+            <p style={{ textAlign: "center", marginTop: 10, fontSize: 12, color: "var(--success)", fontWeight: 600 }}>
+              ✓ Quick Practice is always free — no limits, ever.
+            </p>
+          ) : !unlocked ? (
             <p style={{ textAlign: "center", marginTop: 10, fontSize: 12, color: "var(--text-muted)" }}>
-              {testsLeft > 0 ? `${testsLeft} free test${testsLeft !== 1 ? "s" : ""} remaining` : "Free limit reached — unlock above"}
+              {testsLeft > 0 ? `${testsLeft} free Mock Exam${testsLeft !== 1 ? "s" : ""} remaining` : "Free limit reached — unlock above"}
+            </p>
+          ) : (
+            <p style={{ textAlign: "center", marginTop: 10, fontSize: 12, color: "var(--text-muted)" }}>
+              {Math.max(0, 15 - ((userData?.dailyTests || {})[new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" })] || 0))} mock tests remaining today
             </p>
           )}
         </div>
@@ -853,7 +877,7 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
   const [current,   setCurrent]   = useState(0);
   const [answers,   setAnswers]   = useState({});
   const [marked,    setMarked]    = useState(new Set());
-  const [timeLeft,  setTimeLeft]  = useState(config?.mode === "SpeedDrill" ? 1800 : EXAM_SECS);
+  const [timeLeft,  setTimeLeft]  = useState(EXAM_SECS);
   const [exitModal, setExitModal] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
   const isMobile = useMobile();
@@ -1226,26 +1250,7 @@ function ReviewScreen({ questions, answers, onBack }) {
 
 // ── Question Generator ────────────────────────────────────────────────────────
 async function generateQuestions(config, uid) {
-  const mode    = config?.mode || "Mock";
-  const diffMap = {
-    Practice:   "medium — concept building, accessible vocabulary",
-    Mock:       "challenging — full NTA exam standard",
-    SpeedDrill: "moderate to hard — speed-optimised, clear answers",
-  };
-  const prompt = `Generate a CUET English (Code 101) question paper for NTA UG 2026 standard.
-Generate exactly 50 MCQ questions with this topic distribution:
-- Reading Comprehension: 22 questions (use 3 separate passages, each 250-300 words; one factual, one narrative, one literary)
-- Synonyms and Antonyms: 9 questions
-- Sentence Rearrangement: 7 questions
-- Choosing Correct Word: 7 questions
-- Match the Following: 3 questions
-- Grammar and Vocabulary: 2 questions
-Mode: ${mode} | Difficulty: ${diffMap[mode]}
-Rules: every question has exactly 4 options; correct field is 0-indexed int (0=A,1=B,2=C,3=D); passage field is the full passage text for RC questions, null for all others; every question needs a clear explanation.
-Return ONLY a valid JSON array with no markdown fences and no preamble:
-[{"question":"...","options":["...","...","...","..."],"correct":0,"topic":"Reading Comprehension","passage":"...or null...","explanation":"..."}]`;
-
-  // Production: use Cloud Function proxy (secret stays server-side)
+  // Server-side handles all prompt building — client sends config only
   if (CF_BASE) {
     const token = await getAuthToken();
     const res = await fetch(`${CF_BASE}/generateQuestions`, {
@@ -1257,8 +1262,6 @@ Return ONLY a valid JSON array with no markdown fences and no preamble:
     if (!d.questions) throw new Error(d.error || "Generation failed");
     return d.questions;
   }
-
-  // No CF_BASE configured — cannot generate without server proxy
   throw new Error("Cloud Function URL not configured. Set VITE_CLOUD_FUNCTION_BASE in environment variables.");
 }
 
