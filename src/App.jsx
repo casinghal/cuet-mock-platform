@@ -9,6 +9,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { initializeApp } from "firebase/app";
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "firebase/auth";
 import { getFirestore, doc, getDoc, setDoc, updateDoc, addDoc, collection, query, where, orderBy, limit, getDocs, serverTimestamp } from "firebase/firestore";
+import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 
 // ── Google Fonts ──────────────────────────────────────────────────────────────
 if (!document.getElementById("cuet-fonts")) {
@@ -122,6 +123,13 @@ try {
   });
   auth = getAuth(fbApp);
   db   = getFirestore(fbApp);
+  // App Check — blocks bots from calling Firebase functions directly
+  if (import.meta.env.VITE_RECAPTCHA_SITE_KEY) {
+    initializeAppCheck(fbApp, {
+      provider: new ReCaptchaV3Provider(import.meta.env.VITE_RECAPTCHA_SITE_KEY),
+      isTokenAutoRefreshEnabled: true,
+    });
+  }
 } catch(e) {
   console.warn("[Vantiq] Firebase not configured — running in demo/localStorage mode");
   auth = null; db = null;
