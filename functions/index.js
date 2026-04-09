@@ -2,31 +2,11 @@
  * Firebase Cloud Functions — Vantiq CUET Platform
  * SKILL-07-V2 — HYBRID CACHE WITH PER-STUDENT DEDUPLICATION
  *
- * CACHE STRATEGY:
- * - warmQuestionCache: Scheduled 2AM IST — generates 20 fresh sets per mode nightly
- *   Old sets (>7 days) are deleted and replaced with new content every night
- *   This ensures students always get fresh questions after cache reset
- *
- * - generateQuestions: Cache-first, no live fallback
- *   Queries cache EXCLUDING sets this student has already seen
- *   If no unseen sets available → returns 429 "Check back tomorrow"
- *   Cache hit response: < 1 second
- *
- * - Per-student deduplication: users/{uid}.usedCacheSetIds[]
- *   Tracks every cache doc ID served to this student
- *   Shared cache pool — same set can serve multiple students
- *   Student never sees the same set twice
- *
- * - Daily test limit: users/{uid}.dailyTests.{YYYY-MM-DD}: count
- *   Max DAILY_TEST_LIMIT tests per student per day (default: 5)
- *   Resets automatically at midnight (date-based key)
- *   Returns 429 with clear message when limit hit
- *
- * PERFORMANCE:
- *   Cache hit:  < 1 second
- *   Daily limit hit: < 1 second (no API call)
- *   All-sets-seen: < 1 second (no API call, clear message)
- *   No live generation fallback — by design
+ * LIMITS:
+ * - FREE_LIMIT: 4 tests per subject before paywall
+ * - DAILY_TEST_LIMIT: 8 tests per subject per day (paid users only)
+ * - Cache: 20 sets per mode, refreshed nightly
+ * - Per-student deduplication: usedCacheSetIds[] — never repeat a set
  */
 const functions = require("firebase-functions");
 const admin     = require("firebase-admin");
@@ -36,16 +16,15 @@ const Razorpay  = require("razorpay");
 
 admin.initializeApp();
 const db               = admin.firestore();
-const FREE_LIMIT       = 5;
+const FREE_LIMIT       = 4;    // tests before paywall
 const UNLOCK_AMOUNT    = 19900;
-const CACHE_SIZE       = 20;                        // sets per mode per night
-const CACHE_TTL_MS     = 7 * 24 * 60 * 60 * 1000;  // 7 days
-const DAILY_TEST_LIMIT = 5;                         // max tests per student per day
+const CACHE_SIZE       = 20;
+const CACHE_TTL_MS     = 7 * 24 * 60 * 60 * 1000;
+const DAILY_TEST_LIMIT = 8;    // paid users only — per subject per day
 const MODES            = ["Practice", "Mock", "SpeedDrill"];
 
-// Today's date string in IST (YYYY-MM-DD) — used as daily limit key
 function todayIST() {
-  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }); // returns YYYY-MM-DD
+  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 }
 
 function setCORS(res) {
@@ -61,7 +40,6 @@ async function verifyToken(req, res) {
   catch (e) { res.status(401).json({ error: "Invalid token" }); return null; }
 }
 
-// Multi-pass JSON extractor
 function extractJSON(rawText) {
   let cleaned = rawText.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
   const firstBrace   = cleaned.indexOf("{");
@@ -80,7 +58,6 @@ function extractJSON(rawText) {
   throw new Error("JSON extraction failed");
 }
 
-// Anthropic API call helper
 async function callAnthropic(prompt, maxTokens, apiKey) {
   const r = await axios.post(
     "https://api.anthropic.com/v1/messages",
@@ -92,7 +69,6 @@ async function callAnthropic(prompt, maxTokens, apiKey) {
   return parsed.questions || parsed;
 }
 
-// Build prompts for batched generation
 function buildPrompts(mode) {
   const diffMap = {
     Practice:   "medium — concept building, accessible vocabulary",
@@ -142,7 +118,6 @@ Rules:
   return { promptA, promptB };
 }
 
-// Generate one full question set via batched parallel Haiku calls
 async function generateQuestionSet(mode, apiKey) {
   const { promptA, promptB } = buildPrompts(mode);
   const [batchA, batchB] = await Promise.all([
@@ -166,54 +141,40 @@ exports.warmQuestionCache = functions
     functions.logger.info("CACHE_WARM_START", { timestamp: new Date().toISOString() });
     const cutoff = new Date(Date.now() - CACHE_TTL_MS);
 
-    // Step 1: Delete expired sets to keep collection lean
     for (const mode of MODES) {
-      const expired = await db.collection("questionCache")
-        .where("mode", "==", mode)
-        .where("createdAt", "<", cutoff)
-        .get();
-      const batch = db.batch();
+      const expired = await db.collection("questionCache").where("mode", "==", mode).where("createdAt", "<", cutoff).get();
+      const batch   = db.batch();
       expired.docs.forEach(doc => batch.delete(doc.ref));
       if (!expired.empty) await batch.commit();
-      functions.logger.info(`CACHE_EXPIRED_DELETED`, { mode, count: expired.size });
     }
 
-    // Step 2: Fill each mode up to CACHE_SIZE
     let totalGenerated = 0;
     let totalFailed    = 0;
 
     for (const mode of MODES) {
-      const existing = await db.collection("questionCache")
-        .where("mode", "==", mode)
-        .where("createdAt", ">", cutoff)
-        .get();
-
-      const needed = Math.max(0, CACHE_SIZE - existing.size);
-      functions.logger.info(`CACHE_FILL_${mode}`, { existing: existing.size, needed });
+      const existing = await db.collection("questionCache").where("mode", "==", mode).where("createdAt", ">", cutoff).get();
+      const needed   = Math.max(0, CACHE_SIZE - existing.size);
 
       for (let i = 0; i < needed; i++) {
         try {
           const questions = await generateQuestionSet(mode, KEY);
           await db.collection("questionCache").add({
-            mode,
-            questions,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            mode, questions,
+            createdAt:     admin.firestore.FieldValue.serverTimestamp(),
             questionCount: questions.length,
           });
           totalGenerated++;
-          functions.logger.info("CACHE_SET_STORED", { mode, set: i + 1, count: questions.length });
-          await new Promise(r => setTimeout(r, 2000)); // respect rate limits
+          await new Promise(r => setTimeout(r, 2000));
         } catch (e) {
           totalFailed++;
-          functions.logger.error("CACHE_SET_FAILED", { mode, set: i + 1, error: e.message });
+          functions.logger.error("CACHE_SET_FAILED", { mode, error: e.message });
         }
       }
     }
-
-    functions.logger.info("CACHE_WARM_COMPLETE", { totalGenerated, totalFailed, timestamp: new Date().toISOString() });
+    functions.logger.info("CACHE_WARM_COMPLETE", { totalGenerated, totalFailed });
   });
 
-// ─── MANUAL CACHE TRIGGER — HTTP endpoint for on-demand fill ─────────────────
+// ─── MANUAL CACHE TRIGGER ────────────────────────────────────────────────────
 exports.triggerCacheWarm = functions
   .runWith({ timeoutSeconds: 540, memory: "1GB" })
   .https.onRequest(async (req, res) => {
@@ -222,22 +183,18 @@ exports.triggerCacheWarm = functions
     const adminKey    = req.headers["x-admin-key"] || "";
     const expectedKey = functions.config().admin?.key || process.env.ADMIN_KEY || "";
     if (!adminKey || adminKey !== expectedKey) { res.status(403).json({ error: "Forbidden" }); return; }
-
     const KEY = functions.config().anthropic?.api_key || process.env.ANTHROPIC_API_KEY;
     if (!KEY) { res.status(500).json({ error: "No API key configured" }); return; }
 
-    // Respond immediately — fill in background
     const cutoff = new Date(Date.now() - CACHE_TTL_MS);
     const status = {};
     for (const mode of MODES) {
-      const snap = await db.collection("questionCache").where("mode", "==", mode).where("createdAt", ">", cutoff).get();
+      const snap   = await db.collection("questionCache").where("mode", "==", mode).where("createdAt", ">", cutoff).get();
       status[mode] = { current: snap.size, needed: Math.max(0, CACHE_SIZE - snap.size) };
     }
-    res.status(200).json({ message: "Cache warming started", status, targetPerMode: CACHE_SIZE });
+    res.status(200).json({ message: "Cache warming started", status });
 
-    // Background fill
     (async () => {
-      functions.logger.info("MANUAL_CACHE_WARM_START");
       for (const mode of MODES) {
         const existing = await db.collection("questionCache").where("mode", "==", mode).where("createdAt", ">", cutoff).get();
         const needed   = Math.max(0, CACHE_SIZE - existing.size);
@@ -249,17 +206,16 @@ exports.triggerCacheWarm = functions
             });
             await new Promise(r => setTimeout(r, 2000));
           } catch (e) {
-            functions.logger.error("MANUAL_CACHE_SET_FAILED", { mode, error: e.message });
+            functions.logger.error("MANUAL_CACHE_FAILED", { mode, error: e.message });
           }
         }
       }
-      functions.logger.info("MANUAL_CACHE_WARM_COMPLETE");
     })();
   });
 
 // ─── 1. generateQuestions — CACHE-FIRST, NO LIVE FALLBACK ────────────────────
 exports.generateQuestions = functions
-  .runWith({ timeoutSeconds: 30, memory: "256MB" })  // 30s is plenty — cache hit is <1s
+  .runWith({ timeoutSeconds: 30, memory: "256MB" })
   .https.onRequest(async (req, res) => {
     setCORS(res);
     if (req.method === "OPTIONS") { res.status(204).send(""); return; }
@@ -270,113 +226,90 @@ exports.generateQuestions = functions
     if (!decoded) return;
     const uid = decoded.uid;
 
-    // ── Read user document once ───────────────────────────────────────────────
     let userDoc;
     try {
       const snap = await db.collection("users").doc(uid).get();
-      userDoc = snap.data() || {};
+      userDoc    = snap.data() || {};
     } catch (e) {
       res.status(500).json({ error: "Could not verify access. Please try again." }); return;
     }
 
-    // ── Freemium gate ─────────────────────────────────────────────────────────
-    if (!userDoc.unlocked && (userDoc.testsUsed || 0) >= FREE_LIMIT) {
+    const isUnlocked = !!(userDoc.unlocked);
+    const testsUsed  = userDoc.testsUsed || 0;
+
+    // ── Freemium gate — 4 free tests before paywall ───────────────────────────
+    if (!isUnlocked && testsUsed >= FREE_LIMIT) {
       res.status(402).json({ error: "free_limit_reached", paywall: true }); return;
     }
 
-    // ── Daily test limit ──────────────────────────────────────────────────────
-    const today       = todayIST();
-    const dailyTests  = userDoc.dailyTests || {};
-    const todayCount  = dailyTests[today] || 0;
-
-    if (todayCount >= DAILY_TEST_LIMIT) {
-      functions.logger.info("DAILY_LIMIT_HIT", { uid, today, count: todayCount });
-      res.status(429).json({
-        error: `You have taken ${DAILY_TEST_LIMIT} tests today. Come back tomorrow for fresh papers.`,
-        code: "daily_limit_reached",
-        resetAt: "midnight IST"
-      });
-      return;
+    // ── Daily limit — only applies to paid users ──────────────────────────────
+    if (isUnlocked) {
+      const today      = todayIST();
+      const dailyCount = (userDoc.dailyTests || {})[today] || 0;
+      if (dailyCount >= DAILY_TEST_LIMIT) {
+        functions.logger.info("DAILY_LIMIT_HIT", { uid, today, count: dailyCount });
+        res.status(429).json({
+          error: "Don't stress yourself too much today. Attempt more tests tomorrow.",
+          code:  "daily_limit_reached",
+        });
+        return;
+      }
     }
 
-    const mode = (req.body.config || {}).mode || "Mock";
-
-    // ── Per-student deduplication — build exclusion list ─────────────────────
+    const mode       = (req.body.config || {}).mode || "Mock";
     const usedSetIds = userDoc.usedCacheSetIds || [];
+    const cutoff     = new Date(Date.now() - CACHE_TTL_MS);
 
-    // ── Query cache: same mode, not expired, not seen by this student ─────────
-    functions.logger.info("CACHE_QUERY", { uid, mode, usedCount: usedSetIds.length });
+    functions.logger.info("GENERATION_START", { uid, mode, usedCount: usedSetIds.length });
 
+    // ── Query cache excluding sets this student has already seen ──────────────
     let cacheDoc = null;
     try {
-      // Firestore "not-in" supports up to 30 values — chunk if needed
-      const cutoff    = new Date(Date.now() - CACHE_TTL_MS);
-      let   cacheSnap = null;
+      const allSnap   = await db.collection("questionCache")
+        .where("mode", "==", mode)
+        .where("createdAt", ">", cutoff)
+        .get();
 
-      if (usedSetIds.length === 0) {
-        // No exclusions needed — simple query
-        cacheSnap = await db.collection("questionCache")
-          .where("mode", "==", mode)
-          .where("createdAt", ">", cutoff)
-          .limit(1)
-          .get();
-      } else {
-        // Fetch available sets and filter client-side (avoids Firestore not-in limit)
-        const allSnap = await db.collection("questionCache")
-          .where("mode", "==", mode)
-          .where("createdAt", ">", cutoff)
-          .get();
+      const usedSet   = new Set(usedSetIds);
+      const available = allSnap.docs.filter(d => !usedSet.has(d.id));
 
-        const usedSet   = new Set(usedSetIds);
-        const available = allSnap.docs.filter(d => !usedSet.has(d.id));
-
-        if (available.length > 0) {
-          // Pick a random unseen set for variety
-          const idx = Math.floor(Math.random() * available.length);
-          cacheDoc  = available[idx];
-        }
+      if (available.length > 0) {
+        // Random pick for variety
+        cacheDoc = available[Math.floor(Math.random() * available.length)];
       }
-
-      if (!cacheDoc && cacheSnap && !cacheSnap.empty) {
-        cacheDoc = cacheSnap.docs[0];
-      }
-
     } catch (e) {
       functions.logger.error("CACHE_QUERY_FAILED", { uid, error: e.message });
-      res.status(500).json({ error: "Could not load test. Please try again." }); return;
+      res.status(500).json({ error: "Could not load your test. Please try again." }); return;
     }
 
-    // ── No unseen sets available ───────────────────────────────────────────────
+    // ── No unseen sets — student has completed all available sets ─────────────
     if (!cacheDoc) {
       functions.logger.info("CACHE_EXHAUSTED_FOR_USER", { uid, mode, usedCount: usedSetIds.length });
       res.status(503).json({
-        error: "You have completed all available test sets for this mode. New sets are added every night — check back tomorrow.",
-        code: "cache_exhausted"
+        error: "You have completed all available tests for this mode. More tests are being prepared — please check back later.",
+        code:  "no_tests_available",
       });
       return;
     }
 
-    // ── Serve cached questions ────────────────────────────────────────────────
+    // ── Serve questions ───────────────────────────────────────────────────────
     const questions = cacheDoc.data().questions;
     const setId     = cacheDoc.id;
+    const today     = todayIST();
 
-    functions.logger.info("CACHE_HIT", { uid, mode, setId, durationMs: Date.now() - startTime });
-
-    // ── Atomic update: increment counters + record used set ───────────────────
     try {
       await db.collection("users").doc(uid).update({
-        testsUsed:       admin.firestore.FieldValue.increment(1),
-        lastTestAt:      admin.firestore.FieldValue.serverTimestamp(),
-        usedCacheSetIds: admin.firestore.FieldValue.arrayUnion(setId),
+        testsUsed:        admin.firestore.FieldValue.increment(1),
+        lastTestAt:       admin.firestore.FieldValue.serverTimestamp(),
+        usedCacheSetIds:  admin.firestore.FieldValue.arrayUnion(setId),
         [`dailyTests.${today}`]: admin.firestore.FieldValue.increment(1),
       });
     } catch (e) {
       functions.logger.error("COUNTER_UPDATE_FAIL", { uid });
-      // Non-fatal — questions already ready to return
     }
 
     functions.logger.info("GENERATION_COMPLETE", {
-      uid, mode, source: "cache", setId,
+      uid, mode, setId, source: "cache",
       questionCount: questions.length,
       durationMs: Date.now() - startTime,
     });
@@ -405,6 +338,7 @@ exports.generateAdvisory = functions.runWith({ timeoutSeconds: 60, memory: "128M
 });
 
 // ─── 3. checkTestLimit ───────────────────────────────────────────────────────
+// Returns everything the Dashboard needs to show live status per subject
 exports.checkTestLimit = functions.runWith({ timeoutSeconds: 20, memory: "256MB" }).https.onRequest(async (req, res) => {
   setCORS(res);
   if (req.method === "OPTIONS") { res.status(204).send(""); return; }
@@ -414,16 +348,40 @@ exports.checkTestLimit = functions.runWith({ timeoutSeconds: 20, memory: "256MB"
   try {
     const snap       = await db.collection("users").doc(uid).get();
     const ud         = snap.data() || {};
+    const isUnlocked = !!(ud.unlocked);
+    const testsUsed  = ud.testsUsed || 0;
     const today      = todayIST();
     const dailyCount = (ud.dailyTests || {})[today] || 0;
-    const allowed    = (!!(ud.unlocked) || (ud.testsUsed || 0) < FREE_LIMIT) && dailyCount < DAILY_TEST_LIMIT;
+
+    // Freemium: blocked after 4 tests
+    const freemiumBlocked = !isUnlocked && testsUsed >= FREE_LIMIT;
+    // Daily: only applies to paid users
+    const dailyBlocked    = isUnlocked && dailyCount >= DAILY_TEST_LIMIT;
+    const allowed         = !freemiumBlocked && !dailyBlocked;
+
+    // Dashboard display values
+    const testsRemaining = isUnlocked
+      ? Math.max(0, DAILY_TEST_LIMIT - dailyCount)   // paid: daily remaining
+      : Math.max(0, FREE_LIMIT - testsUsed);          // free: total remaining
+
+    const limitLabel = isUnlocked
+      ? `${testsRemaining} tests remaining today`
+      : `${testsRemaining} free tests remaining`;
+
     res.status(200).json({
       allowed,
-      testsUsed:    ud.testsUsed   || 0,
-      unlocked:     ud.unlocked    || false,
+      isUnlocked,
+      testsUsed,
+      // Free user fields
+      freeLimit:        FREE_LIMIT,
+      freeRemaining:    isUnlocked ? null : Math.max(0, FREE_LIMIT - testsUsed),
+      // Paid user fields
+      dailyLimit:       DAILY_TEST_LIMIT,
       dailyCount,
-      dailyLimit:   DAILY_TEST_LIMIT,
-      dailyRemaining: Math.max(0, DAILY_TEST_LIMIT - dailyCount),
+      dailyRemaining:   isUnlocked ? Math.max(0, DAILY_TEST_LIMIT - dailyCount) : null,
+      // Dashboard display
+      testsRemaining,
+      limitLabel,
     });
   } catch (e) {
     res.status(500).json({ error: "Limit check failed" });
@@ -468,7 +426,9 @@ exports.verifyPayment = functions.runWith({ timeoutSeconds: 30, memory: "128MB" 
   }
   try {
     await db.collection("users").doc(decoded.uid).update({
-      unlocked: true, paymentId: razorpay_payment_id, orderId: razorpay_order_id,
+      unlocked:   true,
+      paymentId:  razorpay_payment_id,
+      orderId:    razorpay_order_id,
       unlockedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
     await db.collection("payments").add({
