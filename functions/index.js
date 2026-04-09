@@ -18,7 +18,7 @@ admin.initializeApp();
 const db               = admin.firestore();
 const FREE_LIMIT       = 4;    // tests before paywall
 const UNLOCK_AMOUNT    = 19900;
-const CACHE_SIZE       = 20;
+const CACHE_SIZE       = 30;
 const CACHE_TTL_MS     = 7 * 24 * 60 * 60 * 1000;
 const DAILY_TEST_LIMIT = 15;    // paid users only — per subject per day
 const MODES            = ["Practice", "Mock", "SpeedDrill"];
