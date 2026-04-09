@@ -117,40 +117,47 @@ async function generateQuestionSet(mode, apiKey) {
 
 // ─── MANUAL CACHE TRIGGER ────────────────────────────────────────────────────
 exports.triggerCacheWarm = functions
-  .runWith({ timeoutSeconds: 540, memory: "1GB" })
+  .runWith({ timeoutSeconds: 540, memory: "512MB" })
   .https.onRequest(async (req, res) => {
     setCORS(res);
     if (req.method === "OPTIONS") { res.status(204).send(""); return; }
-    const adminKey    = req.headers["x-admin-key"] || "";
-    const expectedKey = functions.config().admin?.key || process.env.ADMIN_KEY || "";
-    if (!adminKey || adminKey !== expectedKey) { res.status(403).json({ error: "Forbidden" }); return; }
-    const KEY = functions.config().anthropic?.api_key || process.env.ANTHROPIC_API_KEY;
-    if (!KEY) { res.status(500).json({ error: "No API key configured" }); return; }
-    const cutoff = new Date(Date.now() - CACHE_TTL_MS);
-    // Count by mode only (avoids composite index requirement)
-    const status = {};
-    for (const mode of MODES) {
-      const snap = await db.collection("questionCache").where("mode", "==", mode).get();
-      const fresh = snap.docs.filter(d => d.data().createdAt?.toDate() > cutoff);
-      status[mode] = { current: fresh.length, needed: Math.max(0, CACHE_SIZE - fresh.length) };
-    }
-    res.status(200).json({ message: "Cache warming started", status });
-    (async () => {
-      functions.logger.info("CACHE_WARM_START");
-      for (const mode of MODES) {
-        const existing = await db.collection("questionCache").where("mode", "==", mode).get();
-        const fresh    = existing.docs.filter(d => d.data().createdAt?.toDate() > cutoff);
-        const needed   = Math.max(0, CACHE_SIZE - fresh.length);
-        for (let i = 0; i < needed; i++) {
-          try {
-            const questions = await generateQuestionSet(mode, KEY);
-            await db.collection("questionCache").add({ mode, questions, createdAt: admin.firestore.FieldValue.serverTimestamp(), questionCount: questions.length });
-            await new Promise(r => setTimeout(r, 2000));
-          } catch (e) { functions.logger.error("CACHE_SET_FAILED", { mode, error: e.message }); }
-        }
+    try {
+      const adminKey    = req.headers["x-admin-key"] || "";
+      const cfg         = functions.config();
+      const expectedKey = cfg.admin?.key || process.env.ADMIN_KEY || "";
+      if (!adminKey || adminKey !== expectedKey) {
+        res.status(403).json({ error: "Forbidden", received: adminKey.substring(0,4), expected_prefix: expectedKey.substring(0,4) }); return;
       }
-      functions.logger.info("CACHE_WARM_COMPLETE");
-    })();
+      const KEY = cfg.anthropic?.api_key || process.env.ANTHROPIC_API_KEY;
+      if (!KEY) { res.status(500).json({ error: "No API key configured" }); return; }
+      const cutoff = new Date(Date.now() - CACHE_TTL_MS);
+      const status = {};
+      for (const mode of MODES) {
+        const snap = await db.collection("questionCache").where("mode", "==", mode).get();
+        const fresh = snap.docs.filter(d => d.data().createdAt?.toDate() > cutoff);
+        status[mode] = { current: fresh.length, needed: Math.max(0, CACHE_SIZE - fresh.length) };
+      }
+      res.status(200).json({ message: "Cache warming started", status });
+      (async () => {
+        functions.logger.info("CACHE_WARM_START");
+        for (const mode of MODES) {
+          const existing = await db.collection("questionCache").where("mode", "==", mode).get();
+          const fresh    = existing.docs.filter(d => d.data().createdAt?.toDate() > cutoff);
+          const needed   = Math.max(0, CACHE_SIZE - fresh.length);
+          for (let i = 0; i < needed; i++) {
+            try {
+              const questions = await generateQuestionSet(mode, KEY);
+              await db.collection("questionCache").add({ mode, questions, createdAt: admin.firestore.FieldValue.serverTimestamp(), questionCount: questions.length });
+              await new Promise(r => setTimeout(r, 2000));
+            } catch (e) { functions.logger.error("CACHE_SET_FAILED", { mode, error: e.message }); }
+          }
+        }
+        functions.logger.info("CACHE_WARM_COMPLETE");
+      })();
+    } catch (e) {
+      functions.logger.error("TRIGGER_CACHE_CRASHED", { error: e.message, stack: e.stack });
+      res.status(500).json({ error: "Function error: " + e.message });
+    }
   });
 
 // ─── 1. generateQuestions ────────────────────────────────────────────────────
