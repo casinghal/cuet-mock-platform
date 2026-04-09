@@ -29,14 +29,17 @@ jobs:
           cd functions
           npm install
 
-      - name: Authenticate to Google Cloud
+      - name: Write service account key
+        env:
+          SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: |
-          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > /tmp/sa_key.json
-          export GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa_key.json
-          echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa_key.json" >> $GITHUB_ENV
+          echo "$SERVICE_ACCOUNT_KEY" > /tmp/sa_key.json
 
       - name: Deploy Firebase Functions
         run: |
-          firebase deploy --only functions --project vantiq-cuet --non-interactive
+          firebase deploy \
+            --only functions:generateQuestions,functions:generateAdvisory,functions:checkTestLimit,functions:createOrder,functions:verifyPayment,functions:razorpayWebhook,functions:triggerCacheWarm \
+            --project vantiq-cuet \
+            --non-interactive
         env:
           GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa_key.json
