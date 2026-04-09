@@ -64,7 +64,7 @@ Return ONLY a valid JSON object with no markdown fences and no preamble:
   if(!KEY){res.status(500).json({error:"Generation service not configured"});return;}
   try {
     const r=await axios.post("https://api.anthropic.com/v1/messages",
-      {model:"claude-sonnet-4-6",max_tokens:6000,messages:[{role:"user",content:prompt}]},
+      {model:"claude-sonnet-4-6",max_tokens:16000,messages:[{role:"user",content:prompt}]},
       {headers:{"Content-Type":"application/json","x-api-key":KEY,"anthropic-version":"2023-06-01"},timeout:110000}
     );
     if(r.data?.stop_reason==="max_tokens"){res.status(500).json({error:"Response cut off. Please try again."});return;}
