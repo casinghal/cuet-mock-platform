@@ -130,7 +130,7 @@ try {
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CF_BASE       = import.meta.env.VITE_CLOUD_FUNCTION_BASE || "";
 const RZP_KEY_ID    = import.meta.env.VITE_RAZORPAY_KEY_ID;
-const FREE_LIMIT    = 5;
+const FREE_LIMIT    = 4;
 const EXAM_SECS     = 3600; // 60 min
 const MARKS_CORRECT = 5;
 const MARKS_WRONG   = -1;
