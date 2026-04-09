@@ -27,7 +27,7 @@ const UNLOCK_AMOUNT    = 19900;
 const CACHE_SIZE       = 60;
 const CACHE_TTL_MS     = 7 * 24 * 60 * 60 * 1000;
 const DAILY_TEST_LIMIT = 15;
-const MODES            = ["QuickPractice", "Mock"];
+const MODES            = ["Mock", "QuickPractice"];  // Mock first — highest priority
 
 function todayIST() {
   return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
@@ -189,10 +189,16 @@ exports.triggerCacheWarm = functions
         const needed = Math.max(0, CACHE_SIZE - fresh.length);
         functions.logger.info("CACHE_MODE_STATUS", { mode, current: fresh.length, needed });
 
+        let consecutiveFails = 0;
         for (let i = 0; i < needed; i++) {
           if (Date.now() - warmStart > TIME_BUDGET_MS) {
             skipped = needed - i;
             functions.logger.info("CACHE_BUDGET_EXCEEDED", { mode, skipped });
+            break;
+          }
+          if (consecutiveFails >= 5) {
+            functions.logger.error("CACHE_MODE_ABANDONED", { mode, reason: "5 consecutive failures — moving to next mode" });
+            skipped += needed - i;
             break;
           }
           try {
@@ -203,10 +209,12 @@ exports.triggerCacheWarm = functions
               questionCount: questions.length,
             });
             generated++;
+            consecutiveFails = 0;
             functions.logger.info("CACHE_SET_STORED", { mode, set: i + 1, total: generated, count: questions.length });
             await new Promise(r => setTimeout(r, 500));
           } catch (e) {
-            functions.logger.error("CACHE_SET_FAILED", { mode, set: i + 1, error: e.message });
+            consecutiveFails++;
+            functions.logger.error("CACHE_SET_FAILED", { mode, set: i + 1, consecutiveFails, error: e.message });
           }
         }
       }
