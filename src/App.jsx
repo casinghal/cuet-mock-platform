@@ -253,7 +253,7 @@ function PaywallModal({ user, onSuccess, onClose }) {
             <span style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)" }}>Full Platform Access</span>
             <span style={{ fontSize: 22, fontWeight: 700, color: "var(--navy)", fontFamily: "var(--font-mono)" }}>&#8377;199</span>
           </div>
-          {["Unlimited Mock Exams every day", "Quick Practice always free, forever", "Topic-wise performance analytics", "One-time payment, unlimited till 30 June"].map(f => (
+          {["Unlimited Mock Exams every day till 30 June", "Quick Practice free forever — even without paying", "Topic-wise breakdown after every test", "Less than one coaching class. One-time. No renewals."].map(f => (
             <div key={f} style={{ display: "flex", gap: 8, marginTop: 6 }}>
               <span style={{ color: "var(--success)" }}>&#10003;</span>
               <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>{f}</span>
@@ -311,9 +311,9 @@ function AuthScreen({ onLogin, showToast }) {
   ];
 
   const features = [
-    { icon: "\u2728", title: "Fresh Test Papers",    desc: "A new 50-question paper every attempt. No repeats, ever." },
-    { icon: "\u26A1", title: "Instant Analytics", desc: "Topic-wise breakdown the moment you submit. Know your weak spots immediately." },
-    { icon: "\u2705", title: "Exact NTA Pattern", desc: "+5 correct, \u22121 wrong. Same interface as the real exam." },
+    { icon: "✨", title: "Lifetime Free Practice",  desc: "Quick Practice is free forever. 15 questions, every day, no limits. No card needed, ever." },
+    { icon: "⚡", title: "Instant Topic Analytics", desc: "Know your weak spots the moment you submit — sorted weakest first, so you fix what matters." },
+    { icon: "✅", title: "Exact NTA Pattern",        desc: "+5 correct, −1 wrong. Same interface, same marking, same pressure as the real exam." },
   ];
 
   // Inline styles for the premium landing
@@ -542,13 +542,13 @@ function AuthScreen({ onLogin, showToast }) {
           </div>
 
           <h1 style={S.h1}>
-            India&#39;s Smartest
-            <span style={S.h1accent}>CUET Prep Platform</span>
+            Start Your CUET 2026
+            <span style={S.h1accent}>Preparation — Free</span>
           </h1>
 
           <p style={S.subtext}>
-            NTA-pattern mock tests with expert-crafted papers and instant analytics.
-            Know exactly where you stand — topic by topic — before exam day.
+            NTA-pattern English (101) mock tests — free to start, no card needed.
+            Know exactly where you stand before exam day.
           </p>
 
           {/* Social proof */}
@@ -595,17 +595,17 @@ function AuthScreen({ onLogin, showToast }) {
 
         {/* ── Right: Auth Card ── */}
         <div style={S.authCard}>
-          <h2 style={S.authHeading}>Start Preparing Today</h2>
+          <h2 style={S.authHeading}>Start Preparing — Free</h2>
           <p style={S.authSub}>
-            4 full-length Mock Exams free. No credit card needed to begin.
+            No credit card. No catch. Start right now.
           </p>
 
           {/* Free trial badge */}
           <div style={S.trialBadge}>
             <span style={S.trialIcon}>&#127381;</span>
             <div style={S.trialText}>
-              <span style={S.trialStrong}>4 full Mock Exams — free.</span>{" "}
-              Then unlock unlimited access at one flat price.
+              <span style={S.trialStrong}>Lifetime free Quick Practice.</span>{" "}
+              Plus 4 full Mock Exams free — then ₹199 for unlimited access till 30 June.
             </div>
           </div>
 
@@ -623,7 +623,7 @@ function AuthScreen({ onLogin, showToast }) {
 
           {/* Hook line */}
           <p style={{ fontSize: 14, color: "rgba(255,255,255,0.55)", lineHeight: 1.6, marginBottom: 20, textAlign: "center" }}>
-            Find your weak topics before the exam does.
+            Find your weak topics before the exam finds them for you.
           </p>
 
           {/* Error */}
@@ -676,8 +676,8 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
   useEffect(() => { logEvent("page_view", { page: "dashboard", user_id: user?.uid }); }, []);
 
   const MODES = {
-    QuickPractice: { label: "Quick Practice", desc: "15 questions · Always Free", free: true },
-    Mock:          { label: "Mock Exam",       desc: "50 questions · 60 min · NTA standard", free: false },
+    QuickPractice: { label: "Quick Practice", desc: "15 questions · All topics · Lifetime Free", free: true },
+    Mock:          { label: "Mock Exam",       desc: "50 questions · 60 min · Full NTA English (101)", free: false },
   };
 
   async function handleBegin() {
@@ -728,6 +728,9 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
       <div className="nta-header">
         <span className="nta-logo">Vantiq <span>CUET</span></span>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <span style={{ fontSize: 11, background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 4, padding: "3px 8px", color: "#fff", letterSpacing: ".03em" }}>
+            English (101)
+          </span>
           <span style={{ fontSize: 13, opacity: 0.8 }}>{user?.displayName?.split(" ")[0]}</span>
           <button onClick={onLogout} style={{ background: "transparent", color: "#fff", fontSize: 12, opacity: 0.7, padding: "4px 8px", border: "1px solid rgba(255,255,255,.2)", borderRadius: 4, fontFamily: "var(--font-body)", cursor: "pointer" }}>
             Sign out
@@ -736,9 +739,12 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
       </div>
 
       <div style={{ flex: 1, maxWidth: 900, margin: "0 auto", width: "100%", padding: isMobile ? "20px 16px" : "28px 24px" }}>
-        <h2 style={{ fontSize: 12, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 16 }}>
-          Your Practice Summary
-        </h2>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+          <h2 style={{ fontSize: 12, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--text-muted)", margin: 0 }}>
+            Your Practice Summary — CUET English (101) 2026
+          </h2>
+          <span style={{ fontSize: 11, color: "var(--success)", fontWeight: 600 }}>● Quick Practice: Lifetime Free</span>
+        </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12, marginBottom: 36 }}>
           {[
@@ -756,7 +762,12 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
         </div>
 
         <div className="card" style={{ padding: "24px 28px", marginBottom: 28 }}>
-          <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--navy)", marginBottom: 4 }}>New Test Paper</h3>
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 4 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--navy)", margin: 0 }}>New Test Paper</h3>
+            <span style={{ fontSize: 11, background: "#EEF2FF", color: "var(--indigo)", fontWeight: 600, padding: "3px 10px", borderRadius: 20, border: "1px solid #C7D2FE" }}>
+              CUET English · Section IA (101)
+            </span>
+          </div>
           <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 24 }}>
             Choose a format and begin.
           </p>
