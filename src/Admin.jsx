@@ -29,7 +29,12 @@ const DEFAULT_PASS = import.meta.env.VITE_ADMIN_PASSWORD || "vantiq-admin-2026";
 const ADMIN_PASS  = localStorage.getItem("vantiq_admin_pw") || DEFAULT_PASS;
 // Admin key loaded from env var — NEVER hardcode. Set VITE_ADMIN_KEY in Netlify env vars.
 const ADMIN_KEY   = import.meta.env.VITE_ADMIN_KEY || "";
-const CACHE_SIZE  = 60;
+// Mode-specific cache sizes — must match CACHE_CONFIG in functions/index.js
+const CACHE_CONFIG = {
+  Mock:          { size: 120, threshold: 100 },
+  QuickPractice: { size: 200, threshold: 160 },
+};
+const CACHE_SIZE = 120; // kept for any legacy reference — use CACHE_CONFIG[mode].size for accuracy
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 const S = {
@@ -230,16 +235,20 @@ function PasswordGate({ onUnlock }) {
 
 // ── Cache Status Card ─────────────────────────────────────────────────────────
 function CacheCard({ mode, data, onFill, filling }) {
-  const pct   = Math.round((data.current / CACHE_SIZE) * 100);
-  const color = pct > 50 ? "#059669" : pct > 20 ? "#D97706" : "#DC2626";
-  const label = pct > 50 ? "green" : pct > 20 ? "amber" : "red";
+  const modeSize  = CACHE_CONFIG[mode]?.size || CACHE_SIZE;
+  const threshold = CACHE_CONFIG[mode]?.threshold || 100;
+  const pct       = Math.round((data.current / modeSize) * 100);
+  // Color based on threshold proximity — not just raw percentage
+  const aboveThreshold = data.current >= threshold;
+  const color = aboveThreshold ? "#059669" : pct > 20 ? "#D97706" : "#DC2626";
+  const label = aboveThreshold ? "green" : pct > 20 ? "amber" : "red";
 
   return (
     <div style={S.card}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
         <div>
           <div style={{ fontSize: 13, fontWeight: 600, color: "#0F2747", marginBottom: 2 }}>{mode}</div>
-          <div style={S.statSub}>{data.current} / {CACHE_SIZE} sets</div>
+          <div style={S.statSub}>{data.current} / {modeSize} sets · auto-fill at {threshold}</div>
         </div>
         <span style={S.pill(label)}>{pct}%</span>
       </div>

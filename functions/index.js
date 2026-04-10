@@ -24,7 +24,16 @@ admin.initializeApp();
 const db               = admin.firestore();
 const FREE_LIMIT       = 4;
 const UNLOCK_AMOUNT    = 19900;
-const CACHE_SIZE       = 120; // increased from 60 — buffer for scale (5k users drain 60 sets in hours)
+// Mode-specific cache configuration
+// Mock: 120 sets target, auto-fill triggers at 100 (fills ~20 sets before students notice a gap)
+// QuickPractice: 200 sets target, auto-fill triggers at 160 (higher usage — free forever)
+const CACHE_CONFIG = {
+  Mock:          { size: 120, autoFillThreshold: 100 },
+  QuickPractice: { size: 200, autoFillThreshold: 160 },
+};
+// Legacy alias used in a few places — now derived per-mode where needed
+function cacheSizeFor(mode) { return CACHE_CONFIG[mode]?.size || 120; }
+function autoFillThresholdFor(mode) { return CACHE_CONFIG[mode]?.autoFillThreshold || 100; }
 const CACHE_TTL_MS     = 7 * 24 * 60 * 60 * 1000;
 const DAILY_TEST_LIMIT = 15;
 const MODES            = ["Mock", "QuickPractice"];  // Mock first — highest priority
@@ -561,12 +570,29 @@ exports.triggerCacheWarm = functions
       for (const mode of MODES) {
         const snap  = await db.collection("questionCache").where("mode", "==", mode).get();
         const fresh = snap.docs.filter(d => d.data().createdAt?.toDate() > cutoff);
-        status[mode] = { current: fresh.length, needed: Math.max(0, CACHE_SIZE - fresh.length) };
+        status[mode] = { current: fresh.length, total: cacheSizeFor(mode), needed: Math.max(0, cacheSizeFor(mode) - fresh.length) };
       }
       // Respond immediately — Firebase Gen1 continues executing after res.send()
       // for the full function timeout (540s). Previously, responding only after generation
       // caused curl to time out and disconnect, potentially killing the function before
       // any sets were stored. Immediate response fixes this permanently.
+      // Fill lock — prevents concurrent fills (nightly cron + health check auto-trigger)
+      // If another fill started within the last 15 minutes, skip to avoid duplicate credit burn
+      const lockRef  = db.collection("cacheControl").doc("fillLock");
+      const lockSnap = await lockRef.get();
+      const lockData = lockSnap.data();
+      const LOCK_TTL_MS = 15 * 60 * 1000; // 15 minutes
+      if (lockData?.lockedAt && (Date.now() - lockData.lockedAt.toMillis()) < LOCK_TTL_MS) {
+        functions.logger.info("FILL_LOCK_SKIPPED", { lockedSince: lockData.lockedAt.toDate().toISOString() });
+        res.status(200).json({
+          message: "Fill already in progress — skipped to prevent duplicate runs",
+          locked: true, lockedSince: lockData.lockedAt.toDate().toISOString(), status,
+        });
+        return;
+      }
+      // Acquire lock
+      await lockRef.set({ lockedAt: admin.firestore.FieldValue.serverTimestamp(), triggeredBy: "triggerCacheWarm" });
+
       functions.logger.info("CACHE_WARM_START", { modesToFill, targetMode, status });
       res.status(200).json({
         message: "Cache warming started — generating sets in background",
@@ -584,7 +610,7 @@ exports.triggerCacheWarm = functions
         for (const mode of modesToFill) {
           const snap  = await db.collection("questionCache").where("mode", "==", mode).get();
           const fresh = snap.docs.filter(d => d.data().createdAt?.toDate() > cutoff);
-          const needed = Math.max(0, CACHE_SIZE - fresh.length);
+          const needed = Math.max(0, cacheSizeFor(mode) - fresh.length);
           functions.logger.info("CACHE_MODE_STATUS", { mode, current: fresh.length, needed });
 
           let consecutiveFails = 0;
@@ -619,6 +645,9 @@ exports.triggerCacheWarm = functions
         functions.logger.info("CACHE_WARM_DONE", { generated, skipped, durationMs: Date.now() - warmStart });
       } catch (e) {
         functions.logger.error("TRIGGER_CACHE_CRASHED", { error: e.message });
+      } finally {
+        // Release fill lock regardless of success or failure
+        try { await lockRef.delete(); } catch(_) {}
       }
     } catch (e) {
       // Outer catch — handles auth/key/status-check failures before res.send() is called
@@ -1131,7 +1160,7 @@ exports.getCacheStatus = functions
       for (const mode of MODES) {
         const snap  = await db.collection("questionCache").where("mode", "==", mode).get();
         const fresh = snap.docs.filter(d => d.data().createdAt?.toDate() > cutoff);
-        status[mode] = { current: fresh.length, total: CACHE_SIZE, needed: Math.max(0, CACHE_SIZE - fresh.length) };
+        status[mode] = { current: fresh.length, total: cacheSizeFor(mode), needed: Math.max(0, cacheSizeFor(mode) - fresh.length), autoFillThreshold: autoFillThresholdFor(mode) };
       }
       res.status(200).json({ status, checkedAt: new Date().toISOString() });
     } catch(e) {
@@ -1163,50 +1192,55 @@ exports.platformHealthCheck = functions
     const autoFixed = [];
     const warnings  = [];
 
-    // ── CHECK 1: Cache health ─────────────────────────────────────────────
+    // ── CHECK 1: Cache health — mode-specific thresholds ─────────────────
     try {
       const cutoff = new Date(Date.now() - CACHE_TTL_MS);
-      const AUTO_FILL_THRESHOLD = 30; // below this → auto-trigger fill
 
       for (const mode of MODES) {
+        const modeSize      = cacheSizeFor(mode);          // Mock:120, QP:200
+        const modeThreshold = autoFillThresholdFor(mode);  // Mock:100, QP:160
         const snap  = await db.collection("questionCache").where("mode", "==", mode).get();
         const fresh = snap.docs.filter(d => d.data().createdAt?.toDate() > cutoff);
         const count = fresh.length;
-        const pct   = Math.round((count / CACHE_SIZE) * 100);
+        const pct   = Math.round((count / modeSize) * 100);
 
-        // Detect substandard sets (wrong questionCount) — flag only, never delete
-        const REQUIRED_Q    = mode === "Mock" ? 50 : 15;
-        const substandard   = fresh.filter(d => {
+        // Detect substandard sets — flag only, never delete
+        const REQUIRED_Q  = mode === "Mock" ? 50 : 15;
+        const substandard = fresh.filter(d => {
           const qc = d.data().questionCount || (d.data().questions?.length ?? 0);
           return qc !== REQUIRED_Q;
         });
 
-        const status = count >= 50 ? "healthy" : count >= 30 ? "warning" : "critical";
+        const cacheStatus = count >= modeThreshold ? "healthy" : count >= Math.floor(modeSize * 0.20) ? "warning" : "critical";
         checks[`cache_${mode}`] = {
-          status, count, total: CACHE_SIZE, pct,
+          status: cacheStatus, count, total: modeSize, threshold: modeThreshold, pct,
           substandard: substandard.length,
           substandardIds: substandard.map(d => d.id),
-          message: `${count}/${CACHE_SIZE} sets fresh (${pct}%)${substandard.length > 0 ? ` · ${substandard.length} substandard sets flagged (not deleted — review before removing)` : ""}`,
+          message: `${count}/${modeSize} sets (${pct}%) · auto-fill triggers below ${modeThreshold}${substandard.length > 0 ? ` · ${substandard.length} substandard flagged` : ""}`,
         };
 
-        // Auto-fix: cache below threshold → trigger fill (safe, additive only)
-        if (count < AUTO_FILL_THRESHOLD) {
-          const KEY = cfg.anthropic?.api_key || process.env.ANTHROPIC_API_KEY;
-          if (KEY) {
-            functions.logger.info("HEALTH_AUTO_FIX", { action: "triggerCacheWarm", mode, reason: `cache at ${count}/${CACHE_SIZE}` });
-            // Fire-and-forget — health check responds immediately, fill runs in background
-            db.collection("healthAutoFix").add({
-              action: "cache_fill_triggered",
-              mode,
-              triggerReason: `cache_${status}:${count}/${CACHE_SIZE}`,
-              triggeredAt: admin.firestore.FieldValue.serverTimestamp(),
-            }).catch(() => {});
-            autoFixed.push(`${mode} cache fill triggered automatically (was ${count}/${CACHE_SIZE})`);
-            checks[`cache_${mode}`].autoFix = "cache_fill_triggered";
-          }
+        // Auto-fix: actually call triggerCacheWarm (not just log it)
+        // Fill lock inside triggerCacheWarm prevents conflicting concurrent runs
+        if (count < modeThreshold) {
+          const adminKey = cfg.admin?.key || process.env.ADMIN_KEY || "";
+          functions.logger.info("HEALTH_AUTO_FIX", { mode, count, threshold: modeThreshold, target: modeSize });
+          // Fire-and-forget — responds immediately, fill runs in background
+          fetch("https://us-central1-vantiq-cuet.cloudfunctions.net/triggerCacheWarm", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-admin-key": adminKey },
+            body: JSON.stringify({ mode }),
+          }).catch(e => functions.logger.warn("HEALTH_AUTO_FIX_FETCH_FAILED", { mode, error: e.message }));
+          // Audit log
+          db.collection("healthAutoFix").add({
+            action: "cache_fill_triggered", mode,
+            triggerReason: `below_threshold:${count}<${modeThreshold}/${modeSize}`,
+            triggeredAt: admin.firestore.FieldValue.serverTimestamp(),
+          }).catch(() => {});
+          autoFixed.push(`${mode} cache auto-triggered (${count} below threshold ${modeThreshold}/${modeSize})`);
+          checks[`cache_${mode}`].autoFix = "fill_triggered";
         }
         if (substandard.length > 0) {
-          warnings.push(`${substandard.length} ${mode} cache set(s) have wrong question count — review and manually delete if needed`);
+          warnings.push(`${substandard.length} ${mode} cache set(s) have wrong question count — review before removing`);
         }
       }
     } catch (e) {

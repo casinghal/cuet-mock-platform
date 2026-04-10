@@ -32,7 +32,7 @@ jobs:
 
           echo "========================================"
           echo "Cache Fill Engine started: $(date -u '+%Y-%m-%d %H:%M UTC')"
-          echo "Target: 120 sets per mode | Max loops: $MAX_LOOPS | Hard timeout: 110 min"
+          echo "Target: Mock=120 / QuickPractice=200 sets | Max loops: $MAX_LOOPS | Timeout: 110 min"
           echo "========================================"
 
           # Initial status check
@@ -92,7 +92,7 @@ jobs:
             QP_NEEDED=$(echo "$STATUS" | python3 -c \
               "import json,sys; d=json.load(sys.stdin); print(d['status']['QuickPractice']['needed'])" 2>/dev/null || echo "999")
 
-            echo "    After loop $LOOP: Mock=$MOCK_NOW/120 | QP=$QP_NOW/120"
+            echo "    After loop $LOOP: Mock=$MOCK_NOW/120 (target) | QP=$QP_NOW/200 (target)"
 
             # Both modes full — success, stop immediately
             if [ "$MOCK_NEEDED" = "0" ] && [ "$QP_NEEDED" = "0" ]; then

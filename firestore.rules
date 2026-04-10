@@ -71,5 +71,11 @@ service cloud.firestore {
       allow read:  if isAdmin();
       allow write: if false;
     }
+
+    // Cache control (fill lock): admin read only (writes via admin SDK only)
+    match /cacheControl/{docId} {
+      allow read:  if isAdmin();
+      allow write: if false;
+    }
   }
 }
