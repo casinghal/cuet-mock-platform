@@ -1,13 +1,4 @@
 {
-  "indexes": [
-    {
-      "collectionGroup": "questionCache",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "mode", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "ASCENDING" }
-      ]
-    }
-  ],
+  "indexes": [],
   "fieldOverrides": []
 }
