@@ -273,7 +273,18 @@ exports.triggerCacheWarm = functions
       const cutoff = new Date(Date.now() - CACHE_TTL_MS);
       // Optional targeted mode — pass {"mode":"Mock"} to fill only Mock
       const targetMode = req.body && req.body.mode ? req.body.mode : null;
+      const clearMode  = req.body && req.body.clear === true;
       const modesToFill = (targetMode && MODES.includes(targetMode)) ? [targetMode] : MODES;
+
+      // If clear:true, delete all existing docs for targeted modes before filling
+      if (clearMode && targetMode) {
+        const toDelete = await db.collection("questionCache").where("mode", "==", targetMode).get();
+        const delBatch = db.batch();
+        toDelete.docs.forEach(d => delBatch.delete(d.ref));
+        await delBatch.commit();
+        functions.logger.info("CACHE_CLEARED", { mode: targetMode, deleted: toDelete.size });
+      }
+
       const status = {};
       for (const mode of MODES) {
         const snap  = await db.collection("questionCache").where("mode", "==", mode).get();
