@@ -1,94 +1,143 @@
-name: Nightly Cache Warm
+name: Nightly Cache Fill Engine
 
 on:
-  # Primary trigger: 2:00 AM IST = 8:30 PM UTC
   schedule:
     - cron: '30 20 * * *'  # 2:00 AM IST primary fill
     - cron: '0 6 * * *'    # 11:30 AM IST midday top-up
-
-  # Manual trigger — backup, run from GitHub Actions tab anytime
   workflow_dispatch:
     inputs:
       reason:
         description: 'Reason for manual trigger'
         required: false
-        default: 'Manual cache refill'
+        default: 'Manual cache fill'
 
 jobs:
-  warm-cache:
-    name: Warm Question Cache
+  fill-until-full:
+    name: Fill Cache Until Full
     runs-on: ubuntu-latest
+    # Hard cap: 12 loops x ~9 min each = ~108 min. Killed at 110 if runaway.
+    timeout-minutes: 110
 
     steps:
-      - name: Trigger cache warm
-        id: warm
+      - name: Self-looping cache fill engine
+        env:
+          ADMIN_KEY: ${{ secrets.CACHE_ADMIN_KEY }}
+          CF_BASE: https://us-central1-vantiq-cuet.cloudfunctions.net
         run: |
-          echo "Triggering cache warm at $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          MAX_LOOPS=12
+          LOOP=0
+          START_TIME=$(date +%s)
+          MOCK_NOW=0
+          QP_NOW=0
 
-          # triggerCacheWarm is a synchronous 8-minute function — it responds only after
-          # all sets are generated. --max-time 30 was timing out before any response.
-          # 570 = 540s CF timeout + 30s buffer — wait for the full function response.
-          response=$(curl -s -w "\n%{http_code}" -X POST \
-            https://us-central1-vantiq-cuet.cloudfunctions.net/triggerCacheWarm \
-            -H "x-admin-key: ${{ secrets.CACHE_ADMIN_KEY }}" \
-            -H "Content-Type: application/json" \
-            -d "{}" \
-            --max-time 570)
+          echo "========================================"
+          echo "Cache Fill Engine started: $(date -u '+%Y-%m-%d %H:%M UTC')"
+          echo "Target: 120 sets per mode | Max loops: $MAX_LOOPS | Hard timeout: 110 min"
+          echo "========================================"
 
-          http_code=$(echo "$response" | tail -1)
-          body=$(echo "$response" | head -n -1)
+          # Initial status check
+          INITIAL=$(curl -s -X POST "$CF_BASE/getCacheStatus" \
+            -H "x-admin-key: $ADMIN_KEY" -H "Content-Type: application/json" \
+            -d '{}' --max-time 15)
+          echo "Initial: $INITIAL"
 
-          echo "HTTP Status: $http_code"
-          echo "Response: $body"
-          echo "http_code=$http_code" >> $GITHUB_OUTPUT
-          echo "body=$body" >> $GITHUB_OUTPUT
+          MOCK_NEEDED=$(echo "$INITIAL" | python3 -c \
+            "import json,sys; d=json.load(sys.stdin); print(d['status']['Mock']['needed'])" 2>/dev/null || echo "120")
+          QP_NEEDED=$(echo "$INITIAL" | python3 -c \
+            "import json,sys; d=json.load(sys.stdin); print(d['status']['QuickPractice']['needed'])" 2>/dev/null || echo "120")
 
-          if [ "$http_code" != "200" ]; then
-            echo "ERROR: Cache warm failed with HTTP $http_code"
-            exit 1
+          echo "Mock needed: $MOCK_NEEDED | QP needed: $QP_NEEDED"
+
+          # Already full — nothing to do
+          if [ "$MOCK_NEEDED" = "0" ] && [ "$QP_NEEDED" = "0" ]; then
+            echo "Cache already full. Exiting."
+            exit 0
           fi
 
-          echo "Cache warming started successfully"
+          # Fill loop — runs until full OR max loops hit
+          while [ $LOOP -lt $MAX_LOOPS ]; do
+            LOOP=$((LOOP + 1))
+            ELAPSED=$(( $(date +%s) - START_TIME ))
+            echo ""
+            echo "--- Loop $LOOP/$MAX_LOOPS | ${ELAPSED}s elapsed ---"
+            echo "    Mock still needed: $MOCK_NEEDED | QP still needed: $QP_NEEDED"
 
-      - name: Wait and verify
-        if: steps.warm.outputs.http_code == '200'
-        run: |
-          echo "Cache warming is running in background..."
-          echo "Response received: ${{ steps.warm.outputs.body }}"
-          echo "Sets will be generated over the next 15-20 minutes"
-          echo "Check Firebase Console for progress"
+            # Trigger one fill run (8 min function, waits for response)
+            WARM=$(curl -s -w "\n%{http_code}" -X POST "$CF_BASE/triggerCacheWarm" \
+              -H "x-admin-key: $ADMIN_KEY" -H "Content-Type: application/json" \
+              -d '{}' --max-time 570)
+            HTTP=$(echo "$WARM" | tail -1)
+            BODY=$(echo "$WARM" | head -n -1)
+            echo "    HTTP: $HTTP"
+            echo "    Response: $BODY"
 
-  retry-on-failure:
-    name: Retry Cache Warm (if primary failed)
+            if [ "$HTTP" != "200" ]; then
+              echo "    triggerCacheWarm returned HTTP $HTTP. Waiting 30s then retrying."
+              sleep 30
+              continue
+            fi
+
+            # Wait for Firestore writes to settle then re-check status
+            sleep 5
+            STATUS=$(curl -s -X POST "$CF_BASE/getCacheStatus" \
+              -H "x-admin-key: $ADMIN_KEY" -H "Content-Type: application/json" \
+              -d '{}' --max-time 15)
+
+            MOCK_NOW=$(echo "$STATUS" | python3 -c \
+              "import json,sys; d=json.load(sys.stdin); print(d['status']['Mock']['current'])" 2>/dev/null || echo "0")
+            QP_NOW=$(echo "$STATUS" | python3 -c \
+              "import json,sys; d=json.load(sys.stdin); print(d['status']['QuickPractice']['current'])" 2>/dev/null || echo "0")
+            MOCK_NEEDED=$(echo "$STATUS" | python3 -c \
+              "import json,sys; d=json.load(sys.stdin); print(d['status']['Mock']['needed'])" 2>/dev/null || echo "999")
+            QP_NEEDED=$(echo "$STATUS" | python3 -c \
+              "import json,sys; d=json.load(sys.stdin); print(d['status']['QuickPractice']['needed'])" 2>/dev/null || echo "999")
+
+            echo "    After loop $LOOP: Mock=$MOCK_NOW/120 | QP=$QP_NOW/120"
+
+            # Both modes full — success, stop immediately
+            if [ "$MOCK_NEEDED" = "0" ] && [ "$QP_NEEDED" = "0" ]; then
+              ELAPSED=$(( $(date +%s) - START_TIME ))
+              echo ""
+              echo "========================================"
+              echo "CACHE FULLY FILLED"
+              echo "  Mock: $MOCK_NOW/120 | QP: $QP_NOW/120"
+              echo "  Loops used: $LOOP | Time: ${ELAPSED}s"
+              echo "========================================"
+              exit 0
+            fi
+
+            echo "    Cache not yet full. Next loop starting..."
+          done
+
+          # Max loops hit — log and decide exit code
+          ELAPSED=$(( $(date +%s) - START_TIME ))
+          echo ""
+          echo "========================================"
+          echo "MAX LOOPS REACHED ($MAX_LOOPS loops / ${ELAPSED}s)"
+          echo "  Mock: $MOCK_NOW/120 (needed: $MOCK_NEEDED)"
+          echo "  QP:   $QP_NOW/120  (needed: $QP_NEEDED)"
+          echo "  Next scheduled run will continue filling."
+          echo "  To manually force-fill: trigger this workflow from GitHub Actions tab."
+          echo "========================================"
+          # Critical alert only if Mock cache is below 20% (24 sets)
+          if [ "$MOCK_NOW" -lt 24 ] 2>/dev/null; then
+            echo "CRITICAL: Mock cache below 20% after max loops. Manual fill required."
+            exit 1
+          fi
+          exit 0
+
+  summary:
+    name: Run Summary
     runs-on: ubuntu-latest
-    needs: warm-cache
-    if: failure()
-
+    needs: fill-until-full
+    if: always()
     steps:
-      - name: Wait 5 minutes before retry
-        run: sleep 300
-
-      - name: Retry cache warm
+      - name: Write job summary
         run: |
-          echo "Primary run failed — retrying at $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-
-          response=$(curl -s -w "\n%{http_code}" -X POST \
-            https://us-central1-vantiq-cuet.cloudfunctions.net/triggerCacheWarm \
-            -H "x-admin-key: ${{ secrets.CACHE_ADMIN_KEY }}" \
-            -H "Content-Type: application/json" \
-            -d "{}" \
-            --max-time 570)
-
-          http_code=$(echo "$response" | tail -1)
-          body=$(echo "$response" | head -n -1)
-
-          echo "Retry HTTP Status: $http_code"
-          echo "Retry Response: $body"
-
-          if [ "$http_code" != "200" ]; then
-            echo "CRITICAL: Retry also failed. Manual intervention required."
-            echo "Cache may be empty. Students may see 'tests being prepared' message."
-            exit 1
-          fi
-
-          echo "Retry succeeded — cache warming started"
+          echo "### Cache Fill Engine — $(date -u '+%Y-%m-%d %H:%M UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Result | ${{ needs.fill-until-full.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Admin Dashboard | https://vantiq-cuetmock.netlify.app/admin |" >> $GITHUB_STEP_SUMMARY
+          echo "| Firebase Logs | https://console.firebase.google.com/project/vantiq-cuet/functions/logs |" >> $GITHUB_STEP_SUMMARY
+          echo "| Manual Trigger | https://github.com/casinghal/cuet-mock-platform/actions/workflows/nightly-cache-warm.yml |" >> $GITHUB_STEP_SUMMARY
