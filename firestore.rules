@@ -2,12 +2,10 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Admin email — only this account gets full read access
+    // Admin check via Firebase custom claim — no PII in rules
+    // Set the admin claim once using the grantAdminClaim Cloud Function
     function isAdmin() {
-      return request.auth != null && (
-        request.auth.token.email == "ca.singhal@gmail.com" ||
-        request.auth.token.email == "singhal.accuron@gmail.com"
-      );
+      return request.auth != null && request.auth.token.admin == true;
     }
 
     // Users: read own doc; admin can read all

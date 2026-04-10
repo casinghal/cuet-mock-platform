@@ -1483,7 +1483,7 @@ export default function AdminDashboard() {
             { label: "Firebase Functions", url: "https://console.firebase.google.com/project/vantiq-cuet/functions" },
             { label: "Firestore",          url: "https://console.firebase.google.com/project/vantiq-cuet/firestore" },
             { label: "Netlify Deploys",    url: "https://app.netlify.com/projects/vantiq-cuetmock/deploys" },
-            { label: "GitHub Actions",     url: "https://github.com/casinghal/cuet-mock-platform/actions" },
+            { label: "GitHub Actions",     url: import.meta.env.VITE_GITHUB_ACTIONS_URL || "#" },
             { label: "Razorpay Dashboard", url: "https://dashboard.razorpay.com" },
             { label: "GA4 Analytics",      url: "https://analytics.google.com" },
             { label: "Anthropic Console",  url: "https://console.anthropic.com" },

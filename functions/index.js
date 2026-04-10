@@ -1044,6 +1044,34 @@ Return ONLY the JSON object. Begin with { — nothing before it.`;
     }
   });
 
+
+// ─── grantAdminClaim ─────────────────────────────────────────────────────────
+// One-time setup: grants admin:true custom claim to a Firebase UID.
+// Call once for each admin account — then Firestore rules use the claim, not emails.
+// Protected by admin key. Usage: POST { "uid": "FIREBASE_UID" }
+exports.grantAdminClaim = functions
+  .runWith({ timeoutSeconds: 30, memory: "128MB" })
+  .https.onRequest(async (req, res) => {
+    setCORS(res);
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+    const adminKey    = req.body?.adminKey || req.headers["x-admin-key"] || "";
+    const cfg         = functions.config();
+    const expectedKey = cfg.admin?.key || process.env.ADMIN_KEY || "";
+    if (!adminKey || adminKey !== expectedKey) {
+      res.status(403).json({ error: "Forbidden" }); return;
+    }
+    const { uid } = req.body || {};
+    if (!uid) { res.status(400).json({ error: "uid required" }); return; }
+    try {
+      await admin.auth().setCustomUserClaims(uid, { admin: true });
+      functions.logger.info("ADMIN_CLAIM_GRANTED", { uid });
+      res.status(200).json({ success: true, uid, claim: { admin: true } });
+    } catch (e) {
+      functions.logger.error("ADMIN_CLAIM_FAILED", { uid, error: e.message });
+      res.status(500).json({ error: e.message });
+    }
+  });
+
 // ─── 8. getCacheStatus ───────────────────────────────────────────────────────
 // Lightweight read-only status check — no generation, responds in < 2s
 exports.getCacheStatus = functions
