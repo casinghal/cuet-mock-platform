@@ -950,7 +950,7 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
 
   function submitTest(auto = false) {
     clearInterval(timerRef.current);
-    logEvent("test_completed", { user_id: user?.uid, mode: config?.mode, answered: Object.keys(answers).length });
+    // test_completed moved to handleSubmitTest in App() — score/accuracy available there
     onSubmit(answers);
   }
 
@@ -1655,6 +1655,12 @@ export default function App() {
       });
       await loadUserData(user);
     } catch(_) { /* non-blocking — results still show */ }
+    // Fire test_completed here — score and accuracy now available (not available in ExamScreen)
+    logEvent("test_completed", {
+      user_id: user?.uid, mode: testConfig?.mode,
+      score: total, accuracy, correct, wrong,
+      answered: correct + wrong,
+    });
     // Show rating after first test — better timing than on login
     if (window.__userNeedsRating) { setShowRating(true); window.__userNeedsRating = false; }
     setScreen("results");
