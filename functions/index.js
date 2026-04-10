@@ -169,6 +169,9 @@ exports.triggerCacheWarm = functions
       const KEY = cfg.anthropic?.api_key || process.env.ANTHROPIC_API_KEY;
       if (!KEY) { res.status(500).json({ error: "No API key configured" }); return; }
       const cutoff = new Date(Date.now() - CACHE_TTL_MS);
+      // Optional targeted mode — pass {"mode":"Mock"} to fill only Mock
+      const targetMode = req.body && req.body.mode ? req.body.mode : null;
+      const modesToFill = (targetMode && MODES.includes(targetMode)) ? [targetMode] : MODES;
       const status = {};
       for (const mode of MODES) {
         const snap  = await db.collection("questionCache").where("mode", "==", mode).get();
@@ -181,9 +184,9 @@ exports.triggerCacheWarm = functions
       const TIME_BUDGET_MS = 480000; // 8 min — leaves 1 min buffer before 540s timeout
       let generated = 0;
       let skipped = 0;
-      functions.logger.info("CACHE_WARM_START");
+      functions.logger.info("CACHE_WARM_START", { modesToFill, targetMode });
 
-      for (const mode of MODES) {
+      for (const mode of modesToFill) {
         const snap  = await db.collection("questionCache").where("mode", "==", mode).get();
         const fresh = snap.docs.filter(d => d.data().createdAt?.toDate() > cutoff);
         const needed = Math.max(0, CACHE_SIZE - fresh.length);
