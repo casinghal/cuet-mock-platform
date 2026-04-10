@@ -7,7 +7,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { initializeApp, getApps } from "firebase/app";
-import { getAuth, onAuthStateChanged } from "firebase/auth";
+import { getAuth, onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore, collection, getDocs, query, where, orderBy, limit, getCountFromServer } from "firebase/firestore";
 
 // ── Firebase (reuse existing app if already initialized) ──────────────────────
@@ -491,6 +491,8 @@ function ChangePassword() {
 // ── Main Admin Dashboard ──────────────────────────────────────────────────────
 export default function AdminDashboard() {
   const [unlocked,    setUnlocked]    = useState(false);
+  const [fbUser,      setFbUser]      = useState(null);
+  const [fbLoading,   setFbLoading]   = useState(false);
   const [loading,     setLoading]     = useState(true);
   const [stats,       setStats]       = useState(null);
   const [cache,       setCache]       = useState({});
@@ -499,6 +501,28 @@ export default function AdminDashboard() {
   const [logs,        setLogs]        = useState([]);
   const [filling,     setFilling]     = useState(null);
   const [lastRefresh, setLastRefresh] = useState(null);
+
+  // Sign in with Firebase Google auth after password gate
+  // Required for Firestore rules (isAdmin checks email)
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, u => {
+      setFbUser(u);
+      if (unlocked && u) loadData();
+    });
+    return unsub;
+  }, [unlocked]);
+
+  async function handleFirebaseSignIn() {
+    setFbLoading(true);
+    try {
+      const provider = new GoogleAuthProvider();
+      const result   = await signInWithPopup(auth, provider);
+      setFbUser(result.user);
+    } catch(e) {
+      addLog("Google sign-in failed: " + e.message, "error");
+    }
+    setFbLoading(false);
+  }
 
   const addLog = (msg, type = "info") => {
     const ts = new Date().toLocaleTimeString("en-IN");
@@ -510,10 +534,9 @@ export default function AdminDashboard() {
   const loadData = useCallback(async () => {
     setLoading(true);
     addLog("Loading dashboard data...");
-    // Wait for auth — Firestore rules require authentication
     const user = auth.currentUser;
     if (!user) {
-      addLog("Not authenticated — sign in to view stats", "error");
+      addLog("Not signed in with Google — click 'Sign in with Google' below to load stats", "error");
       setLoading(false);
       return;
     }
@@ -625,6 +648,26 @@ export default function AdminDashboard() {
       </div>
 
       <div style={S.body}>
+        {/* Firebase auth banner */}
+        {!fbUser && (
+          <div style={{ background: "#FEF3C7", border: "1px solid #FCD34D", borderRadius: 10, padding: "12px 20px", marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ fontSize: 13, color: "#92400E", fontWeight: 500 }}>
+              ⚠️ Sign in with Google to load student stats and use cache controls.
+            </span>
+            <button onClick={handleFirebaseSignIn} disabled={fbLoading}
+              style={{ ...S.btn, background: "#fff", color: "#0F2747", border: "1px solid #D97706", fontSize: 12, padding: "7px 16px" }}>
+              {fbLoading ? "Signing in..." : "Sign in with Google"}
+            </button>
+          </div>
+        )}
+        {fbUser && (
+          <div style={{ background: "#DCFCE7", border: "1px solid #86EFAC", borderRadius: 10, padding: "10px 20px", marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ fontSize: 12, color: "#166534" }}>✅ Signed in as {fbUser.email}</span>
+            <button onClick={loadData} disabled={loading} style={{ ...S.btn, ...S.btnMuted, fontSize: 11, padding: "4px 12px" }}>
+              Reload Data
+            </button>
+          </div>
+        )}
         {/* KPI Strip */}
         <div style={S.sectionTitle}>Overview</div>
         <div style={S.grid}>
