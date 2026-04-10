@@ -24,7 +24,7 @@ admin.initializeApp();
 const db               = admin.firestore();
 const FREE_LIMIT       = 4;
 const UNLOCK_AMOUNT    = 19900;
-const CACHE_SIZE       = 60;
+const CACHE_SIZE       = 120; // increased from 60 — buffer for scale (5k users drain 60 sets in hours)
 const CACHE_TTL_MS     = 7 * 24 * 60 * 60 * 1000;
 const DAILY_TEST_LIMIT = 15;
 const MODES            = ["Mock", "QuickPractice"];  // Mock first — highest priority
@@ -1044,6 +1044,46 @@ Return ONLY the JSON object. Begin with { — nothing before it.`;
     }
   });
 
+
+
+// ─── returnTestCredit ────────────────────────────────────────────────────────
+// Grace window: called when student exits a Mock exam within 60s with 0 answers.
+// Decrements testsUsed by 1 so the accidental open doesn't consume a free test.
+// Guards: only works for unlocked=false users (free tier), max 3 returns per day,
+// cannot reduce testsUsed below 0.
+exports.returnTestCredit = functions
+  .runWith({ timeoutSeconds: 15, memory: "128MB" })
+  .https.onRequest(async (req, res) => {
+    setCORS(res);
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+    if (req.method !== "POST")    { res.status(405).json({ error: "Method not allowed" }); return; }
+    const decoded = await verifyToken(req, res); if (!decoded) return;
+    const uid = decoded.uid;
+    try {
+      const snap = await db.collection("users").doc(uid).get();
+      const ud   = snap.data() || {};
+      // Only for free-tier users — paid users have no limit to protect
+      if (ud.unlocked) { res.status(200).json({ returned: false, reason: "paid_user" }); return; }
+      // Cannot go below 0
+      if ((ud.testsUsed || 0) <= 0) { res.status(200).json({ returned: false, reason: "already_zero" }); return; }
+      // Abuse guard: max 3 grace returns per day per user
+      const today      = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+      const todayKey   = `graceReturns.${today}`;
+      const todayCount = (ud.graceReturns || {})[today] || 0;
+      if (todayCount >= 3) {
+        res.status(200).json({ returned: false, reason: "daily_grace_limit_reached" }); return;
+      }
+      await db.collection("users").doc(uid).set({
+        testsUsed:    admin.firestore.FieldValue.increment(-1),
+        [todayKey]:   admin.firestore.FieldValue.increment(1),
+      }, { merge: true });
+      functions.logger.info("TEST_CREDIT_RETURNED", { uid, previousCount: ud.testsUsed });
+      res.status(200).json({ returned: true, newCount: Math.max(0, (ud.testsUsed || 1) - 1) });
+    } catch (e) {
+      functions.logger.error("RETURN_CREDIT_FAILED", { uid, error: e.message });
+      res.status(500).json({ error: "Could not return credit" });
+    }
+  });
 
 // ─── grantAdminClaim ─────────────────────────────────────────────────────────
 // One-time setup: grants admin:true custom claim to a Firebase UID.

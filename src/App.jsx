@@ -1506,6 +1506,7 @@ export default function App() {
   const [authLoading, setAuthLoad]   = useState(true);
   const [showRating,  setShowRating] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false); // lifted from DashboardScreen — needed when generateQuestions returns 402
+  const examStartedAt = useRef(null); // tracks when exam loaded — used for grace window
 
   const showToast = (message, type = "info") => setToast({ message, type, key: Date.now() });
 
@@ -1565,6 +1566,12 @@ export default function App() {
   function incrementLocalTestCount() {
     try { localStorage.setItem("cuet_tests_used", String(getLocalTestCount() + 1)); } catch(_) {}
   }
+  function decrementLocalTestCount() {
+    try {
+      const current = getLocalTestCount();
+      if (current > 0) localStorage.setItem("cuet_tests_used", String(current - 1));
+    } catch(_) {}
+  }
   function getLocalUnlocked() {
     try { return localStorage.getItem("cuet_unlocked") === "true"; } catch(_) { return false; }
   }
@@ -1577,6 +1584,7 @@ export default function App() {
       const required = config.mode === "Mock" ? 50 : 15;
       if (!qs || qs.length !== required) throw new Error(`Incomplete test paper (${qs?.length ?? 0}/${required} questions). Please try again.`);
       setQuestions(qs); setAnswers({}); setScreen("exam");
+      examStartedAt.current = Date.now(); // record exact moment exam loaded for grace window
       // CF generateQuestions handles testsUsed increment server-side (atomic)
       // Optimistic local update for immediate UI feedback + fresh Firestore sync
       incrementLocalTestCount();
@@ -1596,6 +1604,31 @@ export default function App() {
   }
 
   async function handleSubmitTest(submittedAnswers) {
+    // ── Grace window: if student exits within 60s with 0 answers, return the test credit ──
+    // Prevents accidentally opening an exam from consuming a free test
+    const answeredCount = Object.keys(submittedAnswers).length;
+    const elapsedSecs   = examStartedAt.current ? Math.floor((Date.now() - examStartedAt.current) / 1000) : 999;
+    const isMockMode    = testConfig?.mode === "Mock";
+    if (isMockMode && answeredCount === 0 && elapsedSecs < 60) {
+      // Return credit: CF decrements testsUsed by 1 (server-side, secure)
+      try {
+        const token = await getAuthToken();
+        if (CF_BASE && token) {
+          await fetch(`${CF_BASE}/returnTestCredit`, {
+            method: "POST", headers: authHeaders(token), body: JSON.stringify({}),
+          });
+        }
+        // Reverse the optimistic local update
+        setUserData(p => ({ ...p, testsUsed: Math.max(0, (p?.testsUsed || 1) - 1) }));
+        decrementLocalTestCount();
+      } catch(_) { /* silent — worst case: counter stays incremented */ }
+      showToast("No answers recorded — test returned to your account.", "info");
+      examStartedAt.current = null;
+      setScreen("dashboard");
+      return; // skip results screen entirely
+    }
+    examStartedAt.current = null;
+
     setAnswers(submittedAnswers);
     let correct = 0, wrong = 0, total = 0;
     questions.forEach((q, i) => {
