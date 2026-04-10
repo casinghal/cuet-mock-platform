@@ -210,22 +210,51 @@ async function generateQuestionSet(mode, apiKey) {
         questions = await callAnthropic(prompt, 5000, apiKey);
       } else {
         // 5 sequential batches of 10 questions each = exactly 50
-        // Each batch is small → reliable exact count → quality gate passes every time
-        const TOKEN_PER_RC_BATCH  = 3000; // RC batches need passage tokens
-        const TOKEN_PER_STD_BATCH = 2500; // Standard batches, no passages
-        const tokenBudgets = [TOKEN_PER_RC_BATCH, TOKEN_PER_RC_BATCH, TOKEN_PER_RC_BATCH, TOKEN_PER_STD_BATCH, TOKEN_PER_STD_BATCH];
+        // Per-batch retry strategy: retry individual failing batch (not all 5)
+        // Slice to exactly 10 if model returns more
+        const tokenBudgets = [4000, 4000, 4000, 3000, 3000]; // RC batches get more tokens
         const allBatches = [];
+
         for (let b = 1; b <= 5; b++) {
-          functions.logger.info("BATCH_START", { batchNum: b, tokenBudget: tokenBudgets[b-1] });
-          const prompt = buildMockBatch(b);
-          const batch = await callAnthropic(prompt, tokenBudgets[b-1], apiKey);
-          const batchCount = Array.isArray(batch) ? batch.length : 0;
-          functions.logger.info("BATCH_RESULT", { batchNum: b, count: batchCount, isArray: Array.isArray(batch) });
-          if (!Array.isArray(batch) || batch.length !== 10) {
-            throw new Error(`BATCH_${b}_COUNT:${batchCount}/10`);
+          let batchResult = null;
+          let batchError = null;
+
+          // Up to 3 attempts per individual batch
+          for (let ba = 1; ba <= 3; ba++) {
+            try {
+              functions.logger.info("BATCH_START", { batchNum: b, attempt: ba, tokenBudget: tokenBudgets[b-1] });
+              const raw = await callAnthropic(buildMockBatch(b), tokenBudgets[b-1], apiKey);
+              const count = Array.isArray(raw) ? raw.length : 0;
+              functions.logger.info("BATCH_RESULT", { batchNum: b, attempt: ba, count });
+
+              if (!Array.isArray(raw) || count < 8) {
+                // Below minimum acceptable — retry this batch
+                throw new Error(`BATCH_${b}_LOW:${count}/10`);
+              }
+              // Accept 8-12 questions, slice or use as-is to target 10
+              batchResult = raw.slice(0, 10);
+              // If we got less than 10 but >= 8, pad isn't possible — just use what we got
+              if (batchResult.length < 10) {
+                functions.logger.warn("BATCH_SHORT", { batchNum: b, count: batchResult.length });
+              }
+              break; // Batch succeeded
+            } catch(e) {
+              batchError = e;
+              functions.logger.warn("BATCH_RETRY", { batchNum: b, attempt: ba, reason: e.message });
+              if (ba < 3) await new Promise(r => setTimeout(r, 1500 * ba));
+            }
           }
-          allBatches.push(...batch);
+
+          if (!batchResult) {
+            throw new Error(`BATCH_${b}_FAILED_ALL_ATTEMPTS: ${batchError?.message}`);
+          }
+          allBatches.push(...batchResult);
           await new Promise(r => setTimeout(r, 800));
+        }
+
+        // Final count check — should be exactly 50
+        if (allBatches.length !== 50) {
+          throw new Error(`COMBINED_COUNT:${allBatches.length}/50`);
         }
         questions = allBatches;
       }
