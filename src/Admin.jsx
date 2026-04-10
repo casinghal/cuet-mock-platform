@@ -614,8 +614,8 @@ export default function AdminDashboard() {
       setRecentPay(paySnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
       // ── Revenue ──────────────────────────────────────────────────────────
-      const allPay     = await getCountFromServer(collection(db, "payments"));
-      const totalRev   = allPay.data().count * 199;
+      const allPay    = await getDocs(collection(db, "payments"));
+      const totalRev  = allPay.size * 199;
 
       setStats({ totalUsers, totalPaid, testsToday, totalRev, convRate: totalUsers > 0 ? Math.round((totalPaid / totalUsers) * 100) : 0 });
       setLastRefresh(new Date().toLocaleTimeString("en-IN"));
