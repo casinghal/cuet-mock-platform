@@ -337,61 +337,63 @@ exports.triggerCacheWarm = functions
         const fresh = snap.docs.filter(d => d.data().createdAt?.toDate() > cutoff);
         status[mode] = { current: fresh.length, needed: Math.max(0, CACHE_SIZE - fresh.length) };
       }
-      // Synchronous generation — Firebase kills async work after res.send()
-      // Generate sets within 8-minute budget, return partial if needed
+      // Respond immediately — Firebase Gen1 continues executing after res.send()
+      // for the full function timeout (540s). Previously, responding only after generation
+      // caused curl to time out and disconnect, potentially killing the function before
+      // any sets were stored. Immediate response fixes this permanently.
+      functions.logger.info("CACHE_WARM_START", { modesToFill, targetMode, status });
+      res.status(200).json({
+        message: "Cache warming started — generating sets in background",
+        status,
+        startedAt: new Date().toISOString(),
+      });
+
+      // Generation continues AFTER response — function runs until complete or 540s timeout
       const warmStart = Date.now();
       const TIME_BUDGET_MS = 480000; // 8 min — leaves 1 min buffer before 540s timeout
       let generated = 0;
       let skipped = 0;
-      functions.logger.info("CACHE_WARM_START", { modesToFill, targetMode });
 
-      for (const mode of modesToFill) {
-        const snap  = await db.collection("questionCache").where("mode", "==", mode).get();
-        const fresh = snap.docs.filter(d => d.data().createdAt?.toDate() > cutoff);
-        const needed = Math.max(0, CACHE_SIZE - fresh.length);
-        functions.logger.info("CACHE_MODE_STATUS", { mode, current: fresh.length, needed });
+      try {
+        for (const mode of modesToFill) {
+          const snap  = await db.collection("questionCache").where("mode", "==", mode).get();
+          const fresh = snap.docs.filter(d => d.data().createdAt?.toDate() > cutoff);
+          const needed = Math.max(0, CACHE_SIZE - fresh.length);
+          functions.logger.info("CACHE_MODE_STATUS", { mode, current: fresh.length, needed });
 
-        let consecutiveFails = 0;
-        for (let i = 0; i < needed; i++) {
-          if (Date.now() - warmStart > TIME_BUDGET_MS) {
-            skipped = needed - i;
-            functions.logger.info("CACHE_BUDGET_EXCEEDED", { mode, skipped });
-            break;
-          }
-          if (consecutiveFails >= 5) {
-            functions.logger.error("CACHE_MODE_ABANDONED", { mode, reason: "5 consecutive failures — moving to next mode" });
-            skipped += needed - i;
-            break;
-          }
-          try {
-            const questions = await generateQuestionSet(mode, KEY);
-            await db.collection("questionCache").add({
-              mode, questions,
-              createdAt: admin.firestore.FieldValue.serverTimestamp(),
-              questionCount: questions.length,
-            });
-            generated++;
-            consecutiveFails = 0;
-            functions.logger.info("CACHE_SET_STORED", { mode, set: i + 1, total: generated, count: questions.length });
-            await new Promise(r => setTimeout(r, 2000)); // 2s between sets
-          } catch (e) {
-            consecutiveFails++;
-            functions.logger.error("CACHE_SET_FAILED", { mode, set: i + 1, consecutiveFails, error: e.message });
+          let consecutiveFails = 0;
+          for (let i = 0; i < needed; i++) {
+            if (Date.now() - warmStart > TIME_BUDGET_MS) {
+              skipped = needed - i;
+              functions.logger.info("CACHE_BUDGET_EXCEEDED", { mode, skipped });
+              break;
+            }
+            if (consecutiveFails >= 5) {
+              functions.logger.error("CACHE_MODE_ABANDONED", { mode, reason: "5 consecutive failures — moving to next mode" });
+              skipped += needed - i;
+              break;
+            }
+            try {
+              const questions = await generateQuestionSet(mode, KEY);
+              await db.collection("questionCache").add({
+                mode, questions,
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                questionCount: questions.length,
+              });
+              generated++;
+              consecutiveFails = 0;
+              functions.logger.info("CACHE_SET_STORED", { mode, set: i + 1, total: generated, count: questions.length });
+              await new Promise(r => setTimeout(r, 2000)); // 2s between sets
+            } catch (e) {
+              consecutiveFails++;
+              functions.logger.error("CACHE_SET_FAILED", { mode, set: i + 1, consecutiveFails, error: e.message });
+            }
           }
         }
+        functions.logger.info("CACHE_WARM_DONE", { generated, skipped, durationMs: Date.now() - warmStart });
+      } catch (e) {
+        functions.logger.error("TRIGGER_CACHE_CRASHED", { error: e.message });
       }
-
-      functions.logger.info("CACHE_WARM_DONE", { generated, skipped, durationMs: Date.now() - warmStart });
-      res.status(200).json({
-        message: skipped > 0 ? "Partial cache fill — run again to complete" : "Cache fully warmed",
-        generated, skipped,
-        status,
-        durationMs: Date.now() - warmStart
-      });
-    } catch (e) {
-      functions.logger.error("TRIGGER_CACHE_CRASHED", { error: e.message });
-      res.status(500).json({ error: "Function error: " + e.message });
-    }
   });
 
 // ─── 1. generateQuestions ────────────────────────────────────────────────────
