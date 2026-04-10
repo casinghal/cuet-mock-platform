@@ -647,7 +647,9 @@ function AuthScreen({ onLogin, showToast }) {
 
           {/* Trust */}
           <p style={S.trustLine}>
-            By continuing you agree to our Terms &amp; Privacy Policy.
+            By continuing you agree to our{" "}
+            <a href="/terms"   style={{ color: "rgba(255,255,255,0.6)", textDecoration: "underline" }}>Terms</a>{" & "}
+            <a href="/privacy" style={{ color: "rgba(255,255,255,0.6)", textDecoration: "underline" }}>Privacy Policy</a>.
             <br />Your data is safe and never shared.
           </p>
         </div>

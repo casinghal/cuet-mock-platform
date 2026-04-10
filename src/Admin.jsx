@@ -256,6 +256,123 @@ function CacheCard({ mode, data, onFill, filling }) {
   );
 }
 
+// ── User Manager Component ────────────────────────────────────────────────────
+function UserManager({ addLog }) {
+  const [email,   setEmail]   = useState("");
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [msg,     setMsg]     = useState(null);
+
+  async function lookupUser() {
+    if (!email.trim()) return;
+    setLoading(true); setProfile(null); setMsg(null);
+    try {
+      const q = query(collection(db, "users"), where("email", "==", email.trim().toLowerCase()));
+      const snap = await getDocs(q);
+      if (snap.empty) { setMsg({ text: `No account found for ${email}`, type: "error" }); setLoading(false); return; }
+      const d = snap.docs[0];
+      // Get test count
+      const testsQ = query(collection(db, "tests"), where("uid", "==", d.id), orderBy("completedAt", "desc"), limit(5));
+      const testsSnap = await getDocs(testsQ);
+      setProfile({ id: d.id, ...d.data(), recentTests: testsSnap.docs.map(t => t.data()) });
+      addLog(`Looked up user: ${email}`, "info");
+    } catch(e) { setMsg({ text: `Error: ${e.message}`, type: "error" }); }
+    setLoading(false);
+  }
+
+  async function grantAccess() {
+    if (!profile) return;
+    setLoading(true);
+    try {
+      const { updateDoc, doc } = await import("firebase/firestore");
+      await updateDoc(doc(db, "users", profile.id), { unlocked: true, unlockedAt: new Date(), unlockedBy: "admin" });
+      setProfile(p => ({ ...p, unlocked: true }));
+      addLog(`Granted pro access to ${email}`, "success");
+      setMsg({ text: `✅ Pro access granted to ${email}`, type: "success" });
+    } catch(e) { setMsg({ text: `Error: ${e.message}`, type: "error" }); }
+    setLoading(false);
+  }
+
+  async function revokeAccess() {
+    if (!profile) return;
+    setLoading(true);
+    try {
+      const { updateDoc, doc } = await import("firebase/firestore");
+      await updateDoc(doc(db, "users", profile.id), { unlocked: false });
+      setProfile(p => ({ ...p, unlocked: false }));
+      addLog(`Revoked pro access from ${email}`, "info");
+      setMsg({ text: `Access revoked for ${email}`, type: "success" });
+    } catch(e) { setMsg({ text: `Error: ${e.message}`, type: "error" }); }
+    setLoading(false);
+  }
+
+  const fmtDate = ts => {
+    if (!ts) return "—";
+    try { return (ts.toDate ? ts.toDate() : new Date(ts)).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }); }
+    catch { return "—"; }
+  };
+
+  const inputStyle = {
+    flex: 1, padding: "10px 14px", border: "1px solid #E2E8F0",
+    borderRadius: 8, fontFamily: "'Sora', sans-serif", fontSize: 13, outline: "none",
+  };
+
+  return (
+    <div style={{ ...S.card, maxWidth: 600 }}>
+      <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+        <input type="email" placeholder="student@example.com" value={email}
+          onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && lookupUser()}
+          style={inputStyle} />
+        <button onClick={lookupUser} disabled={loading} style={{ ...S.btn, ...S.btnPrimary }}>
+          {loading ? "..." : "Look Up"}
+        </button>
+      </div>
+
+      {msg && <p style={{ fontSize: 12, marginBottom: 12, fontWeight: 600, color: msg.type === "error" ? "#DC2626" : "#059669" }}>{msg.text}</p>}
+
+      {profile && (
+        <div style={{ background: "#F8FAFC", borderRadius: 8, padding: "16px", border: "1px solid #E2E8F0" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+            {[
+              { label: "Name",         val: profile.displayName || "—" },
+              { label: "Email",        val: profile.email || "—" },
+              { label: "Tests Used",   val: profile.testsUsed || 0 },
+              { label: "Access",       val: profile.unlocked ? "Pro ✅" : "Free" },
+              { label: "Registered",   val: fmtDate(profile.createdAt) },
+              { label: "Last Test",    val: fmtDate(profile.lastTestAt) },
+            ].map(row => (
+              <div key={row.label}>
+                <div style={{ fontSize: 10, fontWeight: 600, color: "#94A3B8", textTransform: "uppercase", letterSpacing: ".05em" }}>{row.label}</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "#1E293B", marginTop: 2 }}>{String(row.val)}</div>
+              </div>
+            ))}
+          </div>
+
+          {profile.recentTests?.length > 0 && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "#94A3B8", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 6 }}>Recent Tests</div>
+              {profile.recentTests.map((t, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "4px 0", borderBottom: "1px solid #F1F5F9" }}>
+                  <span>{t.mode || "Mock"}</span>
+                  <span style={{ fontFamily: "monospace" }}>{t.totalScore ?? "—"} pts · {t.accuracy ?? 0}%</span>
+                  <span style={{ color: "#94A3B8" }}>{fmtDate(t.completedAt)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: 8 }}>
+            {!profile.unlocked
+              ? <button onClick={grantAccess} disabled={loading} style={{ ...S.btn, ...S.btnSuccess, fontSize: 12 }}>Grant Pro Access</button>
+              : <button onClick={revokeAccess} disabled={loading} style={{ ...S.btn, ...S.btnDanger, fontSize: 12 }}>Revoke Access</button>
+            }
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Reset User Free Limit Component ──────────────────────────────────────────
 function ResetUserLimit({ addLog }) {
   const [email,   setEmail]   = useState("");
@@ -630,6 +747,13 @@ export default function AdminDashboard() {
         {/* Reset User Free Limit */}
         <div style={S.sectionTitle}>Reset Student Free Limit</div>
         <ResetUserLimit addLog={addLog} />
+
+        {/* User Manager */}
+        <div style={S.sectionTitle}>User Management</div>
+        <p style={{ fontSize: 13, color: "#64748B", marginBottom: 12, marginTop: -8 }}>
+          Look up any student by email — view their profile, test history, and grant or revoke pro access.
+        </p>
+        <UserManager addLog={addLog} />
 
         {/* Change Password */}
         <div style={S.sectionTitle}>Change Admin Password</div>
