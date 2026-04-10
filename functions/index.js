@@ -344,7 +344,18 @@ exports.generateQuestions = functions
     try {
       const allSnap   = await db.collection("questionCache").where("mode", "==", mode).get();
       const usedSet   = new Set(usedSetIds);
-      const available = allSnap.docs.filter(d => !usedSet.has(d.id) && d.data().createdAt?.toDate() > cutoff);
+      // Quality filter — reject any cached set with fewer than expected questions
+      const MIN_Q = mode === "Mock" ? 48 : 14;
+      const available = allSnap.docs.filter(d => {
+        if (usedSet.has(d.id)) return false;
+        if (d.data().createdAt?.toDate() <= cutoff) return false;
+        const count = d.data().questionCount || (d.data().questions?.length ?? 0);
+        if (count < MIN_Q) {
+          functions.logger.warn("CACHE_SET_SUBSTANDARD", { id: d.id, mode, count, minRequired: MIN_Q });
+          return false; // Skip substandard sets silently
+        }
+        return true;
+      });
       if (available.length > 0) cacheDoc = available[Math.floor(Math.random() * available.length)];
     } catch (e) {
       functions.logger.error("CACHE_QUERY_FAILED", { uid, error: e.message });
