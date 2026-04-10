@@ -5,7 +5,7 @@
  * Controls: cache fill, view logs, student stats, revenue.
  */
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth, onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore, collection, getDocs, query, where, orderBy, limit } from "firebase/firestore";
@@ -529,6 +529,10 @@ export default function AdminDashboard() {
   const [liveStats,   setLiveStats]   = useState(null);
   const [logs,        setLogs]        = useState([]);
   const [filling,     setFilling]     = useState(null);
+  const [fillProgress, setFillProgress] = useState(null);
+  // fillProgress shape: { active, mode, startedAt, count, initialCount, stalePolls }
+  const fillPollRef = useRef(null); // interval ID for getCacheStatus polling
+  const [tick,       setTick]        = useState(0); // increments every second when active — drives live elapsed timer
   const [lastRefresh,  setLastRefresh]  = useState(null);
   const [healthData,   setHealthData]   = useState(null);   // last health check result
   const [healthLoad,   setHealthLoad]   = useState(false);  // running a check right now
@@ -787,11 +791,57 @@ export default function AdminDashboard() {
     setInsightLoad(false);
   }
 
-  async function fillCache(mode) {
+  // Live elapsed timer — increments every second while a fill run is active
+  useEffect(() => {
+    if (!fillProgress?.active) return;
+    const id = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [fillProgress?.active]);
+
+  // Cleanup interval on unmount
+  useEffect(() => () => { if (fillPollRef.current) clearInterval(fillPollRef.current); }, []);
+
+  function startFillPolling(mode, initialCount) {
+    if (fillPollRef.current) clearInterval(fillPollRef.current);
+    const startedAt = Date.now();
+    setFillProgress({ active: true, mode, startedAt, count: initialCount, initialCount, stalePolls: 0 });
+
+    fillPollRef.current = setInterval(async () => {
+      // Auto-stop after 10 minutes (one full generation budget)
+      if (Date.now() - startedAt > 10 * 60 * 1000) {
+        clearInterval(fillPollRef.current);
+        setFillProgress(p => p ? { ...p, active: false } : null);
+        return;
+      }
+      try {
+        const r = await fetch(`${CF_BASE}/getCacheStatus`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ adminKey: ADMIN_KEY }),
+        });
+        const d = await r.json();
+        const current = d.status?.[mode]?.current ?? 0;
+
+        setFillProgress(prev => {
+          if (!prev || !prev.active) return prev;
+          const stale = current === prev.count ? prev.stalePolls + 1 : 0;
+          // 3 consecutive polls with same count → run is done
+          if (stale >= 3) {
+            clearInterval(fillPollRef.current);
+            return { ...prev, active: false, count: current, stalePolls: stale };
+          }
+          return { ...prev, count: current, stalePolls: stale };
+        });
+        // Also update the live cache count display
+        setCache(prev => ({ ...prev, [mode]: { ...prev[mode], current } }));
+      } catch(_) { /* silent — don't break polling on network error */ }
+    }, 15000); // poll getCacheStatus every 15s
+  }
+
+    async function fillCache(mode) {
     setFilling(mode);
     addLog(`Starting ${mode} cache fill...`);
     try {
-      // Send adminKey in body only — avoids CORS preflight from custom header
       const res = await fetch(`${CF_BASE}/triggerCacheWarm`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -799,8 +849,10 @@ export default function AdminDashboard() {
       });
       const d = await res.json();
       if (d.message) {
-        addLog(`${mode} fill: ${d.message}. Generated: ${d.generated ?? "running..."}, Status: ${JSON.stringify(d.status)}`, "success");
-        await loadData();
+        const currentCount = d.status?.[mode]?.current ?? (cache[mode]?.current || 0);
+        addLog(`${mode} fill started — ${currentCount}/60 sets currently. Generating in background...`, "success");
+        // Start polling getCacheStatus every 15s to show live progress
+        startFillPolling(mode, currentCount);
       } else {
         addLog(`${mode} fill error: ${d.error}`, "error");
       }
@@ -1129,7 +1181,86 @@ export default function AdminDashboard() {
           ))}
         </div>
 
-        {/* Two column layout for tables */}
+        {/* Compact cache fill progress strip — single line, no bulk */}
+        {fillProgress && (() => {
+          const elapsed  = Math.floor((Date.now() - fillProgress.startedAt) / 1000);
+          const mins     = Math.floor(elapsed / 60);
+          const secs     = elapsed % 60;
+          const added    = fillProgress.count - fillProgress.initialCount;
+          const isActive = fillProgress.active;
+          const needed   = Math.max(0, 60 - fillProgress.count);
+          return (
+            <div style={{
+              display: "flex", alignItems: "center", gap: 10,
+              background: isActive ? "#ECFDF5" : "#F0FDF4",
+              border: `1px solid ${isActive ? "#A7F3D0" : "#86EFAC"}`,
+              borderRadius: 8, padding: "7px 14px",
+              marginTop: -12, marginBottom: 20, fontSize: 12,
+            }}>
+              {/* Live pulse or done checkmark */}
+              {isActive ? (
+                <span style={{
+                  width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
+                  background: "#059669", display: "inline-block",
+                  boxShadow: `0 0 0 ${(tick % 2 === 0) ? "3px" : "0px"} rgba(5,150,105,0.3)`,
+                  transition: "box-shadow 0.5s",
+                }} />
+              ) : (
+                <span style={{ fontSize: 13, flexShrink: 0 }}>✓</span>
+              )}
+
+              {/* Status text */}
+              <span style={{ flex: 1, color: "#065F46", fontWeight: 500 }}>
+                {isActive ? (
+                  <>
+                    <strong>{fillProgress.mode}</strong> cache generating
+                    &nbsp;·&nbsp;
+                    <span style={{ fontFamily: "var(--font-mono, monospace)" }}>
+                      {fillProgress.count}/60
+                    </span>
+                    &nbsp;sets
+                    &nbsp;·&nbsp;
+                    <span style={{ fontFamily: "var(--font-mono, monospace)" }}>
+                      {mins}:{String(secs).padStart(2,"0")}
+                    </span>
+                    &nbsp;elapsed
+                    {fillProgress.stalePolls > 0 && (
+                      <span style={{ color: "#D97706", marginLeft: 8 }}>
+                        · waiting for next batch...
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <strong>{fillProgress.mode}</strong> run complete
+                    &nbsp;·&nbsp;
+                    <span style={{ fontFamily: "var(--font-mono, monospace)" }}>
+                      {fillProgress.count}/60
+                    </span>
+                    &nbsp;sets
+                    {added > 0 && <span style={{ color: "#059669" }}>&nbsp;(+{added} added)</span>}
+                    {needed > 0
+                      ? <span style={{ color: "#D97706" }}>&nbsp;·&nbsp;Press Fill to continue</span>
+                      : <span style={{ color: "#059669" }}>&nbsp;·&nbsp;Cache full</span>
+                    }
+                  </>
+                )}
+              </span>
+
+              {/* Dismiss — only shown when run is done */}
+              {!isActive && (
+                <button
+                  onClick={() => setFillProgress(null)}
+                  style={{ background: "none", border: "none", cursor: "pointer",
+                    color: "#94A3B8", fontSize: 16, lineHeight: 1, padding: "0 2px", flexShrink: 0 }}
+                  title="Dismiss"
+                >×</button>
+              )}
+            </div>
+          );
+        })()}
+
+                {/* Two column layout for tables */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
           {/* Recent Tests */}
           <div>
