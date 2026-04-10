@@ -1,0 +1,64 @@
+name: Daily Platform Health Check
+
+on:
+  # 6:00 AM IST = 00:30 UTC
+  schedule:
+    - cron: '30 0 * * *'
+
+  # Manual trigger from GitHub Actions tab
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Reason for manual trigger'
+        required: false
+        default: 'Manual health check'
+
+jobs:
+  health-check:
+    name: Run Platform Health Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Run health check
+        id: check
+        run: |
+          echo "Running health check at $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+
+          response=$(curl -s -w "\n%{http_code}" -X POST \
+            https://us-central1-vantiq-cuet.cloudfunctions.net/platformHealthCheck \
+            -H "x-admin-key: ${{ secrets.CACHE_ADMIN_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d "{}" \
+            --max-time 130)
+
+          http_code=$(echo "$response" | tail -1)
+          body=$(echo "$response" | head -n -1)
+
+          echo "HTTP Status: $http_code"
+          echo "Response: $body"
+          echo "http_code=$http_code" >> $GITHUB_OUTPUT
+          echo "body=$body"           >> $GITHUB_OUTPUT
+
+          if [ "$http_code" != "200" ]; then
+            echo "ERROR: Health check failed with HTTP $http_code"
+            exit 1
+          fi
+
+          # Extract overall status from JSON response
+          overall=$(echo "$body" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('overallStatus','unknown'))" 2>/dev/null || echo "unknown")
+          echo "Overall platform status: $overall"
+
+          if [ "$overall" = "critical" ]; then
+            echo "CRITICAL issues detected — review admin dashboard immediately"
+            exit 1
+          fi
+
+          echo "Health check complete — status: $overall"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### Platform Health Check" >> $GITHUB_STEP_SUMMARY
+          echo "- **Time:** $(date -u '+%Y-%m-%d %H:%M UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "- **HTTP Status:** ${{ steps.check.outputs.http_code }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Dashboard:** https://vantiq-cuetmock.netlify.app/admin" >> $GITHUB_STEP_SUMMARY

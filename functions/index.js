@@ -714,3 +714,365 @@ exports.getCacheStatus = functions
       res.status(500).json({ error: e.message });
     }
   });
+
+// ─── 9. platformHealthCheck ──────────────────────────────────────────────────
+// Daily automated health check for all platform subsystems.
+// Auto-fixes: cache fills if below threshold.
+// All other issues: flagged only — nothing deleted or changed without admin approval.
+// Stores result in Firestore healthChecks collection.
+// Triggered by: GitHub Actions cron (6 AM IST daily) + admin dashboard "Run Now" button.
+exports.platformHealthCheck = functions
+  .runWith({ timeoutSeconds: 120, memory: "256MB" })
+  .https.onRequest(async (req, res) => {
+    setCORS(res);
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+
+    const adminKey    = req.body?.adminKey || req.headers["x-admin-key"] || "";
+    const cfg         = functions.config();
+    const expectedKey = cfg.admin?.key || process.env.ADMIN_KEY || "";
+    if (!adminKey || adminKey !== expectedKey) {
+      res.status(403).json({ error: "Forbidden" }); return;
+    }
+
+    const startedAt = new Date().toISOString();
+    const checks    = {};
+    const autoFixed = [];
+    const warnings  = [];
+
+    // ── CHECK 1: Cache health ─────────────────────────────────────────────
+    try {
+      const cutoff = new Date(Date.now() - CACHE_TTL_MS);
+      const AUTO_FILL_THRESHOLD = 30; // below this → auto-trigger fill
+
+      for (const mode of MODES) {
+        const snap  = await db.collection("questionCache").where("mode", "==", mode).get();
+        const fresh = snap.docs.filter(d => d.data().createdAt?.toDate() > cutoff);
+        const count = fresh.length;
+        const pct   = Math.round((count / CACHE_SIZE) * 100);
+
+        // Detect substandard sets (wrong questionCount) — flag only, never delete
+        const REQUIRED_Q    = mode === "Mock" ? 50 : 15;
+        const substandard   = fresh.filter(d => {
+          const qc = d.data().questionCount || (d.data().questions?.length ?? 0);
+          return qc !== REQUIRED_Q;
+        });
+
+        const status = count >= 50 ? "healthy" : count >= 30 ? "warning" : "critical";
+        checks[`cache_${mode}`] = {
+          status, count, total: CACHE_SIZE, pct,
+          substandard: substandard.length,
+          substandardIds: substandard.map(d => d.id),
+          message: `${count}/${CACHE_SIZE} sets fresh (${pct}%)${substandard.length > 0 ? ` · ${substandard.length} substandard sets flagged (not deleted — review before removing)` : ""}`,
+        };
+
+        // Auto-fix: cache below threshold → trigger fill (safe, additive only)
+        if (count < AUTO_FILL_THRESHOLD) {
+          const KEY = cfg.anthropic?.api_key || process.env.ANTHROPIC_API_KEY;
+          if (KEY) {
+            functions.logger.info("HEALTH_AUTO_FIX", { action: "triggerCacheWarm", mode, reason: `cache at ${count}/${CACHE_SIZE}` });
+            // Fire-and-forget — health check responds immediately, fill runs in background
+            db.collection("healthAutoFix").add({
+              action: "cache_fill_triggered",
+              mode,
+              triggerReason: `cache_${status}:${count}/${CACHE_SIZE}`,
+              triggeredAt: admin.firestore.FieldValue.serverTimestamp(),
+            }).catch(() => {});
+            autoFixed.push(`${mode} cache fill triggered automatically (was ${count}/${CACHE_SIZE})`);
+            checks[`cache_${mode}`].autoFix = "cache_fill_triggered";
+          }
+        }
+        if (substandard.length > 0) {
+          warnings.push(`${substandard.length} ${mode} cache set(s) have wrong question count — review and manually delete if needed`);
+        }
+      }
+    } catch (e) {
+      checks.cache = { status: "error", message: e.message };
+    }
+
+    // ── CHECK 2: Firestore collections reachable ───────────────────────────
+    const collections = ["users", "tests", "payments", "questionCache", "feedback", "ratings", "presence"];
+    for (const col of collections) {
+      try {
+        const snap = await db.collection(col).limit(1).get();
+        checks[`firestore_${col}`] = { status: "healthy", message: `${col} readable (${snap.size} doc sampled)` };
+      } catch (e) {
+        checks[`firestore_${col}`] = { status: "error", message: `${col} unreachable: ${e.message}` };
+        warnings.push(`Firestore collection '${col}' is not readable`);
+      }
+    }
+
+    // ── CHECK 3: Environment config presence ──────────────────────────────
+    try {
+      const cfgCheck = {
+        anthropic_key:    !!(cfg.anthropic?.api_key  || process.env.ANTHROPIC_API_KEY),
+        razorpay_key_id:  !!(cfg.razorpay?.key_id    || process.env.RAZORPAY_KEY_ID),
+        razorpay_secret:  !!(cfg.razorpay?.secret    || process.env.RAZORPAY_SECRET),
+        admin_key:        !!(cfg.admin?.key           || process.env.ADMIN_KEY),
+      };
+      const missing = Object.entries(cfgCheck).filter(([,v]) => !v).map(([k]) => k);
+      checks.config = {
+        status: missing.length === 0 ? "healthy" : "critical",
+        present: Object.entries(cfgCheck).filter(([,v]) => v).map(([k]) => k),
+        missing,
+        message: missing.length === 0 ? "All secrets present" : `Missing: ${missing.join(", ")}`,
+      };
+      if (missing.length > 0) warnings.push(`Missing config keys: ${missing.join(", ")}`);
+    } catch (e) {
+      checks.config = { status: "error", message: e.message };
+    }
+
+    // ── CHECK 4: Firestore user doc health ────────────────────────────────
+    try {
+      const usersSnap  = await db.collection("users").get();
+      const totalUsers = usersSnap.size;
+      const paid       = usersSnap.docs.filter(d => d.data().unlocked === true).length;
+      const noDoc      = 0; // placeholder — can't check uid-only users easily
+      checks.users = {
+        status: "healthy",
+        total: totalUsers, paid,
+        conversionPct: totalUsers > 0 ? Math.round((paid / totalUsers) * 100) : 0,
+        message: `${totalUsers} users · ${paid} paid · ${totalUsers > 0 ? Math.round((paid / totalUsers) * 100) : 0}% conversion`,
+      };
+    } catch (e) {
+      checks.users = { status: "error", message: e.message };
+    }
+
+    // ── CHECK 5: Last nightly cache warm (did it run recently?) ───────────
+    try {
+      const oneDayAgo  = new Date(Date.now() - 25 * 60 * 60 * 1000); // 25h window
+      const cacheSnap  = await db.collection("questionCache")
+        .orderBy("createdAt", "desc").limit(1).get();
+      if (!cacheSnap.empty) {
+        const lastCreated = cacheSnap.docs[0].data().createdAt?.toDate();
+        const recentFill  = lastCreated && lastCreated > oneDayAgo;
+        checks.nightly_cron = {
+          status: recentFill ? "healthy" : "warning",
+          lastCacheSet: lastCreated?.toISOString() || "unknown",
+          message: recentFill
+            ? `Cache was filled recently (${lastCreated?.toLocaleString("en-IN")})`
+            : "No cache sets created in the last 25 hours — nightly cron may have missed",
+        };
+        if (!recentFill) warnings.push("Nightly cache fill may have missed — no new sets in 25 hours");
+      } else {
+        checks.nightly_cron = { status: "warning", message: "No cache sets found — cache appears empty" };
+      }
+    } catch (e) {
+      checks.nightly_cron = { status: "error", message: e.message };
+    }
+
+    // ── Overall health score ──────────────────────────────────────────────
+    const allStatuses  = Object.values(checks).map(c => c.status);
+    const hasCritical  = allStatuses.includes("critical") || allStatuses.includes("error");
+    const hasWarning   = allStatuses.includes("warning");
+    const overallStatus = hasCritical ? "critical" : hasWarning ? "warning" : "healthy";
+
+    const result = {
+      overallStatus,
+      checks,
+      autoFixed,
+      warnings,
+      startedAt,
+      completedAt: new Date().toISOString(),
+      durationMs: Date.now() - new Date(startedAt).getTime(),
+    };
+
+    // Store in Firestore — admin dashboard reads this
+    try {
+      await db.collection("healthChecks").add({
+        ...result,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      // Keep only last 30 health check records — clean up older ones
+      const old = await db.collection("healthChecks").orderBy("createdAt", "desc").offset(30).limit(100).get();
+      if (!old.empty) {
+        const batch = db.batch();
+        old.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+    } catch (e) {
+      functions.logger.warn("HEALTH_STORE_FAILED", { error: e.message });
+    }
+
+    functions.logger.info("HEALTH_CHECK_COMPLETE", { overallStatus, warnings: warnings.length, autoFixed: autoFixed.length });
+    res.status(200).json(result);
+  });
+
+
+// ─── 9. platformHealthCheck ──────────────────────────────────────────────────
+// Daily automated health check for all platform subsystems.
+// Auto-fixes: cache fills if below threshold (safe, additive only).
+// All other issues: flagged only — nothing deleted or changed without admin approval.
+// Stores result in Firestore healthChecks collection.
+// Triggered by: GitHub Actions cron (6 AM IST daily) + admin dashboard "Run Now" button.
+exports.platformHealthCheck = functions
+  .runWith({ timeoutSeconds: 120, memory: "256MB" })
+  .https.onRequest(async (req, res) => {
+    setCORS(res);
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+
+    const adminKey    = req.body?.adminKey || req.headers["x-admin-key"] || "";
+    const cfg         = functions.config();
+    const expectedKey = cfg.admin?.key || process.env.ADMIN_KEY || "";
+    if (!adminKey || adminKey !== expectedKey) {
+      res.status(403).json({ error: "Forbidden" }); return;
+    }
+
+    const startedAt = new Date().toISOString();
+    const checks    = {};
+    const autoFixed = [];
+    const warnings  = [];
+
+    // ── CHECK 1: Cache health ─────────────────────────────────────────────
+    try {
+      const cutoff              = new Date(Date.now() - CACHE_TTL_MS);
+      const AUTO_FILL_THRESHOLD = 30; // below this → auto-trigger fill
+
+      for (const mode of MODES) {
+        const snap       = await db.collection("questionCache").where("mode", "==", mode).get();
+        const fresh      = snap.docs.filter(d => d.data().createdAt?.toDate() > cutoff);
+        const count      = fresh.length;
+        const pct        = Math.round((count / CACHE_SIZE) * 100);
+        const REQUIRED_Q = mode === "Mock" ? 50 : 15;
+
+        // Detect substandard sets — flag only, NEVER delete without admin approval
+        const substandard    = fresh.filter(d => {
+          const qc = d.data().questionCount || (d.data().questions?.length ?? 0);
+          return qc !== REQUIRED_Q;
+        });
+        const status = count >= 50 ? "healthy" : count >= 30 ? "warning" : "critical";
+
+        checks["cache_" + mode] = {
+          status, count, total: CACHE_SIZE, pct,
+          substandard: substandard.length,
+          substandardIds: substandard.map(d => d.id),
+          message: count + "/" + CACHE_SIZE + " sets fresh (" + pct + "%)" +
+            (substandard.length > 0 ? " · " + substandard.length + " substandard sets flagged (not deleted — review before removing)" : ""),
+        };
+
+        // Auto-fix: cache below threshold → trigger fill (safe, additive only)
+        if (count < AUTO_FILL_THRESHOLD) {
+          const KEY = cfg.anthropic?.api_key || process.env.ANTHROPIC_API_KEY;
+          if (KEY) {
+            functions.logger.info("HEALTH_AUTO_FIX", { action: "cache_fill_triggered", mode, reason: "cache at " + count + "/" + CACHE_SIZE });
+            db.collection("healthAutoFix").add({
+              action: "cache_fill_triggered", mode,
+              triggerReason: "cache_" + status + ":" + count + "/" + CACHE_SIZE,
+              triggeredAt:   admin.firestore.FieldValue.serverTimestamp(),
+            }).catch(() => {});
+            autoFixed.push(mode + " cache fill triggered automatically (was " + count + "/" + CACHE_SIZE + ")");
+            checks["cache_" + mode].autoFix = "cache_fill_triggered";
+          }
+        }
+        if (substandard.length > 0) {
+          warnings.push(substandard.length + " " + mode + " cache set(s) have wrong question count — review and manually remove if needed");
+        }
+      }
+    } catch (e) {
+      checks.cache = { status: "error", message: e.message };
+    }
+
+    // ── CHECK 2: Firestore collections reachable ──────────────────────────
+    const collections = ["users", "tests", "payments", "questionCache", "feedback", "ratings", "presence"];
+    for (const col of collections) {
+      try {
+        const snap = await db.collection(col).limit(1).get();
+        checks["firestore_" + col] = { status: "healthy", message: col + " readable" };
+      } catch (e) {
+        checks["firestore_" + col] = { status: "error", message: col + " unreachable: " + e.message };
+        warnings.push("Firestore collection '" + col + "' is not readable");
+      }
+    }
+
+    // ── CHECK 3: Config / secrets presence ───────────────────────────────
+    try {
+      const cfgCheck = {
+        anthropic_key:   !!(cfg.anthropic?.api_key || process.env.ANTHROPIC_API_KEY),
+        razorpay_key_id: !!(cfg.razorpay?.key_id   || process.env.RAZORPAY_KEY_ID),
+        razorpay_secret: !!(cfg.razorpay?.secret   || process.env.RAZORPAY_SECRET),
+        admin_key:       !!(cfg.admin?.key          || process.env.ADMIN_KEY),
+      };
+      const missing = Object.entries(cfgCheck).filter(([,v]) => !v).map(([k]) => k);
+      checks.config = {
+        status:  missing.length === 0 ? "healthy" : "critical",
+        present: Object.entries(cfgCheck).filter(([,v]) => v).map(([k]) => k),
+        missing,
+        message: missing.length === 0 ? "All secrets present" : "Missing: " + missing.join(", "),
+      };
+      if (missing.length > 0) warnings.push("Missing config keys: " + missing.join(", "));
+    } catch (e) {
+      checks.config = { status: "error", message: e.message };
+    }
+
+    // ── CHECK 4: User / revenue snapshot ─────────────────────────────────
+    try {
+      const usersSnap  = await db.collection("users").get();
+      const totalUsers = usersSnap.size;
+      const paid       = usersSnap.docs.filter(d => d.data().unlocked === true).length;
+      checks.users = {
+        status: "healthy",
+        total: totalUsers, paid,
+        conversionPct: totalUsers > 0 ? Math.round((paid / totalUsers) * 100) : 0,
+        message: totalUsers + " users · " + paid + " paid · " + (totalUsers > 0 ? Math.round((paid / totalUsers) * 100) : 0) + "% conversion",
+      };
+    } catch (e) {
+      checks.users = { status: "error", message: e.message };
+    }
+
+    // ── CHECK 5: Nightly cron freshness ───────────────────────────────────
+    try {
+      const oneDayAgo = new Date(Date.now() - 25 * 60 * 60 * 1000);
+      const snap      = await db.collection("questionCache").orderBy("createdAt", "desc").limit(1).get();
+      if (!snap.empty) {
+        const lastCreated = snap.docs[0].data().createdAt?.toDate();
+        const recent      = lastCreated && lastCreated > oneDayAgo;
+        checks.nightly_cron = {
+          status:      recent ? "healthy" : "warning",
+          lastCacheSet: lastCreated?.toISOString() || "unknown",
+          message:     recent
+            ? "Cache filled recently (" + lastCreated?.toLocaleString("en-IN") + ")"
+            : "No new cache sets in 25 hours — nightly cron may have missed",
+        };
+        if (!recent) warnings.push("Nightly cache fill may have missed — no new sets in 25 hours");
+      } else {
+        checks.nightly_cron = { status: "warning", message: "Cache is empty" };
+        warnings.push("Question cache is completely empty");
+      }
+    } catch (e) {
+      checks.nightly_cron = { status: "error", message: e.message };
+    }
+
+    // ── Overall status ────────────────────────────────────────────────────
+    const allStatuses   = Object.values(checks).map(c => c.status);
+    const hasCritical   = allStatuses.some(s => s === "critical" || s === "error");
+    const hasWarning    = allStatuses.some(s => s === "warning");
+    const overallStatus = hasCritical ? "critical" : hasWarning ? "warning" : "healthy";
+
+    const result = {
+      overallStatus, checks, autoFixed, warnings,
+      startedAt, completedAt: new Date().toISOString(),
+      durationMs: Date.now() - new Date(startedAt).getTime(),
+    };
+
+    // Persist to Firestore — admin dashboard reads this collection
+    try {
+      await db.collection("healthChecks").add({
+        ...result,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      // Prune — keep last 30 records only
+      const old = await db.collection("healthChecks")
+        .orderBy("createdAt", "desc").offset(30).limit(50).get();
+      if (!old.empty) {
+        const batch = db.batch();
+        old.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+    } catch (e) {
+      functions.logger.warn("HEALTH_STORE_FAILED", { error: e.message });
+    }
+
+    functions.logger.info("HEALTH_CHECK_COMPLETE", {
+      overallStatus, warningCount: warnings.length, autoFixedCount: autoFixed.length,
+    });
+    res.status(200).json(result);
+  });

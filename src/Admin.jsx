@@ -529,14 +529,16 @@ export default function AdminDashboard() {
   const [liveStats,   setLiveStats]   = useState(null);
   const [logs,        setLogs]        = useState([]);
   const [filling,     setFilling]     = useState(null);
-  const [lastRefresh, setLastRefresh] = useState(null);
+  const [lastRefresh,  setLastRefresh]  = useState(null);
+  const [healthData,   setHealthData]   = useState(null);   // last health check result
+  const [healthLoad,   setHealthLoad]   = useState(false);  // running a check right now
 
   // Sign in with Firebase Google auth after password gate
   // Required for Firestore rules (isAdmin checks email)
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, u => {
       setFbUser(u);
-      if (unlocked && u) loadData();
+      if (unlocked && u) { loadData(); loadHealthData(); }
     });
     return unsub;
   }, [unlocked]);
@@ -695,6 +697,55 @@ export default function AdminDashboard() {
     if (unlocked) loadData();
   }, [unlocked, loadData]);
 
+  // Load last health check from Firestore on dashboard open
+  // Auto-triggers a fresh check if last one is > 6 hours old
+  const loadHealthData = useCallback(async () => {
+    try {
+      const { query: q2, orderBy: ob, limit: lim } = await import("firebase/firestore");
+      const snap = await getDocs(q2(collection(db, "healthChecks"), ob("createdAt", "desc"), lim(1)));
+      if (!snap.empty) {
+        const d = snap.docs[0].data();
+        setHealthData(d);
+        // Auto-trigger if last check was > 6 hours ago
+        const lastRun  = d.createdAt?.toDate?.() || new Date(d.startedAt);
+        const sixHours = 6 * 60 * 60 * 1000;
+        if (Date.now() - lastRun.getTime() > sixHours) {
+          addLog("Last health check > 6h ago — running fresh check automatically...");
+          runHealthCheck(true); // silent = true, no log spam
+        }
+      } else {
+        // No check ever run — trigger one now
+        runHealthCheck(true);
+      }
+    } catch(e) { /* healthChecks collection doesn't exist yet — first run */ }
+  }, []);
+
+  async function runHealthCheck(silent = false) {
+    if (healthLoad) return;
+    setHealthLoad(true);
+    if (!silent) addLog("Running platform health check...");
+    try {
+      const r = await fetch(`${CF_BASE}/platformHealthCheck`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adminKey: ADMIN_KEY }),
+      });
+      const d = await r.json();
+      if (d.error) throw new Error(d.error);
+      setHealthData(d);
+      const status = d.overallStatus;
+      addLog(
+        `Health check complete — ${status.toUpperCase()} · ${d.warnings?.length ?? 0} warnings · ${d.autoFixed?.length ?? 0} auto-fixed`,
+        status === "healthy" ? "success" : status === "warning" ? "info" : "error"
+      );
+      if (d.autoFixed?.length) d.autoFixed.forEach(f => addLog("Auto-fixed: " + f, "success"));
+      if (d.warnings?.length)  d.warnings.forEach(w => addLog("Warning: " + w, "error"));
+    } catch(e) {
+      addLog("Health check failed: " + e.message, "error");
+    }
+    setHealthLoad(false);
+  }
+
   async function generateInsights() {
     setInsightLoad(true);
     addLog("Generating feedback insights...");
@@ -812,7 +863,151 @@ export default function AdminDashboard() {
           ))}
         </div>
 
-        {/* ── Live Activity ─────────────────────────────────────────────── */}
+        {/* ── Platform Health ──────────────────────────────────────────────── */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
+          <div style={S.sectionTitle}>Platform Health</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {healthData?.completedAt && (
+              <span style={{ fontSize: 11, color: "#94A3B8" }}>
+                Last check: {new Date(healthData.completedAt).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+              </span>
+            )}
+            <button
+              onClick={() => runHealthCheck(false)}
+              disabled={healthLoad}
+              style={{ ...S.btn, ...(healthLoad ? S.btnMuted : S.btnPrimary), fontSize: 12, padding: "7px 14px" }}
+            >
+              {healthLoad ? "Checking..." : "▶ Run Health Check"}
+            </button>
+          </div>
+        </div>
+
+        {healthData ? (() => {
+          const STATUS_COLOR = { healthy: "#059669", warning: "#D97706", critical: "#DC2626", error: "#DC2626" };
+          const STATUS_BG    = { healthy: "#DCFCE7", warning: "#FEF3C7", critical: "#FEE2E2", error: "#FEE2E2" };
+          const STATUS_ICON  = { healthy: "✅", warning: "⚠️", critical: "🔴", error: "🔴" };
+          const overall      = healthData.overallStatus || "unknown";
+
+          // Group checks by category
+          const cacheChecks   = Object.entries(healthData.checks || {}).filter(([k]) => k.startsWith("cache_"));
+          const fsChecks      = Object.entries(healthData.checks || {}).filter(([k]) => k.startsWith("firestore_"));
+          const otherChecks   = Object.entries(healthData.checks || {}).filter(([k]) => !k.startsWith("cache_") && !k.startsWith("firestore_"));
+
+          return (
+            <div style={{ marginBottom: 24 }}>
+              {/* Overall status banner */}
+              <div style={{
+                background: STATUS_BG[overall] || "#F1F5F9",
+                border: `1px solid ${STATUS_COLOR[overall] || "#94A3B8"}`,
+                borderRadius: 10, padding: "12px 18px", marginBottom: 14,
+                display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10,
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 18 }}>{STATUS_ICON[overall]}</span>
+                  <div>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: STATUS_COLOR[overall] }}>
+                      Platform {overall.toUpperCase()}
+                    </span>
+                    {healthData.warnings?.length > 0 && (
+                      <span style={{ fontSize: 12, color: "#92400E", marginLeft: 12 }}>
+                        {healthData.warnings.length} warning{healthData.warnings.length !== 1 ? "s" : ""}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {healthData.autoFixed?.length > 0 && (
+                  <span style={{ fontSize: 11, color: "#059669", background: "#DCFCE7", borderRadius: 20, padding: "3px 10px", fontWeight: 600 }}>
+                    ⚡ {healthData.autoFixed.length} auto-fixed
+                  </span>
+                )}
+              </div>
+
+              {/* Auto-fixed items */}
+              {healthData.autoFixed?.length > 0 && (
+                <div style={{ background: "#ECFDF5", border: "1px solid #A7F3D0", borderRadius: 8, padding: "10px 14px", marginBottom: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#059669", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 6 }}>Auto-Fixed</div>
+                  {healthData.autoFixed.map((f, i) => (
+                    <div key={i} style={{ fontSize: 12, color: "#065F46", marginBottom: 2 }}>⚡ {f}</div>
+                  ))}
+                </div>
+              )}
+
+              {/* Warnings */}
+              {healthData.warnings?.length > 0 && (
+                <div style={{ background: "#FEF3C7", border: "1px solid #FCD34D", borderRadius: 8, padding: "10px 14px", marginBottom: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#92400E", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 6 }}>Warnings — Review Required</div>
+                  {healthData.warnings.map((w, i) => (
+                    <div key={i} style={{ fontSize: 12, color: "#78350F", marginBottom: 2 }}>⚠ {w}</div>
+                  ))}
+                </div>
+              )}
+
+              {/* Check grid — Cache + Config + Users + Cron */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 10 }}>
+                {/* Cache checks */}
+                {cacheChecks.map(([key, chk]) => (
+                  <div key={key} style={{ background: "#fff", border: `1px solid ${STATUS_COLOR[chk.status] || "#E2E8F0"}`, borderRadius: 8, padding: "12px 14px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#0F2747" }}>Cache · {key.replace("cache_", "")}</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: STATUS_COLOR[chk.status], background: STATUS_BG[chk.status], padding: "2px 8px", borderRadius: 10 }}>
+                        {chk.status.toUpperCase()}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 12, color: "#64748B", lineHeight: 1.5 }}>{chk.message}</div>
+                    {chk.substandard > 0 && (
+                      <div style={{ fontSize: 11, color: "#D97706", marginTop: 4 }}>
+                        ⚠ {chk.substandard} sets flagged — not deleted, awaiting your review
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {/* Other checks (config, users, nightly_cron) */}
+                {otherChecks.map(([key, chk]) => (
+                  <div key={key} style={{ background: "#fff", border: `1px solid ${STATUS_COLOR[chk.status] || "#E2E8F0"}`, borderRadius: 8, padding: "12px 14px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#0F2747", textTransform: "capitalize" }}>{key.replace(/_/g, " ")}</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: STATUS_COLOR[chk.status], background: STATUS_BG[chk.status], padding: "2px 8px", borderRadius: 10 }}>
+                        {chk.status.toUpperCase()}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 12, color: "#64748B", lineHeight: 1.5 }}>{chk.message}</div>
+                  </div>
+                ))}
+
+                {/* Firestore summary — collapsed into one card */}
+                <div style={{ background: "#fff", border: `1px solid ${fsChecks.every(([,c]) => c.status === "healthy") ? "#E2E8F0" : "#DC2626"}`, borderRadius: 8, padding: "12px 14px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "#0F2747" }}>Firestore Collections</span>
+                    <span style={{ fontSize: 10, fontWeight: 700,
+                      color:  fsChecks.every(([,c]) => c.status === "healthy") ? "#059669" : "#DC2626",
+                      background: fsChecks.every(([,c]) => c.status === "healthy") ? "#DCFCE7" : "#FEE2E2",
+                      padding: "2px 8px", borderRadius: 10 }}>
+                      {fsChecks.every(([,c]) => c.status === "healthy") ? "ALL HEALTHY" : "ISSUES"}
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                    {fsChecks.map(([key, chk]) => (
+                      <span key={key} style={{
+                        fontSize: 10, padding: "2px 8px", borderRadius: 10,
+                        background: chk.status === "healthy" ? "#DCFCE7" : "#FEE2E2",
+                        color:      chk.status === "healthy" ? "#059669"  : "#DC2626",
+                      }}>
+                        {key.replace("firestore_", "")}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })() : (
+          <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 10, padding: "20px", textAlign: "center", color: "#94A3B8", fontSize: 13, marginBottom: 24 }}>
+            {healthLoad ? "Running health check..." : "No health check data yet — click Run Health Check above."}
+          </div>
+        )}
+
+                {/* ── Live Activity ─────────────────────────────────────────────── */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, ...S.sectionTitle }}>
           Live Activity
           {liveUsers.length > 0 && (

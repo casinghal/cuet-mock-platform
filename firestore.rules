@@ -55,5 +55,17 @@ service cloud.firestore {
       allow update: if request.auth != null && resource.data.uid == request.auth.uid;
       allow read:   if isAdmin();
     }
+
+    // Health checks: admin read only (writes via admin SDK only)
+    match /healthChecks/{docId} {
+      allow read:  if isAdmin();
+      allow write: if false;
+    }
+
+    // Health auto-fix audit log: admin read only (writes via admin SDK only)
+    match /healthAutoFix/{docId} {
+      allow read:  if isAdmin();
+      allow write: if false;
+    }
   }
 }
