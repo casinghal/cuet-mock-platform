@@ -1338,7 +1338,8 @@ export default function App() {
     logEvent("test_started", { user_id: user?.uid, mode: config.mode });
     try {
       const qs = await generateQuestions(config, user?.uid);
-      if (!qs || qs.length < 10) throw new Error("Invalid question set");
+      const minRequired = config.mode === "Mock" ? 48 : 14;
+      if (!qs || qs.length < minRequired) throw new Error(`Incomplete test paper (${qs?.length ?? 0} questions). Please try again.`);
       setQuestions(qs); setAnswers({}); setScreen("exam");
       // Update count — Firestore (authoritative) + localStorage (fallback)
       try {

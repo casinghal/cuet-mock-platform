@@ -136,22 +136,86 @@ Return ONLY the JSON object. Begin with { — nothing before it.`;
   return { promptA, promptB };
 }
 
-async function generateQuestionSet(mode, apiKey) {
-  if (mode === "QuickPractice") {
-    const prompt = buildPrompt("QuickPractice");
-    const questions = await callAnthropic(prompt, 5000, apiKey);
-    if (questions.length < 12) throw new Error(`INCOMPLETE_SET:${questions.length}`);
-    return questions;
+// ── Quality Gate — validates every question before accepting the set ──────────
+function validateQuestionSet(questions, mode) {
+  const MIN_COUNT = mode === "Mock" ? 48 : 14; // 48/50 for Mock, 14/15 for QuickPractice
+  const errors = [];
+
+  if (questions.length < MIN_COUNT) {
+    errors.push(`COUNT:${questions.length}/${mode === "Mock" ? 50 : 15}`);
   }
-  // Mock — batched parallel
-  const { promptA, promptB } = buildMockPrompts();
-  const [batchA, batchB] = [
-    await callAnthropic(promptA, 11000, apiKey),  // 35% buffer above 8000 actual need
-    await callAnthropic(promptB, 9500, apiKey),   // 35% buffer above 7000 actual need
-  ];
-  const questions = [...batchA, ...batchB];
-  if (questions.length < 40) throw new Error(`INCOMPLETE_SET:${questions.length}`);
-  return questions;
+
+  questions.forEach((q, i) => {
+    const n = i + 1;
+    if (!q.question || typeof q.question !== "string" || q.question.trim().length < 10) {
+      errors.push(`Q${n}:MISSING_QUESTION`);
+    }
+    if (!Array.isArray(q.options) || q.options.length !== 4) {
+      errors.push(`Q${n}:OPTIONS_COUNT(${q.options?.length ?? 0})`);
+    }
+    if (q.options) {
+      q.options.forEach((opt, j) => {
+        if (!opt || typeof opt !== "string" || opt.trim().length === 0) {
+          errors.push(`Q${n}:EMPTY_OPTION_${j}`);
+        }
+      });
+    }
+    if (typeof q.correct !== "number" || q.correct < 0 || q.correct > 3) {
+      errors.push(`Q${n}:INVALID_CORRECT(${q.correct})`);
+    }
+    if (!q.topic || typeof q.topic !== "string") {
+      errors.push(`Q${n}:MISSING_TOPIC`);
+    }
+    if (!q.explanation || typeof q.explanation !== "string" || q.explanation.trim().length < 10) {
+      errors.push(`Q${n}:MISSING_EXPLANATION`);
+    }
+  });
+
+  return errors;
+}
+
+async function generateQuestionSet(mode, apiKey) {
+  const MAX_RETRIES = 2; // 3 total attempts
+  let lastError;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES + 1; attempt++) {
+    try {
+      let questions;
+
+      if (mode === "QuickPractice") {
+        const prompt = buildPrompt("QuickPractice");
+        questions = await callAnthropic(prompt, 5000, apiKey);
+      } else {
+        const { promptA, promptB } = buildMockPrompts();
+        const [batchA, batchB] = [
+          await callAnthropic(promptA, 11000, apiKey),
+          await callAnthropic(promptB, 9500, apiKey),
+        ];
+        questions = [...batchA, ...batchB];
+      }
+
+      // ── Quality gate ────────────────────────────────────────────────────────
+      const errors = validateQuestionSet(questions, mode);
+      if (errors.length > 0) {
+        const errorSummary = errors.slice(0, 5).join(", ") + (errors.length > 5 ? `... +${errors.length - 5} more` : "");
+        functions.logger.warn("QUALITY_GATE_FAILED", { mode, attempt, count: questions.length, errors: errorSummary });
+        throw new Error(`QUALITY_FAIL:${errorSummary}`);
+      }
+
+      functions.logger.info("QUALITY_GATE_PASSED", { mode, attempt, count: questions.length });
+      return questions;
+
+    } catch (e) {
+      lastError = e;
+      if (attempt <= MAX_RETRIES) {
+        functions.logger.warn("GENERATION_RETRY", { mode, attempt, reason: e.message });
+        await new Promise(r => setTimeout(r, 1000 * attempt)); // backoff: 1s, 2s
+      }
+    }
+  }
+
+  // All attempts failed
+  throw new Error(`GENERATION_FAILED_AFTER_${MAX_RETRIES + 1}_ATTEMPTS: ${lastError?.message}`);
 }
 
 // ─── MANUAL/SCHEDULED CACHE TRIGGER ─────────────────────────────────────────
