@@ -27,7 +27,8 @@ const CF_BASE     = import.meta.env.VITE_CLOUD_FUNCTION_BASE || "";
 const DEFAULT_PASS = import.meta.env.VITE_ADMIN_PASSWORD || "vantiq-admin-2026";
 // localStorage override — set from inside the dashboard, takes precedence over env var
 const ADMIN_PASS  = localStorage.getItem("vantiq_admin_pw") || DEFAULT_PASS;
-const ADMIN_KEY   = "vantiq-admin-2026";
+// Admin key loaded from env var — NEVER hardcode. Set VITE_ADMIN_KEY in Netlify env vars.
+const ADMIN_KEY   = import.meta.env.VITE_ADMIN_KEY || "";
 const CACHE_SIZE  = 60;
 
 // ── Styles ────────────────────────────────────────────────────────────────────

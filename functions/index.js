@@ -243,6 +243,23 @@ function setCORS(res) {
   res.set("Access-Control-Max-Age", "3600");
 }
 
+// Restrictive CORS for payment endpoints — only accept requests from the platform origin
+// Wildcard CORS on verifyPayment and createOrder is a security anti-pattern
+const ALLOWED_ORIGINS = [
+  "https://vantiq-cuetmock.netlify.app",
+  "http://localhost:5173", // local dev
+  "http://localhost:4173", // vite preview
+];
+function setPaymentCORS(req, res) {
+  const origin = req.headers.origin || "";
+  const allowed = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  res.set("Access-Control-Allow-Origin",  allowed);
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Access-Control-Max-Age", "3600");
+  res.set("Vary", "Origin");
+}
+
 async function verifyToken(req, res) {
   const h = req.headers.authorization || "";
   if (!h.startsWith("Bearer ")) { res.status(401).json({ error: "Unauthorized" }); return null; }
@@ -612,7 +629,7 @@ exports.triggerCacheWarm = functions
 
 // ─── 1. generateQuestions ────────────────────────────────────────────────────
 exports.generateQuestions = functions
-  .runWith({ timeoutSeconds: 30, memory: "256MB" })
+  .runWith({ timeoutSeconds: 60, memory: "256MB" }) // raised from 30s — cold start + Firestore reads can exceed 30s
   .https.onRequest(async (req, res) => {
     setCORS(res);
     if (req.method === "OPTIONS") { res.status(204).send(""); return; }
@@ -757,7 +774,7 @@ exports.checkTestLimit = functions.runWith({ timeoutSeconds: 20, memory: "256MB"
 
 // ─── 4. createOrder ──────────────────────────────────────────────────────────
 exports.createOrder = functions.runWith({ timeoutSeconds: 30, memory: "128MB" }).https.onRequest(async (req, res) => {
-  setCORS(res);
+  setPaymentCORS(req, res);
   if (req.method === "OPTIONS") { res.status(204).send(""); return; }
   if (req.method !== "POST")    { res.status(405).json({ error: "Method not allowed" }); return; }
   const decoded = await verifyToken(req, res); if (!decoded) return;
@@ -773,7 +790,7 @@ exports.createOrder = functions.runWith({ timeoutSeconds: 30, memory: "128MB" })
 
 // ─── 5. verifyPayment ────────────────────────────────────────────────────────
 exports.verifyPayment = functions.runWith({ timeoutSeconds: 30, memory: "128MB" }).https.onRequest(async (req, res) => {
-  setCORS(res);
+  setPaymentCORS(req, res);
   if (req.method === "OPTIONS") { res.status(204).send(""); return; }
   if (req.method !== "POST")    { res.status(405).json({ error: "Method not allowed" }); return; }
   const decoded = await verifyToken(req, res); if (!decoded) return;
@@ -784,7 +801,14 @@ exports.verifyPayment = functions.runWith({ timeoutSeconds: 30, memory: "128MB" 
   const expected = crypto.createHmac("sha256", SEC).update(`${razorpay_order_id}|${razorpay_payment_id}`).digest("hex");
   if (expected !== razorpay_signature) { functions.logger.warn("Sig mismatch uid:", decoded.uid); res.status(400).json({ error: "Signature verification failed", unlocked: false }); return; }
   try {
-    await db.collection("users").doc(decoded.uid).update({ unlocked: true, paymentId: razorpay_payment_id, orderId: razorpay_order_id, unlockedAt: admin.firestore.FieldValue.serverTimestamp() });
+    // set() with merge:true — safe even if user doc doesn't exist yet (edge case: payment before first login)
+    // update() would throw "No document to update" and user would be charged but never unlocked
+    await db.collection("users").doc(decoded.uid).set({
+      unlocked: true,
+      paymentId: razorpay_payment_id,
+      orderId: razorpay_order_id,
+      unlockedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
     await db.collection("payments").add({ uid: decoded.uid, orderId: razorpay_order_id, paymentId: razorpay_payment_id, amount: UNLOCK_AMOUNT, status: "verified", createdAt: admin.firestore.FieldValue.serverTimestamp() });
     functions.logger.info("Unlocked uid:", decoded.uid);
     res.status(200).json({ unlocked: true });

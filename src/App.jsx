@@ -195,6 +195,12 @@ function PaywallModal({ user, onSuccess, onClose }) {
 
   async function pay() {
     setLoading(true); setError(null);
+    // Guard: if Razorpay key is missing, show a clear error — don't silently fail
+    if (!RZP_KEY_ID) {
+      setError("Payment is not configured. Please contact support.");
+      setLoading(false);
+      return;
+    }
     logEvent("payment_initiated", { user_id: user?.uid });
     try {
       const token = await getAuthToken();
@@ -890,9 +896,12 @@ function GeneratingScreen({ config }) {
       <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 24px" }}>
         <div style={{ width: "100%", maxWidth: 440, textAlign: "center" }}>
           <div style={{ display: "flex", gap: 8, justifyContent: "center", marginBottom: 32 }}>
-            <span className="pill pill-indigo">{config?.mode || "Mock"}</span>
+            <span className="pill pill-indigo">{config?.mode === "QuickPractice" ? "Quick Practice" : "Mock Exam"}</span>
             <span className="pill pill-navy">English 101</span>
-            <span className="pill pill-navy">50Q &middot; 60 min</span>
+            {config?.mode === "QuickPractice"
+              ? <span className="pill pill-green">15Q · Always Free</span>
+              : <span className="pill pill-navy">50Q · 60 min</span>
+            }
           </div>
           <h2 style={{ fontFamily: "var(--font-display)", fontSize: 26, color: "var(--navy)", marginBottom: 8 }}>Preparing Your Test</h2>
           <p style={{ fontSize: 14, color: "var(--text-secondary)", marginBottom: 32 }}>
@@ -907,10 +916,11 @@ function GeneratingScreen({ config }) {
 
 // ── EXAM SCREEN ───────────────────────────────────────────────────────────────
 function ExamScreen({ questions, config, user, onSubmit, showToast }) {
+  const isTimed    = config?.mode !== "QuickPractice"; // QuickPractice has no time limit
   const [current,   setCurrent]   = useState(0);
   const [answers,   setAnswers]   = useState({});
   const [marked,    setMarked]    = useState(new Set());
-  const [timeLeft,  setTimeLeft]  = useState(EXAM_SECS);
+  const [timeLeft,  setTimeLeft]  = useState(isTimed ? EXAM_SECS : null);
   const [exitModal, setExitModal] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
   const isMobile = useMobile();
@@ -919,6 +929,7 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
   useEffect(() => { logEvent("page_view", { page: "exam" }); }, []);
 
   useEffect(() => {
+    if (!isTimed) return; // QuickPractice — no countdown timer
     timerRef.current = setInterval(() => {
       setTimeLeft(t => {
         if (t <= 1) { clearInterval(timerRef.current); submitTest(true); return 0; }
@@ -935,7 +946,7 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
   }
 
   const q    = questions[current];
-  const warn = timeLeft < 300;
+  const warn = isTimed && timeLeft !== null && timeLeft < 300;
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#fff" }}>
@@ -957,9 +968,11 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
       <div className="nta-header">
         <span className="nta-logo">Vantiq <span>CUET</span></span>
         <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-          <div style={{ fontFamily: "var(--font-mono)", fontSize: 16, fontWeight: 600, color: warn ? "#FCD34D" : "#fff", background: warn ? "rgba(220,38,38,.15)" : "transparent", padding: warn ? "4px 10px" : "0", borderRadius: 6, transition: "all .3s" }}>
-            &#9201; {fmtTimer(timeLeft)}
-          </div>
+          {isTimed && (
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: 16, fontWeight: 600, color: warn ? "#FCD34D" : "#fff", background: warn ? "rgba(220,38,38,.15)" : "transparent", padding: warn ? "4px 10px" : "0", borderRadius: 6, transition: "all .3s" }}>
+              &#9201; {fmtTimer(timeLeft)}
+            </div>
+          )}
           <div style={{ fontSize: 12, opacity: 0.8, textAlign: "right" }}>
             <div style={{ fontWeight: 600 }}>{user?.displayName}</div>
             <button onClick={() => setExitModal(true)} style={{ background: "transparent", border: "none", color: "rgba(255,255,255,.5)", fontSize: 11, cursor: "pointer", fontFamily: "var(--font-body)", padding: 0 }}>
@@ -1515,10 +1528,11 @@ export default function App() {
         setUser(u);
         await loadUserData(u);
         setScreen("dashboard");
-        // Show rating only if user has never rated before
+        // Rating check stored — show after first test completion (not on login)
+        // setShowRating is called by handleSubmitTest after first result screen visit
         try {
           const rSnap = await getDocs(query(collection(db, "ratings"), where("uid", "==", u.uid), limit(1)));
-          if (rSnap.empty) setShowRating(true);
+          if (rSnap.empty) window.__userNeedsRating = true; // flag only — modal triggered after test
         } catch(e) { /* ratings unavailable — skip */ }
         // Presence heartbeat — write lastSeen every 90s so admin can show live users
         const writePresence = async () => {
@@ -1531,6 +1545,9 @@ export default function App() {
         };
         writePresence();
         const heartbeat = setInterval(writePresence, 90000);
+        // Store on window as fallback (outside React component — useRef not available here)
+        // StrictMode risk mitigated by cleanup in signOut branch below
+        if (window.__presenceInterval) clearInterval(window.__presenceInterval);
         window.__presenceInterval = heartbeat;
       }
       else {
@@ -1596,6 +1613,8 @@ export default function App() {
       });
       await loadUserData(user);
     } catch(_) { /* non-blocking — results still show */ }
+    // Show rating after first test — better timing than on login
+    if (window.__userNeedsRating) { setShowRating(true); window.__userNeedsRating = false; }
     setScreen("results");
   }
 
