@@ -138,15 +138,15 @@ Return ONLY the JSON object. Begin with { — nothing before it.`;
 async function generateQuestionSet(mode, apiKey) {
   if (mode === "QuickPractice") {
     const prompt = buildPrompt("QuickPractice");
-    const questions = await callAnthropic(prompt, 3000, apiKey);
+    const questions = await callAnthropic(prompt, 5000, apiKey);
     if (questions.length < 12) throw new Error(`INCOMPLETE_SET:${questions.length}`);
     return questions;
   }
   // Mock — batched parallel
   const { promptA, promptB } = buildMockPrompts();
   const [batchA, batchB] = await Promise.all([
-    callAnthropic(promptA, 6000, apiKey),
-    callAnthropic(promptB, 5000, apiKey),
+    callAnthropic(promptA, 8000, apiKey),
+    callAnthropic(promptB, 7000, apiKey),
   ]);
   const questions = [...batchA, ...batchB];
   if (questions.length < 40) throw new Error(`INCOMPLETE_SET:${questions.length}`);
