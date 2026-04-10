@@ -8,7 +8,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth, onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from "firebase/auth";
-import { getFirestore, collection, getDocs, query, where, orderBy, limit, getCountFromServer } from "firebase/firestore";
+import { getFirestore, collection, getDocs, query, where, orderBy, limit } from "firebase/firestore";
 
 // ── Firebase (reuse existing app if already initialized) ──────────────────────
 const firebaseConfig = {
@@ -535,11 +535,30 @@ export default function AdminDashboard() {
     setFbLoading(true);
     try {
       const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: "select_account" }); // Force account picker
-      const result   = await signInWithPopup(auth, provider);
+      provider.setCustomParameters({ prompt: "select_account" });
+      const result = await signInWithPopup(auth, provider);
       setFbUser(result.user);
+      addLog(`Signed in as ${result.user.email}`, "success");
     } catch(e) {
       addLog("Google sign-in failed: " + e.message, "error");
+    }
+    setFbLoading(false);
+  }
+
+  async function handleSwitchAccount() {
+    setFbLoading(true);
+    try {
+      const { signOut } = await import("firebase/auth");
+      await signOut(auth);
+      setFbUser(null);
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: "select_account" });
+      const result = await signInWithPopup(auth, provider);
+      setFbUser(result.user);
+      addLog(`Switched to ${result.user.email}`, "success");
+      loadData();
+    } catch(e) {
+      addLog("Switch failed: " + e.message, "error");
     }
     setFbLoading(false);
   }
@@ -562,12 +581,10 @@ export default function AdminDashboard() {
     }
     try {
       // ── User stats ───────────────────────────────────────────────────────
-      const usersSnap  = await getCountFromServer(collection(db, "users"));
-      const totalUsers = usersSnap.data().count;
-
-      const unlockedQ   = query(collection(db, "users"), where("unlocked", "==", true));
-      const unlockedSnap = await getCountFromServer(unlockedQ);
-      const totalPaid   = unlockedSnap.data().count;
+      // getDocs instead of getCountFromServer — works reliably with Firestore security rules
+      const usersSnap   = await getDocs(collection(db, "users"));
+      const totalUsers  = usersSnap.size;
+      const totalPaid   = usersSnap.docs.filter(d => d.data().unlocked === true).length;
 
       // Today's tests
       const today      = todayIST();
@@ -684,9 +701,14 @@ export default function AdminDashboard() {
         {fbUser && (
           <div style={{ background: "#DCFCE7", border: "1px solid #86EFAC", borderRadius: 10, padding: "10px 20px", marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <span style={{ fontSize: 12, color: "#166534" }}>✅ Signed in as {fbUser.email}</span>
-            <button onClick={loadData} disabled={loading} style={{ ...S.btn, ...S.btnMuted, fontSize: 11, padding: "4px 12px" }}>
-              Reload Data
-            </button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={handleSwitchAccount} disabled={fbLoading} style={{ ...S.btn, background: "#fff", color: "#0F2747", border: "1px solid #86EFAC", fontSize: 11, padding: "4px 12px" }}>
+                {fbLoading ? "..." : "Switch Account"}
+              </button>
+              <button onClick={loadData} disabled={loading} style={{ ...S.btn, ...S.btnMuted, fontSize: 11, padding: "4px 12px" }}>
+                Reload Data
+              </button>
+            </div>
           </div>
         )}
         {/* KPI Strip */}
