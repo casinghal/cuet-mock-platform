@@ -215,7 +215,11 @@ async function generateQuestionSet(mode, apiKey) {
         // 5 sequential batches of 10 questions each = exactly 50
         // Per-batch retry strategy: retry individual failing batch (not all 5)
         // Slice to exactly 10 if model returns more
-        const tokenBudgets = [4000, 4000, 4000, 3000, 3000]; // RC batches get more tokens
+        // RC batches (1-3) embed full passage text in every question's JSON field:
+        // 9 RC questions × ~350 tokens/passage = ~3150 tokens in passages alone.
+        // 4000 was causing TRUNCATION on batches 1-3 every single attempt.
+        // 8000 provides safe headroom: ~4650 token worst-case (batch 2) fits comfortably.
+        const tokenBudgets = [8000, 8000, 8000, 3000, 3000]; // RC batches need 8000 — passage repeats in every question
         const allBatches = [];
 
         for (let b = 1; b <= 5; b++) {
@@ -258,6 +262,19 @@ async function generateQuestionSet(mode, apiKey) {
         }
         questions = allBatches;
       }
+
+      // ── Normalise fields before quality gate ────────────────────────────────
+      // Haiku occasionally returns correct as a string ("0", "A") instead of number.
+      // Coerce here so validateQuestionSet's typeof check never blocks a valid set.
+      questions = questions.map(q => ({
+        ...q,
+        correct: typeof q.correct === "string"
+          ? (["A","B","C","D"].includes(q.correct.toUpperCase())
+              ? ["A","B","C","D"].indexOf(q.correct.toUpperCase())
+              : parseInt(q.correct, 10))
+          : q.correct,
+        explanation: (q.explanation || "").trim() || "",
+      }));
 
       // ── Quality gate ────────────────────────────────────────────────────────
       const errors = validateQuestionSet(questions, mode);
