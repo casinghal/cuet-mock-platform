@@ -304,6 +304,15 @@ function AuthScreen({ onLogin, showToast }) {
         photoURL: user.photoURL, testsUsed: 0, createdAt: serverTimestamp(),
         // unlocked intentionally omitted — only CF admin SDK can set this field
       });
+    } else {
+      // Update profile fields on every login — ensures email is always present
+      // (older accounts may have been created before email field was added)
+      const data = snap.data();
+      if (!data.email || !data.displayName) {
+        await setDoc(ref, {
+          email: user.email, displayName: user.displayName, photoURL: user.photoURL,
+        }, { merge: true });
+      }
     }
   }
 

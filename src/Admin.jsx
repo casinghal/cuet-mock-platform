@@ -295,7 +295,7 @@ function UserManager({ addLog }) {
           }
         }
       }
-      if (snap.empty) { setMsg({ text: `No account found for ${email}. Check spelling or try your exact registered email.`, type: "error" }); setLoading(false); return; }
+      if (snap.empty) { setMsg({ text: `No account found for "${email}". The student must sign in to the platform at least once before their profile appears here. Check spelling, or ask them to sign in first.`, type: "error" }); setLoading(false); return; }
       const d = snap.docs[0];
       // Get test count
       const testsQ = query(collection(db, "tests"), where("uid", "==", d.id), orderBy("completedAt", "desc"), limit(5));
@@ -505,7 +505,9 @@ function ChangePassword() {
   return (
     <div style={{ ...S.card, maxWidth: 420 }}>
       <p style={{ fontSize: 13, color: "#64748B", marginBottom: 16 }}>
-        Password is stored in this browser. Works immediately — no redeploy needed.
+        Password change is stored in <strong>this browser only</strong>. On any other device or browser, the original
+        <code style={{ background: "#F1F5F9", padding: "1px 5px", borderRadius: 4, fontSize: 12 }}>VITE_ADMIN_PASSWORD</code>
+        Netlify env var is still used. To change it everywhere, update that env var and redeploy.
       </p>
       <input type="password" placeholder="Current password"     value={current}  onChange={e => setCurrent(e.target.value)}  style={inputStyle} />
       <input type="password" placeholder="New password (min 8)" value={newPass}  onChange={e => setNewPass(e.target.value)}  style={inputStyle} />
@@ -842,8 +844,10 @@ export default function AdminDashboard() {
         setFillProgress(prev => {
           if (!prev || !prev.active) return prev;
           const stale = current === prev.count ? prev.stalePolls + 1 : 0;
-          // 3 consecutive polls with same count → run is done
-          if (stale >= 3) {
+          // 8 consecutive polls with same count (2 min) → generation is done
+          // Do NOT stop at 3 polls (45s) — a single set takes 8 min to generate
+          const elapsed = Date.now() - prev.startedAt;
+          if (stale >= 8 || elapsed > 9.5 * 60 * 1000) {
             clearInterval(fillPollRef.current);
             return { ...prev, active: false, count: current, stalePolls: stale };
           }
@@ -881,9 +885,31 @@ export default function AdminDashboard() {
   }
 
   async function fillAllCache() {
+    // Trigger a single fill run with no mode param — fills both Mock and QuickPractice
+    // Do NOT call fillCache() twice — the second call hits the fill lock from the first
     addLog("Starting full cache fill (Mock + QuickPractice)...");
-    await fillCache("Mock");
-    await fillCache("QuickPractice");
+    try {
+      const res = await fetch(`${CF_BASE}/triggerCacheWarm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adminKey: ADMIN_KEY }), // no mode = fills all modes
+      });
+      const d = await res.json();
+      if (d.locked) {
+        addLog("A fill run is already in progress — check progress strip below.", "info");
+        return;
+      }
+      if (d.message) {
+        const mockCount = d.status?.Mock?.current ?? 0;
+        addLog(`Full cache fill started — Mock: ${mockCount}/120, QP: ${d.status?.QuickPractice?.current ?? 0}/200. Running in background...`, "success");
+        // Poll Mock progress (primary mode)
+        startFillPolling("Mock", mockCount);
+      } else {
+        addLog(`Fill error: ${d.error || "unknown"}`, "error");
+      }
+    } catch(e) {
+      addLog(`Fill failed: ${e.message}`, "error");
+    }
   }
 
   const fmtDate = (ts) => {
@@ -1546,8 +1572,14 @@ export default function AdminDashboard() {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}>
             <div>
               <div style={{ fontSize: 11, fontWeight: 600, color: "#94A3B8", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 4 }}>Active Intelligence Version</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "#0F2747" }}>v1.1 — English (101) Baseline</div>
-              <div style={{ fontSize: 11, color: "#64748B", marginTop: 2 }}>Researched from NTA CUET papers 2022–2025</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#0F2747" }}>
+                {intel?.preview?.version || "v1.1"} — {intel?.subject?.replace("_"," ") || "English (101)"} Baseline
+              </div>
+              <div style={{ fontSize: 11, color: "#64748B", marginTop: 2 }}>
+                {intel?.preview?.updatedAt
+                  ? `Last refreshed: ${new Date(intel.preview.updatedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`
+                  : "Researched from NTA CUET papers 2022–2025"}
+              </div>
             </div>
             <div>
               <div style={{ fontSize: 11, fontWeight: 600, color: "#94A3B8", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 4 }}>Coverage</div>

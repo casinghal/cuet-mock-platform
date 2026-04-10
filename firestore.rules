@@ -13,8 +13,11 @@ service cloud.firestore {
       allow read:   if request.auth != null && (request.auth.uid == uid || isAdmin());
       allow create: if request.auth != null && request.auth.uid == uid
                     && !request.resource.data.keys().hasAny(['unlocked']);
+      // Regular users: can update own doc but cannot touch protected fields
       allow update: if request.auth != null && request.auth.uid == uid
                     && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['unlocked', 'paymentId', 'unlockedAt', 'graceReturns', 'testsUsed']);
+      // Admin: can update any user doc (for grantAccess / revokeAccess / resetLimit from dashboard)
+      allow update: if isAdmin();
     }
 
     // Tests: create own, read own; admin can read all
