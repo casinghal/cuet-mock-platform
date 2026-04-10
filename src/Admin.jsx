@@ -267,9 +267,23 @@ function UserManager({ addLog }) {
     if (!email.trim()) return;
     setLoading(true); setProfile(null); setMsg(null);
     try {
-      const q = query(collection(db, "users"), where("email", "==", email.trim().toLowerCase()));
-      const snap = await getDocs(q);
-      if (snap.empty) { setMsg({ text: `No account found for ${email}`, type: "error" }); setLoading(false); return; }
+      const emailLower = email.trim().toLowerCase();
+      // Try exact match first, then case-insensitive variants
+      let snap = await getDocs(query(collection(db, "users"), where("email", "==", emailLower)));
+      if (snap.empty) snap = await getDocs(query(collection(db, "users"), where("email", "==", email.trim())));
+      if (snap.empty) {
+        // Also search by displayName or check if current user
+        const currentUser = auth.currentUser;
+        if (currentUser && currentUser.email?.toLowerCase() === emailLower) {
+          // Use current user's UID directly
+          const { getDoc, doc: docRef } = await import("firebase/firestore");
+          const userDoc = await getDoc(docRef(db, "users", currentUser.uid));
+          if (userDoc.exists()) {
+            snap = { docs: [{ id: currentUser.uid, data: () => userDoc.data() }], empty: false };
+          }
+        }
+      }
+      if (snap.empty) { setMsg({ text: `No account found for ${email}. Check spelling or try your exact registered email.`, type: "error" }); setLoading(false); return; }
       const d = snap.docs[0];
       // Get test count
       const testsQ = query(collection(db, "tests"), where("uid", "==", d.id), orderBy("completedAt", "desc"), limit(5));
@@ -384,19 +398,24 @@ function ResetUserLimit({ addLog }) {
     setLoading(true);
     setResult(null);
     try {
-      // Find user by email in Firestore — query Auth via users collection
-      const q = query(collection(db, "users"), where("email", "==", email.trim().toLowerCase()));
-      const snap = await getDocs(q);
-      if (snap.empty) {
-        // Try case-insensitive by listing recent users and matching
-        setResult({ text: `No user found with email: ${email}. Check the email and try again.`, type: "error" });
-        setLoading(false);
-        return;
+      const emailLower = email.trim().toLowerCase();
+      let snap = await getDocs(query(collection(db, "users"), where("email", "==", emailLower)));
+      if (snap.empty) snap = await getDocs(query(collection(db, "users"), where("email", "==", email.trim())));
+      // Fallback: if email matches currently signed-in user, use their UID directly
+      if (snap.empty && auth.currentUser?.email?.toLowerCase() === emailLower) {
+        const { getDoc, doc: docRef2 } = await import("firebase/firestore");
+        const ud = await getDoc(docRef2(db, "users", auth.currentUser.uid));
+        if (ud.exists()) snap = { docs: [{ id: auth.currentUser.uid, data: () => ud.data() }], empty: false };
+      }
+      if (!snap.docs?.length) {
+        setResult({ text: `No user found for: ${email}. Check spelling or try exact registered email.`, type: "error" });
+        setLoading(false); return;
       }
       const userDoc = snap.docs[0];
       const { updateDoc, doc } = await import("firebase/firestore");
       await updateDoc(doc(db, "users", userDoc.id), {
         testsUsed: 0,
+        unlocked: false,
         dailyTests: {},
       });
       addLog(`Reset free limit for ${email} — testsUsed set to 0`, "success");
