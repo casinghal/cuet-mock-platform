@@ -7,9 +7,22 @@ import React from "react";
 
 const EFFECTIVE_DATE = "10 April 2026";
 const COMPANY       = "Vantiq Education";
-const EMAIL         = "support@vantiq.in";
 const PLATFORM      = "Vantiq CUET Mock Test Platform";
 const URL           = "https://vantiq-cuetmock.netlify.app";
+
+// Email is never rendered in HTML — opened via JS only so it can't be scraped or indexed
+const openSupport = () => {
+  const u = atob("c2luZ2hhbC5hY2N1cm9uQGdtYWlsLmNvbQ=="); // base64 encoded
+  window.location.href = "mailto:" + u;
+};
+const ContactLink = ({ text = "Contact Support" }) => (
+  <span
+    onClick={openSupport}
+    style={{ color: "#4338CA", textDecoration: "underline", cursor: "pointer" }}
+  >
+    {text}
+  </span>
+);
 
 const S = {
   page: {
@@ -119,7 +132,7 @@ function PrivacyPolicy() {
   return (
     <>
       <h1 style={S.h1}>Privacy Policy</h1>
-      <p style={S.meta}>Effective Date: {EFFECTIVE_DATE} · {COMPANY} · <a href={`mailto:${EMAIL}`} style={{ color: "#4338CA" }}>{EMAIL}</a></p>
+      <p style={S.meta}>Effective Date: {EFFECTIVE_DATE} · {COMPANY} · <ContactLink /></p>
 
       <div style={S.highlight}>
         We do not sell, rent, or share your personal data with advertisers or third parties for marketing purposes. Your data is used solely to operate this platform.
@@ -160,7 +173,7 @@ function PrivacyPolicy() {
       <p style={S.p}>Each of these services has its own privacy policy governing their use of your data.</p>
 
       <h2 style={S.h2}>6. Your Rights</h2>
-      <p style={S.p}>You have the right to request access to your personal data, request deletion of your account and data, or raise a concern about how we handle your information. Contact us at <a href={`mailto:${EMAIL}`} style={{ color: "#4338CA" }}>{EMAIL}</a>.</p>
+      <p style={S.p}>You have the right to request access to your personal data, request deletion of your account and data, or raise a concern about how we handle your information. Contact us at <ContactLink />.</p>
 
       <h2 style={S.h2}>7. Children's Privacy</h2>
       <p style={S.p}>This platform is intended for students aged 17 and above (Class 12 / CUET aspirants). We do not knowingly collect data from children under 13. If you believe a child has registered, contact us immediately.</p>
@@ -169,7 +182,7 @@ function PrivacyPolicy() {
       <p style={S.p}>We may update this Privacy Policy periodically. Continued use of the platform after changes constitutes acceptance of the updated policy.</p>
 
       <h2 style={S.h2}>9. Contact</h2>
-      <p style={S.p}>For privacy-related queries, email us at <a href={`mailto:${EMAIL}`} style={{ color: "#4338CA" }}>{EMAIL}</a>.</p>
+      <p style={S.p}>For privacy-related queries, email us at <ContactLink />.</p>
     </>
   );
 }
@@ -179,7 +192,7 @@ function TermsAndConditions() {
   return (
     <>
       <h1 style={S.h1}>Terms & Conditions</h1>
-      <p style={S.meta}>Effective Date: {EFFECTIVE_DATE} · {COMPANY} · <a href={`mailto:${EMAIL}`} style={{ color: "#4338CA" }}>{EMAIL}</a></p>
+      <p style={S.meta}>Effective Date: {EFFECTIVE_DATE} · {COMPANY} · <ContactLink /></p>
 
       <div style={S.highlight}>
         By using this platform, you agree to these terms. Please read them carefully before registering or making a payment.
@@ -236,7 +249,7 @@ function TermsAndConditions() {
       <p style={S.p}>These Terms are governed by the laws of India. Any disputes shall be subject to the exclusive jurisdiction of courts in New Delhi, India.</p>
 
       <h2 style={S.h2}>11. Contact</h2>
-      <p style={S.p}>For terms-related queries, contact us at <a href={`mailto:${EMAIL}`} style={{ color: "#4338CA" }}>{EMAIL}</a>.</p>
+      <p style={S.p}>For terms-related queries, contact us at <ContactLink />.</p>
     </>
   );
 }
@@ -246,7 +259,7 @@ function RefundPolicy() {
   return (
     <>
       <h1 style={S.h1}>Refund Policy</h1>
-      <p style={S.meta}>Effective Date: {EFFECTIVE_DATE} · {COMPANY} · <a href={`mailto:${EMAIL}`} style={{ color: "#4338CA" }}>{EMAIL}</a></p>
+      <p style={S.meta}>Effective Date: {EFFECTIVE_DATE} · {COMPANY} · <ContactLink /></p>
 
       <div style={S.highlight}>
         <strong>Summary:</strong> All payments are non-refundable once platform access has been granted. Please read the full policy below.
@@ -267,7 +280,7 @@ function RefundPolicy() {
       </ul>
 
       <h2 style={S.h2}>4. How to Request a Refund</h2>
-      <p style={S.p}>To request a refund under the above exceptions, email us at <a href={`mailto:${EMAIL}`} style={{ color: "#4338CA" }}>{EMAIL}</a> within 7 days of the payment date with:</p>
+      <p style={S.p}>To request a refund under the above exceptions, email us at <ContactLink /> within 7 days of the payment date with:</p>
       <ul style={S.ul}>
         <li style={S.li}>Your registered email address</li>
         <li style={S.li}>Razorpay payment ID or transaction reference</li>
@@ -276,7 +289,7 @@ function RefundPolicy() {
       <p style={S.p}>Valid refund requests will be processed within 7 working days to the original payment method.</p>
 
       <h2 style={S.h2}>5. Contact</h2>
-      <p style={S.p}>For payment or refund queries, contact us at <a href={`mailto:${EMAIL}`} style={{ color: "#4338CA" }}>{EMAIL}</a>.</p>
+      <p style={S.p}>For payment or refund queries, contact us at <ContactLink />.</p>
     </>
   );
 }
