@@ -1507,7 +1507,16 @@ export default function App() {
     // If Firebase not configured — go straight to auth screen (localStorage-only mode)
     if (!auth) { setAuthLoad(false); setScreen("auth"); return; }
     return onAuthStateChanged(auth, async u => {
-      if (u) { setUser(u); await loadUserData(u); setScreen("dashboard"); setShowRating(true); }
+      if (u) {
+        setUser(u);
+        await loadUserData(u);
+        setScreen("dashboard");
+        // Show rating only if user has never rated before
+        try {
+          const rSnap = await getDocs(query(collection(db, "ratings"), where("uid", "==", u.uid), limit(1)));
+          if (rSnap.empty) setShowRating(true);
+        } catch(e) { /* ratings unavailable — skip */ }
+      }
       else { setUser(null); setUserData(null); setHistory([]); setScreen("auth"); setShowRating(false); }
       setAuthLoad(false);
     });

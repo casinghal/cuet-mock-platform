@@ -521,6 +521,8 @@ export default function AdminDashboard() {
   const [cache,       setCache]       = useState({});
   const [recentTests, setRecentTests] = useState([]);
   const [recentPay,   setRecentPay]   = useState([]);
+  const [feedback,    setFeedback]    = useState([]);
+  const [ratings,     setRatings]     = useState([]);
   const [logs,        setLogs]        = useState([]);
   const [filling,     setFilling]     = useState(null);
   const [lastRefresh, setLastRefresh] = useState(null);
@@ -616,6 +618,18 @@ export default function AdminDashboard() {
       // ── Recent payments ──────────────────────────────────────────────────
       const paySnap = await getDocs(query(collection(db, "payments"), orderBy("createdAt", "desc"), limit(10)));
       setRecentPay(paySnap.docs.map(d => ({ id: d.id, ...d.data() })));
+
+      // ── Feedback ─────────────────────────────────────────────────────────
+      try {
+        const fbSnap = await getDocs(query(collection(db, "feedback"), orderBy("createdAt", "desc"), limit(50)));
+        setFeedback(fbSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      } catch(e) { /* feedback collection may not exist yet */ }
+
+      // ── Ratings ──────────────────────────────────────────────────────────
+      try {
+        const ratSnap = await getDocs(query(collection(db, "ratings"), orderBy("createdAt", "desc"), limit(100)));
+        setRatings(ratSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      } catch(e) { /* ratings collection may not exist yet */ }
 
       // ── Revenue ──────────────────────────────────────────────────────────
       const allPay    = await getDocs(collection(db, "payments"));
@@ -803,6 +817,83 @@ export default function AdminDashboard() {
               </table>
             </div>
           </div>
+        </div>
+
+
+        {/* ── User Feedback & Ratings ─────────────────────────────────────── */}
+        <div style={S.sectionTitle}>
+          User Feedback
+          {feedback.length > 0 && (
+            <span style={{ marginLeft: 8, background: "#4338CA", color: "#fff", borderRadius: 12, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>
+              {feedback.length}
+            </span>
+          )}
+        </div>
+
+        {/* Star Ratings Summary */}
+        {ratings.length > 0 && (() => {
+          const avg = ratings.reduce((s, r) => s + (r.stars || 0), 0) / ratings.length;
+          const dist = [5,4,3,2,1].map(s => ({ star: s, count: ratings.filter(r => r.stars === s).length }));
+          return (
+            <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, padding: "16px 20px", marginBottom: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ fontSize: 36, fontWeight: 800, color: "#0F2747", fontFamily: "var(--font-mono)" }}>{avg.toFixed(1)}</div>
+                  <div style={{ fontSize: 18, letterSpacing: 2 }}>{"⭐".repeat(Math.round(avg))}</div>
+                  <div style={{ fontSize: 11, color: "#94A3B8", marginTop: 2 }}>{ratings.length} rating{ratings.length !== 1 ? "s" : ""}</div>
+                </div>
+                <div style={{ flex: 1, minWidth: 160 }}>
+                  {dist.map(({ star, count }) => (
+                    <div key={star} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                      <span style={{ fontSize: 11, color: "#64748B", width: 12 }}>{star}</span>
+                      <span style={{ fontSize: 11 }}>⭐</span>
+                      <div style={{ flex: 1, height: 6, background: "#F1F5F9", borderRadius: 3, overflow: "hidden" }}>
+                        <div style={{ width: ratings.length ? `${(count / ratings.length) * 100}%` : "0%", height: "100%", background: "#F59E0B", borderRadius: 3 }} />
+                      </div>
+                      <span style={{ fontSize: 11, color: "#64748B", width: 20, textAlign: "right" }}>{count}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Feedback messages table */}
+        <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, overflow: "hidden", marginBottom: 24 }}>
+          {feedback.length === 0 ? (
+            <div style={{ padding: "28px 20px", textAlign: "center", color: "#94A3B8", fontSize: 13 }}>
+              No feedback submitted yet.
+            </div>
+          ) : (
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: "#F8FAFC", borderBottom: "1px solid #E2E8F0" }}>
+                  <th style={{ padding: "10px 16px", textAlign: "left", fontWeight: 600, color: "#64748B", fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em", width: 200 }}>User</th>
+                  <th style={{ padding: "10px 16px", textAlign: "left", fontWeight: 600, color: "#64748B", fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em" }}>Message</th>
+                  <th style={{ padding: "10px 16px", textAlign: "right", fontWeight: 600, color: "#64748B", fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em", width: 140 }}>Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {feedback.map((f, i) => (
+                  <tr key={f.id} style={{ borderBottom: i < feedback.length - 1 ? "1px solid #F1F5F9" : "none", verticalAlign: "top" }}>
+                    <td style={{ padding: "12px 16px" }}>
+                      <div style={{ fontWeight: 600, color: "#0F2747", fontSize: 12 }}>{f.email || "Anonymous"}</div>
+                      {f.page && f.page !== "/" && (
+                        <div style={{ fontSize: 10, color: "#94A3B8", marginTop: 2 }}>Page: {f.page}</div>
+                      )}
+                    </td>
+                    <td style={{ padding: "12px 16px", color: "#334155", lineHeight: 1.6 }}>{f.text}</td>
+                    <td style={{ padding: "12px 16px", textAlign: "right", color: "#94A3B8", fontSize: 11, whiteSpace: "nowrap" }}>
+                      {f.createdAt?.toDate
+                        ? f.createdAt.toDate().toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
+                        : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
 
         {/* Activity Log */}
