@@ -686,8 +686,8 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
   useEffect(() => { logEvent("page_view", { page: "dashboard", user_id: user?.uid }); }, []);
 
   const MODES = {
-    QuickPractice: { label: "Quick Practice", desc: "15 questions · All topics · Lifetime Free", free: true },
-    Mock:          { label: "Mock Exam",       desc: "50 questions · 60 min · Full NTA English (101)", free: false },
+    QuickPractice: { label: "Quick Practice", desc: "50 questions · All topics · Lifetime Free", free: true },
+    Mock:          { label: "Mock Exam",       desc: "50 questions · 60 min · NTA standard marking", free: false },
   };
 
   async function handleBegin() {
@@ -1338,8 +1338,7 @@ export default function App() {
     logEvent("test_started", { user_id: user?.uid, mode: config.mode });
     try {
       const qs = await generateQuestions(config, user?.uid);
-      const minRequired = config.mode === "Mock" ? 48 : 14;
-      if (!qs || qs.length < minRequired) throw new Error(`Incomplete test paper (${qs?.length ?? 0} questions). Please try again.`);
+      if (!qs || qs.length !== 50) throw new Error(`Incomplete test paper (${qs?.length ?? 0}/50 questions). Please try again.`);
       setQuestions(qs); setAnswers({}); setScreen("exam");
       // Update count — Firestore (authoritative) + localStorage (fallback)
       try {
