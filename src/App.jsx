@@ -719,8 +719,15 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
       }
       onBeginTest({ mode });
     } catch(_) {
+      // CF call failed — fail safe: check local state, block if limit reached
       const effectiveCount = testsUsed || parseInt(localStorage.getItem("cuet_tests_used") || "0");
-      if (!unlocked && effectiveCount >= FREE_LIMIT) { setShowPaywall(true); return; }
+      if (!unlocked && effectiveCount >= FREE_LIMIT) {
+        setShowPaywall(true); return;
+      }
+      // Only allow if clearly under limit — never allow on ambiguous failure
+      if (!unlocked && effectiveCount >= FREE_LIMIT - 1) {
+        setShowPaywall(true); return; // Block when 1 away from limit too, to be safe
+      }
       onBeginTest({ mode });
     } finally { setChecking(false); }
   }
@@ -1341,10 +1348,8 @@ export default function App() {
       const required = config.mode === "Mock" ? 50 : 15;
       if (!qs || qs.length !== required) throw new Error(`Incomplete test paper (${qs?.length ?? 0}/${required} questions). Please try again.`);
       setQuestions(qs); setAnswers({}); setScreen("exam");
-      // Update count — Firestore (authoritative) + localStorage (fallback)
-      try {
-        await updateDoc(doc(db, "users", user.uid), { testsUsed: (userData?.testsUsed || 0) + 1 });
-      } catch(_) { /* Firestore not configured yet — localStorage is the fallback */ }
+      // CF generateQuestions handles testsUsed increment server-side (atomic)
+      // Client only updates local state for immediate UI feedback
       incrementLocalTestCount();
       setUserData(p => ({ ...p, testsUsed: (p?.testsUsed || 0) + 1 }));
     } catch(e) {
