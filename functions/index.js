@@ -35,8 +35,9 @@ function todayIST() {
 
 function setCORS(res) {
   res.set("Access-Control-Allow-Origin",  "*");
-  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.set("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization, x-admin-key");
+  res.set("Access-Control-Max-Age", "3600");
 }
 
 async function verifyToken(req, res) {
@@ -160,7 +161,8 @@ exports.triggerCacheWarm = functions
     setCORS(res);
     if (req.method === "OPTIONS") { res.status(204).send(""); return; }
     try {
-      const adminKey    = req.headers["x-admin-key"] || req.body?.adminKey || "";
+      // Accept key from body (browser-safe, no CORS preflight) or header (curl)
+      const adminKey    = req.body?.adminKey || req.headers["x-admin-key"] || "";
       const cfg         = functions.config();
       const expectedKey = cfg.admin?.key || process.env.ADMIN_KEY || "";
       if (!adminKey || adminKey !== expectedKey) {

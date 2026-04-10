@@ -597,9 +597,10 @@ export default function AdminDashboard() {
     setFilling(mode);
     addLog(`Starting ${mode} cache fill...`);
     try {
+      // Send adminKey in body only — avoids CORS preflight from custom header
       const res = await fetch(`${CF_BASE}/triggerCacheWarm`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-admin-key": ADMIN_KEY },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode, adminKey: ADMIN_KEY }),
       });
       const d = await res.json();
