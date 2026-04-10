@@ -671,9 +671,12 @@ function GoogleIcon() {
   );
 }
 // ── DASHBOARD SCREEN ──────────────────────────────────────────────────────────
-function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, showToast }) {
+function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, showToast, showPaywallOverride, setShowPaywallOverride }) {
   const [mode,        setMode]        = useState("Mock");
-  const [showPaywall, setShowPaywall] = useState(false);
+  // showPaywall can be triggered from inside (handleBegin gate) or outside (handleBeginTest 402 catch)
+  const [showPaywallLocal, setShowPaywallLocal] = useState(false);
+  const showPaywall    = showPaywallLocal || (showPaywallOverride ?? false);
+  const setShowPaywall = (v) => { setShowPaywallLocal(v); if (setShowPaywallOverride) setShowPaywallOverride(v); };
   const [checking,    setChecking]    = useState(false);
   const isMobile = useMobile();
 
@@ -1489,6 +1492,7 @@ export default function App() {
   const [toast,       setToast]      = useState(null);
   const [authLoading, setAuthLoad]   = useState(true);
   const [showRating,  setShowRating] = useState(false);
+  const [showPaywall, setShowPaywall] = useState(false); // lifted from DashboardScreen — needed when generateQuestions returns 402
 
   const showToast = (message, type = "info") => setToast({ message, type, key: Date.now() });
 
@@ -1557,13 +1561,20 @@ export default function App() {
       if (!qs || qs.length !== required) throw new Error(`Incomplete test paper (${qs?.length ?? 0}/${required} questions). Please try again.`);
       setQuestions(qs); setAnswers({}); setScreen("exam");
       // CF generateQuestions handles testsUsed increment server-side (atomic)
-      // Client only updates local state for immediate UI feedback
+      // Optimistic local update for immediate UI feedback + fresh Firestore sync
       incrementLocalTestCount();
       setUserData(p => ({ ...p, testsUsed: (p?.testsUsed || 0) + 1 }));
+      // Sync Firestore in background — keeps testsUsed accurate if user abandons mid-exam
+      if (user) loadUserData(user).catch(() => {});
     } catch(e) {
-      if (e.paywall) { showToast("Test limit reached — unlock to continue.", "error"); }
-      else { showToast("Could not generate test. Please try again.", "error"); }
-      setScreen("dashboard");
+      if (e.paywall) {
+        // Open PaywallModal directly — toast alone loses the conversion opportunity
+        setScreen("dashboard");
+        setShowPaywall(true);
+      } else {
+        showToast("Could not generate test. Please try again.", "error");
+        setScreen("dashboard");
+      }
     }
   }
 
@@ -1598,7 +1609,7 @@ export default function App() {
     <React.Fragment>
       {toast && <Toast key={toast.key} message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
       {screen === "auth"       && <AuthScreen      onLogin={u => { setUser(u); loadUserData(u); setScreen("dashboard"); }} showToast={showToast} />}
-      {screen === "dashboard"  && <DashboardScreen user={user} userData={userData} testHistory={testHistory} onBeginTest={handleBeginTest} onLogout={() => auth ? signOut(auth) : setScreen("auth")} showToast={showToast} />}
+      {screen === "dashboard"  && <DashboardScreen user={user} userData={userData} testHistory={testHistory} onBeginTest={handleBeginTest} onLogout={() => auth ? signOut(auth) : setScreen("auth")} showToast={showToast} showPaywallOverride={showPaywall} setShowPaywallOverride={setShowPaywall} />}
       {screen === "generating" && <GeneratingScreen config={testConfig} />}
       {screen === "exam"       && <ExamScreen      questions={questions} config={testConfig} user={user} onSubmit={handleSubmitTest} showToast={showToast} />}
       {screen === "results"    && <ResultsScreen   questions={questions} answers={answers} config={testConfig} user={user} onNewTest={() => setScreen("dashboard")} onReview={() => setScreen("review")} />}
