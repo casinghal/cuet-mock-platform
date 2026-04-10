@@ -1516,8 +1516,23 @@ export default function App() {
           const rSnap = await getDocs(query(collection(db, "ratings"), where("uid", "==", u.uid), limit(1)));
           if (rSnap.empty) setShowRating(true);
         } catch(e) { /* ratings unavailable — skip */ }
+        // Presence heartbeat — write lastSeen every 90s so admin can show live users
+        const writePresence = async () => {
+          try {
+            await setDoc(doc(db, "presence", u.uid), {
+              uid: u.uid, email: u.email, displayName: u.displayName,
+              lastSeen: serverTimestamp(), screen: "dashboard",
+            }, { merge: true });
+          } catch(e) { /* silent */ }
+        };
+        writePresence();
+        const heartbeat = setInterval(writePresence, 90000);
+        window.__presenceInterval = heartbeat;
       }
-      else { setUser(null); setUserData(null); setHistory([]); setScreen("auth"); setShowRating(false); }
+      else {
+        setUser(null); setUserData(null); setHistory([]); setScreen("auth"); setShowRating(false);
+        if (window.__presenceInterval) { clearInterval(window.__presenceInterval); window.__presenceInterval = null; }
+      }
       setAuthLoad(false);
     });
   }, []);

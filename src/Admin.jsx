@@ -525,6 +525,8 @@ export default function AdminDashboard() {
   const [ratings,     setRatings]     = useState([]);
   const [insights,    setInsights]    = useState(null);
   const [insightLoad, setInsightLoad] = useState(false);
+  const [liveUsers,   setLiveUsers]   = useState([]);
+  const [liveStats,   setLiveStats]   = useState(null);
   const [logs,        setLogs]        = useState([]);
   const [filling,     setFilling]     = useState(null);
   const [lastRefresh, setLastRefresh] = useState(null);
@@ -632,6 +634,49 @@ export default function AdminDashboard() {
         const ratSnap = await getDocs(query(collection(db, "ratings"), orderBy("createdAt", "desc"), limit(100)));
         setRatings(ratSnap.docs.map(d => ({ id: d.id, ...d.data() })));
       } catch(e) { /* ratings collection may not exist yet */ }
+
+      // ── Live presence + activity ──────────────────────────────────────────
+      try {
+        const now          = new Date();
+        const fiveMinsAgo  = new Date(now - 5 * 60 * 1000);
+        const oneDayAgo    = new Date(now - 24 * 60 * 60 * 1000);
+        const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
+
+        // Online now (presence heartbeat < 5 min ago)
+        const presSnap = await getDocs(collection(db, "presence"));
+        const onlineNow = presSnap.docs
+          .filter(d => d.data().lastSeen?.toDate?.() > fiveMinsAgo)
+          .map(d => ({ id: d.id, ...d.data() }));
+        setLiveUsers(onlineNow);
+
+        // All users for segmentation
+        const allUsersSnap = await getDocs(collection(db, "users"));
+        const allUsers = allUsersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const newToday      = allUsers.filter(u => u.createdAt?.toDate?.() > oneDayAgo).length;
+        const activeToday   = allUsers.filter(u => u.lastTestAt?.toDate?.() > oneDayAgo).length;
+        const active7d      = allUsers.filter(u => u.lastTestAt?.toDate?.() > sevenDaysAgo).length;
+        const dormant       = allUsers.filter(u => !u.lastTestAt && !u.testsUsed).length;
+        const paid          = allUsers.filter(u => u.unlocked).length;
+        const freeActive    = allUsers.filter(u => !u.unlocked && u.testsUsed > 0).length;
+
+        // Tests today
+        const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+        const testsSnap2 = await getDocs(query(collection(db, "tests"), orderBy("completedAt", "desc"), limit(50)));
+        const testsToday2 = testsSnap2.docs.filter(d => d.data().completedAt?.toDate?.() > todayStart).length;
+
+        // Recent activity feed (last 10 events across signups + tests + payments)
+        const recentActivity = [
+          ...allUsers
+            .filter(u => u.createdAt?.toDate?.())
+            .map(u => ({ type: "signup", email: u.email, time: u.createdAt.toDate(), label: "New signup" })),
+          ...testsSnap2.docs
+            .filter(d => d.data().completedAt?.toDate?.())
+            .slice(0, 20)
+            .map(d => ({ type: "test", email: d.data().email || d.data().uid?.substring(0,8), time: d.data().completedAt.toDate(), label: `Mock test · ${d.data().score ?? 0} marks` })),
+        ].sort((a, b) => b.time - a.time).slice(0, 8);
+
+        setLiveStats({ newToday, activeToday, active7d, dormant, paid, freeActive, testsToday: testsToday2, total: allUsers.length, recentActivity });
+      } catch(e) { console.warn("Live stats error:", e.message); }
 
       // ── Revenue ──────────────────────────────────────────────────────────
       const allPay    = await getDocs(collection(db, "payments"));
@@ -766,6 +811,93 @@ export default function AdminDashboard() {
             </div>
           ))}
         </div>
+
+        {/* ── Live Activity ─────────────────────────────────────────────── */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, ...S.sectionTitle }}>
+          Live Activity
+          {liveUsers.length > 0 && (
+            <span style={{ background: "#059669", color: "#fff", borderRadius: 12, padding: "2px 10px", fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#fff", display: "inline-block" }} />
+              {liveUsers.length} online
+            </span>
+          )}
+        </div>
+
+        {liveStats ? (
+          <>
+            {/* 4-metric KPI strip */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 10 }}>
+              {[
+                { label: "Online Now",   value: liveUsers.length,       color: "#059669", bg: "#ECFDF5" },
+                { label: "Active Today", value: liveStats.activeToday,  color: "#4338CA", bg: "#EEF2FF" },
+                { label: "New Today",    value: liveStats.newToday,     color: "#D97706", bg: "#FEF3C7" },
+                { label: "Tests Today",  value: liveStats.testsToday,   color: "#0F2747", bg: "#F8FAFC" },
+              ].map(k => (
+                <div key={k.label} style={{ background: k.bg, borderRadius: 10, padding: "12px 14px", textAlign: "center" }}>
+                  <div style={{ fontSize: 24, fontWeight: 800, color: k.color, fontFamily: "var(--font-mono)", lineHeight: 1 }}>{k.value}</div>
+                  <div style={{ fontSize: 10, color: "#64748B", marginTop: 4, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".04em" }}>{k.label}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Segments + Activity feed — side by side */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: liveUsers.length > 0 ? 10 : 16 }}>
+              <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 10, padding: "14px 16px" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 10 }}>User Segments</div>
+                {[
+                  { label: "Paid — Unlocked",     value: liveStats.paid,       color: "#059669" },
+                  { label: "Free — Active",        value: liveStats.freeActive, color: "#4338CA" },
+                  { label: "Active last 7 days",   value: liveStats.active7d,   color: "#D97706" },
+                  { label: "Dormant (no tests)",   value: liveStats.dormant,    color: "#94A3B8" },
+                  { label: "Total Registered",     value: liveStats.total,      color: "#0F2747" },
+                ].map(s => (
+                  <div key={s.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7 }}>
+                    <span style={{ fontSize: 12, color: "#334155" }}>{s.label}</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: s.color, fontFamily: "var(--font-mono)" }}>{s.value}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 10, padding: "14px 16px", overflow: "hidden" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 10 }}>Recent Activity</div>
+                {(liveStats.recentActivity || []).length === 0 ? (
+                  <div style={{ fontSize: 12, color: "#94A3B8" }}>No activity yet.</div>
+                ) : liveStats.recentActivity.map((a, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 8 }}>
+                    <span style={{ fontSize: 13, flexShrink: 0 }}>{a.type === "signup" ? "👤" : "📝"}</span>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 11, color: "#0F2747", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {a.email?.length > 26 ? a.email.substring(0, 24) + "…" : (a.email || "unknown")}
+                      </div>
+                      <div style={{ fontSize: 10, color: "#94A3B8" }}>
+                        {a.label} · {a.time.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Online now pills — only shown if anyone online */}
+            {liveUsers.length > 0 && (
+              <div style={{ background: "#ECFDF5", border: "1px solid #A7F3D0", borderRadius: 10, padding: "12px 16px", marginBottom: 16 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#059669", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 8 }}>Currently Online</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {liveUsers.map(u => (
+                    <span key={u.id} style={{ background: "#fff", border: "1px solid #A7F3D0", borderRadius: 20, padding: "4px 12px", fontSize: 12, color: "#065F46", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                      <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#059669", display: "inline-block" }} />
+                      {u.email || u.displayName || u.id.substring(0, 8)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 10, padding: 20, textAlign: "center", color: "#94A3B8", fontSize: 13, marginBottom: 16 }}>
+            Loading live data...
+          </div>
+        )}
 
         {/* Cache Control */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
