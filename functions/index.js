@@ -216,13 +216,16 @@ async function generateQuestionSet(mode, apiKey) {
         const tokenBudgets = [TOKEN_PER_RC_BATCH, TOKEN_PER_RC_BATCH, TOKEN_PER_RC_BATCH, TOKEN_PER_STD_BATCH, TOKEN_PER_STD_BATCH];
         const allBatches = [];
         for (let b = 1; b <= 5; b++) {
+          functions.logger.info("BATCH_START", { batchNum: b, tokenBudget: tokenBudgets[b-1] });
           const prompt = buildMockBatch(b);
           const batch = await callAnthropic(prompt, tokenBudgets[b-1], apiKey);
+          const batchCount = Array.isArray(batch) ? batch.length : 0;
+          functions.logger.info("BATCH_RESULT", { batchNum: b, count: batchCount, isArray: Array.isArray(batch) });
           if (!Array.isArray(batch) || batch.length !== 10) {
-            throw new Error(`BATCH_${b}_COUNT:${batch?.length ?? 0}/10`);
+            throw new Error(`BATCH_${b}_COUNT:${batchCount}/10`);
           }
           allBatches.push(...batch);
-          await new Promise(r => setTimeout(r, 800)); // 0.8s between batches
+          await new Promise(r => setTimeout(r, 800));
         }
         questions = allBatches;
       }
