@@ -44,6 +44,10 @@ const S = {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
+    position: "sticky",
+    top: 0,
+    zIndex: 100,
+    boxShadow: "0 2px 12px rgba(0,0,0,0.3)",
   },
   headerTitle: {
     color: "#fff",
@@ -248,6 +252,76 @@ function CacheCard({ mode, data, onFill, filling }) {
       >
         {filling === mode ? "Filling..." : `Fill ${mode} Cache`}
       </button>
+    </div>
+  );
+}
+
+// ── Reset User Free Limit Component ──────────────────────────────────────────
+function ResetUserLimit({ addLog }) {
+  const [email,   setEmail]   = useState("");
+  const [result,  setResult]  = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  async function handleReset() {
+    if (!email.trim()) { setResult({ text: "Enter a user email address.", type: "error" }); return; }
+    setLoading(true);
+    setResult(null);
+    try {
+      // Find user by email in Firestore — query Auth via users collection
+      const q = query(collection(db, "users"), where("email", "==", email.trim().toLowerCase()));
+      const snap = await getDocs(q);
+      if (snap.empty) {
+        // Try case-insensitive by listing recent users and matching
+        setResult({ text: `No user found with email: ${email}. Check the email and try again.`, type: "error" });
+        setLoading(false);
+        return;
+      }
+      const userDoc = snap.docs[0];
+      const { updateDoc, doc } = await import("firebase/firestore");
+      await updateDoc(doc(db, "users", userDoc.id), {
+        testsUsed: 0,
+        dailyTests: {},
+      });
+      addLog(`Reset free limit for ${email} — testsUsed set to 0`, "success");
+      setResult({ text: `✅ Free limit reset for ${email}. They now have 4 free Mock Exams again.`, type: "success" });
+      setEmail("");
+    } catch (e) {
+      addLog(`Reset failed for ${email}: ${e.message}`, "error");
+      setResult({ text: `Error: ${e.message}`, type: "error" });
+    }
+    setLoading(false);
+  }
+
+  return (
+    <div style={{ ...S.card, maxWidth: 480 }}>
+      <p style={{ fontSize: 13, color: "#64748B", marginBottom: 16 }}>
+        Resets a student's Mock Exam count to 0. Use for support requests or when a test was consumed due to a technical error.
+      </p>
+      <div style={{ display: "flex", gap: 10 }}>
+        <input
+          type="email"
+          placeholder="student@example.com"
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && handleReset()}
+          style={{
+            flex: 1, padding: "10px 14px", border: "1px solid #E2E8F0",
+            borderRadius: 8, fontFamily: "'Sora', sans-serif", fontSize: 13, outline: "none",
+          }}
+        />
+        <button
+          onClick={handleReset}
+          disabled={loading}
+          style={{ ...S.btn, ...(loading ? S.btnMuted : S.btnDanger), whiteSpace: "nowrap" }}
+        >
+          {loading ? "Resetting..." : "Reset Limit"}
+        </button>
+      </div>
+      {result && (
+        <p style={{ fontSize: 12, marginTop: 10, fontWeight: 600, color: result.type === "error" ? "#DC2626" : "#059669" }}>
+          {result.text}
+        </p>
+      )}
     </div>
   );
 }
@@ -552,6 +626,10 @@ export default function AdminDashboard() {
             </a>
           ))}
         </div>
+
+        {/* Reset User Free Limit */}
+        <div style={S.sectionTitle}>Reset Student Free Limit</div>
+        <ResetUserLimit addLog={addLog} />
 
         {/* Change Password */}
         <div style={S.sectionTitle}>Change Admin Password</div>
