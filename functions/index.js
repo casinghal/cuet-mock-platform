@@ -102,43 +102,66 @@ Rules:
   return null;
 }
 
-function buildMockPrompts() {
-  const promptA = `You are an NTA CUET English (101) question paper generator.
-Generate exactly 28 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
+// ── 5-batch Mock generation (10 questions each = exactly 50 total) ─────────────
+// Each batch is small enough to return exactly 10 reliably
+function buildMockBatch(batchNum) {
+  const schema = '{"questions":[{"question":"...","options":["A","B","C","D"],"correct":0,"topic":"...","passage":"passage text or null","explanation":"2-3 sentences"}]}';
 
-JSON schema:
-{"questions":[{"question":"...","options":["A","B","C","D"],"correct":0,"topic":"Reading Comprehension","passage":"full passage text or null","explanation":"2-3 sentences"}]}
+  const batches = {
+    1: `You are an NTA CUET English (101) question paper generator.
+Generate exactly 10 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
+JSON schema: ${schema}
+Topic distribution (MANDATORY — exactly these counts):
+- Reading Comprehension: 7 questions — write a factual passage (science/geography/history topic, exactly 250-300 words). All 7 questions use identical passage text.
+- Synonyms and Antonyms: 3 questions (passage = null)
+Rules: correct is 0-indexed (0=A,1=B,2=C,3=D). Difficulty: challenging — NTA exam standard. Explanation: 2-3 sentences.
+Return ONLY the JSON object. Begin with { — nothing before it.`,
 
-Topic distribution (MANDATORY):
-- Reading Comprehension: 15 questions across 2 passages (Passage 1: factual 250-300 words × 8q, Passage 2: narrative 250-300 words × 7q)
-- Synonyms and Antonyms: 9 questions (passage = null)
-- Sentence Rearrangement: 4 questions (passage = null)
+    2: `You are an NTA CUET English (101) question paper generator.
+Generate exactly 10 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
+JSON schema: ${schema}
+Topic distribution (MANDATORY — exactly these counts):
+- Reading Comprehension: 8 questions — write a narrative passage (story or biographical excerpt, exactly 250-300 words). All 8 questions use identical passage text.
+- Synonyms and Antonyms: 2 questions (passage = null)
+Rules: correct is 0-indexed (0=A,1=B,2=C,3=D). Difficulty: challenging — NTA exam standard. Explanation: 2-3 sentences.
+Return ONLY the JSON object. Begin with { — nothing before it.`,
 
-Rules: correct is 0-indexed. All questions sharing a passage must have identical passage text. Explanation: 2-3 sentences. Difficulty: challenging — full NTA exam standard.
-Return ONLY the JSON object. Begin with { — nothing before it.`;
+    3: `You are an NTA CUET English (101) question paper generator.
+Generate exactly 10 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
+JSON schema: ${schema}
+Topic distribution (MANDATORY — exactly these counts):
+- Reading Comprehension: 7 questions — write a literary/philosophical passage (critical or philosophical prose, exactly 250-300 words). All 7 questions use identical passage text.
+- Synonyms and Antonyms: 3 questions (passage = null)
+Rules: correct is 0-indexed (0=A,1=B,2=C,3=D). Difficulty: challenging — NTA exam standard. Explanation: 2-3 sentences.
+Return ONLY the JSON object. Begin with { — nothing before it.`,
 
-  const promptB = `You are an NTA CUET English (101) question paper generator.
-Generate exactly 22 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
+    4: `You are an NTA CUET English (101) question paper generator.
+Generate exactly 10 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
+JSON schema: ${schema}
+Topic distribution (MANDATORY — exactly these counts):
+- Sentence Rearrangement: 7 questions — jumbled P/Q/R/S sentences to be arranged in logical order (passage = null)
+- Grammar and Vocabulary: 2 questions — error spotting or usage (passage = null)
+- Synonyms and Antonyms: 1 question (passage = null)
+Rules: correct is 0-indexed (0=A,1=B,2=C,3=D). Difficulty: challenging — NTA exam standard. Explanation: 2-3 sentences.
+Return ONLY the JSON object. Begin with { — nothing before it.`,
 
-JSON schema:
-{"questions":[{"question":"...","options":["A","B","C","D"],"correct":0,"topic":"Reading Comprehension","passage":"full passage text or null","explanation":"2-3 sentences"}]}
+    5: `You are an NTA CUET English (101) question paper generator.
+Generate exactly 10 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
+JSON schema: ${schema}
+Topic distribution (MANDATORY — exactly these counts):
+- Choosing Correct Word: 7 questions — fill in the blank or cloze (passage = null)
+- Match the Following: 3 questions — word-meaning or phrase pairs (passage = null)
+Rules: correct is 0-indexed (0=A,1=B,2=C,3=D). Difficulty: challenging — NTA exam standard. Explanation: 2-3 sentences.
+Return ONLY the JSON object. Begin with { — nothing before it.`,
+  };
 
-Topic distribution (MANDATORY):
-- Reading Comprehension: 7 questions (Passage 3: literary/philosophical 250-300 words × 7q)
-- Sentence Rearrangement: 3 questions (passage = null)
-- Choosing Correct Word: 7 questions (passage = null)
-- Match the Following: 3 questions (passage = null)
-- Grammar and Vocabulary: 2 questions (passage = null)
-
-Rules: correct is 0-indexed. All questions sharing a passage must have identical passage text. Explanation: 2-3 sentences. Difficulty: challenging — full NTA exam standard.
-Return ONLY the JSON object. Begin with { — nothing before it.`;
-
-  return { promptA, promptB };
+  return batches[batchNum];
 }
 
 // ── Quality Gate — validates every question before accepting the set ──────────
 function validateQuestionSet(questions, mode) {
-  const REQUIRED_COUNT = mode === "Mock" ? 50 : 15; // Exact count — zero tolerance
+  // With 5-batch architecture, Mock always returns exactly 50 (5 × 10)
+  const REQUIRED_COUNT = mode === "Mock" ? 50 : 15;
   const errors = [];
 
   if (questions.length !== REQUIRED_COUNT) {
@@ -186,12 +209,22 @@ async function generateQuestionSet(mode, apiKey) {
         const prompt = buildPrompt("QuickPractice");
         questions = await callAnthropic(prompt, 5000, apiKey);
       } else {
-        const { promptA, promptB } = buildMockPrompts();
-        const [batchA, batchB] = [
-          await callAnthropic(promptA, 11000, apiKey),
-          await callAnthropic(promptB, 9500, apiKey),
-        ];
-        questions = [...batchA, ...batchB];
+        // 5 sequential batches of 10 questions each = exactly 50
+        // Each batch is small → reliable exact count → quality gate passes every time
+        const TOKEN_PER_RC_BATCH  = 3000; // RC batches need passage tokens
+        const TOKEN_PER_STD_BATCH = 2500; // Standard batches, no passages
+        const tokenBudgets = [TOKEN_PER_RC_BATCH, TOKEN_PER_RC_BATCH, TOKEN_PER_RC_BATCH, TOKEN_PER_STD_BATCH, TOKEN_PER_STD_BATCH];
+        const allBatches = [];
+        for (let b = 1; b <= 5; b++) {
+          const prompt = buildMockBatch(b);
+          const batch = await callAnthropic(prompt, tokenBudgets[b-1], apiKey);
+          if (!Array.isArray(batch) || batch.length !== 10) {
+            throw new Error(`BATCH_${b}_COUNT:${batch?.length ?? 0}/10`);
+          }
+          allBatches.push(...batch);
+          await new Promise(r => setTimeout(r, 800)); // 0.8s between batches
+        }
+        questions = allBatches;
       }
 
       // ── Quality gate ────────────────────────────────────────────────────────
@@ -209,7 +242,7 @@ async function generateQuestionSet(mode, apiKey) {
       lastError = e;
       if (attempt <= MAX_RETRIES) {
         functions.logger.warn("GENERATION_RETRY", { mode, attempt, reason: e.message });
-        await new Promise(r => setTimeout(r, 1000 * attempt)); // backoff: 1s, 2s
+        await new Promise(r => setTimeout(r, 2000 * attempt)); // backoff: 2s, 4s
       }
     }
   }
@@ -280,7 +313,7 @@ exports.triggerCacheWarm = functions
             generated++;
             consecutiveFails = 0;
             functions.logger.info("CACHE_SET_STORED", { mode, set: i + 1, total: generated, count: questions.length });
-            await new Promise(r => setTimeout(r, 500));
+            await new Promise(r => setTimeout(r, 2000)); // 2s between sets
           } catch (e) {
             consecutiveFails++;
             functions.logger.error("CACHE_SET_FAILED", { mode, set: i + 1, consecutiveFails, error: e.message });
