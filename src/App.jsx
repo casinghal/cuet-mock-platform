@@ -1633,7 +1633,7 @@ export default function App() {
       {screen === "exam"       && <ExamScreen      questions={questions} config={testConfig} user={user} onSubmit={handleSubmitTest} showToast={showToast} />}
       {screen === "results"    && <ResultsScreen   questions={questions} answers={answers} config={testConfig} user={user} onNewTest={() => setScreen("dashboard")} onReview={() => setScreen("review")} />}
       {/* Feedback button — always visible when logged in */}
-      {user && screen !== "auth" && <FeedbackWidget user={user} />}
+      {user && screen !== "auth" && screen !== "exam" && <FeedbackWidget user={user} />}
       {/* Star rating — shown once per login session */}
       {user && showRating && screen === "dashboard" && (
         <StarRatingModal user={user} onDismiss={() => setShowRating(false)} />
