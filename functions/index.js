@@ -855,7 +855,16 @@ exports.razorpayWebhook = functions.runWith({ timeoutSeconds: 30, memory: "128MB
   const event   = req.body.event;
   const payment = req.body.payload?.payment?.entity;
   if (event === "payment.captured" && payment?.notes?.uid) {
-    try { await db.collection("users").doc(payment.notes.uid).update({ unlocked: true, unlockedAt: admin.firestore.FieldValue.serverTimestamp() }); }
+    try {
+      // set() with merge:true — safe even if user doc doesn't exist yet
+      // update() throws "No document to update" if user doc missing — webhook then silently fails
+      await db.collection("users").doc(payment.notes.uid).set({
+        unlocked: true,
+        unlockedAt: admin.firestore.FieldValue.serverTimestamp(),
+        paymentId: payment.id,
+      }, { merge: true });
+      functions.logger.info("WEBHOOK_UNLOCK_SUCCESS", { uid: payment.notes.uid, paymentId: payment.id });
+    }
     catch (e) { functions.logger.error("Webhook unlock fail:", e); }
   }
   res.status(200).json({ status: "ok" });
