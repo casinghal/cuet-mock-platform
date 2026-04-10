@@ -838,7 +838,7 @@ export default function AdminDashboard() {
     }, 15000); // poll getCacheStatus every 15s
   }
 
-    async function fillCache(mode) {
+  async function fillCache(mode) {
     setFilling(mode);
     addLog(`Starting ${mode} cache fill...`);
     try {
