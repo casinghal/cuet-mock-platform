@@ -535,6 +535,7 @@ export default function AdminDashboard() {
     setFbLoading(true);
     try {
       const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: "select_account" }); // Force account picker
       const result   = await signInWithPopup(auth, provider);
       setFbUser(result.user);
     } catch(e) {
