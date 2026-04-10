@@ -1,9 +1,10 @@
 name: Daily Platform Health Check
 
 on:
-  # 6:00 AM IST = 00:30 UTC
   schedule:
-    - cron: '30 0 * * *'
+    - cron: '30 0 * * *'   # 6:00 AM IST  = 00:30 UTC
+    - cron: '30 10 * * *'  # 4:00 PM IST  = 10:30 UTC
+    - cron: '30 15 * * *'  # 9:00 PM IST  = 15:30 UTC
 
   # Manual trigger from GitHub Actions tab
   workflow_dispatch:
