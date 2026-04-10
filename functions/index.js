@@ -394,6 +394,11 @@ exports.triggerCacheWarm = functions
       } catch (e) {
         functions.logger.error("TRIGGER_CACHE_CRASHED", { error: e.message });
       }
+    } catch (e) {
+      // Outer catch — handles auth/key/status-check failures before res.send() is called
+      functions.logger.error("TRIGGER_CACHE_INIT_FAILED", { error: e.message });
+      if (!res.headersSent) res.status(500).json({ error: "Function error: " + e.message });
+    }
   });
 
 // ─── 1. generateQuestions ────────────────────────────────────────────────────
