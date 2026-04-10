@@ -107,50 +107,53 @@ Rules:
 function buildMockBatch(batchNum) {
   const schema = '{"questions":[{"question":"...","options":["A","B","C","D"],"correct":0,"topic":"...","passage":"passage text or null","explanation":"2-3 sentences"}]}';
 
+  // Each batch requests 12 questions (buffer) — sliced to exactly 10 after validation
+  // Requesting 12 makes it very reliable to get >= 10 valid questions
+  // Passage-based batches (1-3): all questions in a batch share ONE passage → no mixing
   const batches = {
     1: `You are an NTA CUET English (101) question paper generator.
-Generate exactly 10 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
+Generate exactly 12 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
 JSON schema: ${schema}
-Topic distribution (MANDATORY — exactly these counts):
-- Reading Comprehension: 7 questions — write a factual passage (science/geography/history topic, exactly 250-300 words). All 7 questions use identical passage text.
-- Synonyms and Antonyms: 3 questions (passage = null)
+Topic distribution (MANDATORY):
+- Reading Comprehension: 8 questions — write ONE factual passage (science/geography/history, exactly 250-300 words). All 8 RC questions must use IDENTICAL passage text.
+- Synonyms and Antonyms: 4 questions (passage = null)
 Rules: correct is 0-indexed (0=A,1=B,2=C,3=D). Difficulty: challenging — NTA exam standard. Explanation: 2-3 sentences.
 Return ONLY the JSON object. Begin with { — nothing before it.`,
 
     2: `You are an NTA CUET English (101) question paper generator.
-Generate exactly 10 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
+Generate exactly 12 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
 JSON schema: ${schema}
-Topic distribution (MANDATORY — exactly these counts):
-- Reading Comprehension: 8 questions — write a narrative passage (story or biographical excerpt, exactly 250-300 words). All 8 questions use identical passage text.
-- Synonyms and Antonyms: 2 questions (passage = null)
-Rules: correct is 0-indexed (0=A,1=B,2=C,3=D). Difficulty: challenging — NTA exam standard. Explanation: 2-3 sentences.
-Return ONLY the JSON object. Begin with { — nothing before it.`,
-
-    3: `You are an NTA CUET English (101) question paper generator.
-Generate exactly 10 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
-JSON schema: ${schema}
-Topic distribution (MANDATORY — exactly these counts):
-- Reading Comprehension: 7 questions — write a literary/philosophical passage (critical or philosophical prose, exactly 250-300 words). All 7 questions use identical passage text.
+Topic distribution (MANDATORY):
+- Reading Comprehension: 9 questions — write ONE narrative passage (story or biographical excerpt, exactly 250-300 words). All 9 RC questions must use IDENTICAL passage text.
 - Synonyms and Antonyms: 3 questions (passage = null)
 Rules: correct is 0-indexed (0=A,1=B,2=C,3=D). Difficulty: challenging — NTA exam standard. Explanation: 2-3 sentences.
 Return ONLY the JSON object. Begin with { — nothing before it.`,
 
-    4: `You are an NTA CUET English (101) question paper generator.
-Generate exactly 10 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
+    3: `You are an NTA CUET English (101) question paper generator.
+Generate exactly 12 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
 JSON schema: ${schema}
-Topic distribution (MANDATORY — exactly these counts):
-- Sentence Rearrangement: 7 questions — jumbled P/Q/R/S sentences to be arranged in logical order (passage = null)
-- Grammar and Vocabulary: 2 questions — error spotting or usage (passage = null)
+Topic distribution (MANDATORY):
+- Reading Comprehension: 8 questions — write ONE literary/philosophical passage (critical prose, exactly 250-300 words). All 8 RC questions must use IDENTICAL passage text.
+- Synonyms and Antonyms: 4 questions (passage = null)
+Rules: correct is 0-indexed (0=A,1=B,2=C,3=D). Difficulty: challenging — NTA exam standard. Explanation: 2-3 sentences.
+Return ONLY the JSON object. Begin with { — nothing before it.`,
+
+    4: `You are an NTA CUET English (101) question paper generator.
+Generate exactly 12 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
+JSON schema: ${schema}
+Topic distribution (MANDATORY):
+- Sentence Rearrangement: 8 questions — jumbled P/Q/R/S format, arrange in logical order (passage = null)
+- Grammar and Vocabulary: 3 questions — error spotting or correct usage (passage = null)
 - Synonyms and Antonyms: 1 question (passage = null)
 Rules: correct is 0-indexed (0=A,1=B,2=C,3=D). Difficulty: challenging — NTA exam standard. Explanation: 2-3 sentences.
 Return ONLY the JSON object. Begin with { — nothing before it.`,
 
     5: `You are an NTA CUET English (101) question paper generator.
-Generate exactly 10 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
+Generate exactly 12 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
 JSON schema: ${schema}
-Topic distribution (MANDATORY — exactly these counts):
-- Choosing Correct Word: 7 questions — fill in the blank or cloze (passage = null)
-- Match the Following: 3 questions — word-meaning or phrase pairs (passage = null)
+Topic distribution (MANDATORY):
+- Choosing Correct Word: 8 questions — fill in the blank or cloze (passage = null)
+- Match the Following: 4 questions — word-meaning or phrase pairs (passage = null)
 Rules: correct is 0-indexed (0=A,1=B,2=C,3=D). Difficulty: challenging — NTA exam standard. Explanation: 2-3 sentences.
 Return ONLY the JSON object. Begin with { — nothing before it.`,
   };
@@ -227,16 +230,13 @@ async function generateQuestionSet(mode, apiKey) {
               const count = Array.isArray(raw) ? raw.length : 0;
               functions.logger.info("BATCH_RESULT", { batchNum: b, attempt: ba, count });
 
-              if (!Array.isArray(raw) || count < 8) {
-                // Below minimum acceptable — retry this batch
-                throw new Error(`BATCH_${b}_LOW:${count}/10`);
+              if (!Array.isArray(raw) || count < 10) {
+                // Need >= 10 to slice to exactly 10 — retry this batch alone
+                throw new Error(`BATCH_${b}_LOW:${count}/12`);
               }
-              // Accept 8-12 questions, slice or use as-is to target 10
+              // Slice to exactly 10 — drop the 2 buffer questions
               batchResult = raw.slice(0, 10);
-              // If we got less than 10 but >= 8, pad isn't possible — just use what we got
-              if (batchResult.length < 10) {
-                functions.logger.warn("BATCH_SHORT", { batchNum: b, count: batchResult.length });
-              }
+              functions.logger.info("BATCH_ACCEPTED", { batchNum: b, generated: count, used: 10 });
               break; // Batch succeeded
             } catch(e) {
               batchError = e;
