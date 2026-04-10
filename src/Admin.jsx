@@ -24,7 +24,9 @@ const db    = getFirestore(fbApp);
 const auth  = getAuth(fbApp);
 
 const CF_BASE     = import.meta.env.VITE_CLOUD_FUNCTION_BASE || "";
-const ADMIN_PASS  = import.meta.env.VITE_ADMIN_PASSWORD || "vantiq-admin-2026";
+const DEFAULT_PASS = import.meta.env.VITE_ADMIN_PASSWORD || "vantiq-admin-2026";
+// localStorage override — set from inside the dashboard, takes precedence over env var
+const ADMIN_PASS  = localStorage.getItem("vantiq_admin_pw") || DEFAULT_PASS;
 const ADMIN_KEY   = "vantiq-admin-2026";
 const CACHE_SIZE  = 60;
 
@@ -192,7 +194,8 @@ function PasswordGate({ onUnlock }) {
   const [err, setErr]   = useState("");
 
   function check() {
-    if (pass === ADMIN_PASS) { onUnlock(); }
+    const currentPass = localStorage.getItem("vantiq_admin_pw") || DEFAULT_PASS;
+    if (pass === currentPass) { onUnlock(); }
     else { setErr("Incorrect password."); }
   }
 
@@ -244,6 +247,51 @@ function CacheCard({ mode, data, onFill, filling }) {
         style={{ ...S.btn, ...(filling === mode ? S.btnMuted : S.btnSuccess), marginTop: 14, width: "100%", fontSize: 12 }}
       >
         {filling === mode ? "Filling..." : `Fill ${mode} Cache`}
+      </button>
+    </div>
+  );
+}
+
+// ── Change Password Component ─────────────────────────────────────────────────
+function ChangePassword() {
+  const [current,  setCurrent]  = useState("");
+  const [newPass,  setNewPass]  = useState("");
+  const [confirm,  setConfirm]  = useState("");
+  const [msg,      setMsg]      = useState(null);
+
+  function handleChange() {
+    setMsg(null);
+    const activePass = localStorage.getItem("vantiq_admin_pw") || DEFAULT_PASS;
+    if (current !== activePass)    { setMsg({ text: "Current password is incorrect.", type: "error" }); return; }
+    if (newPass.length < 8)        { setMsg({ text: "New password must be at least 8 characters.", type: "error" }); return; }
+    if (newPass !== confirm)       { setMsg({ text: "New passwords do not match.", type: "error" }); return; }
+    localStorage.setItem("vantiq_admin_pw", newPass);
+    setMsg({ text: "Password updated. Takes effect on next login.", type: "success" });
+    setCurrent(""); setNewPass(""); setConfirm("");
+  }
+
+  const inputStyle = {
+    width: "100%", padding: "10px 14px", border: "1px solid #E2E8F0",
+    borderRadius: 8, fontFamily: "'Sora', sans-serif", fontSize: 13,
+    marginBottom: 10, boxSizing: "border-box", outline: "none",
+  };
+
+  return (
+    <div style={{ ...S.card, maxWidth: 420 }}>
+      <p style={{ fontSize: 13, color: "#64748B", marginBottom: 16 }}>
+        Password is stored in this browser. Works immediately — no redeploy needed.
+      </p>
+      <input type="password" placeholder="Current password"     value={current}  onChange={e => setCurrent(e.target.value)}  style={inputStyle} />
+      <input type="password" placeholder="New password (min 8)" value={newPass}  onChange={e => setNewPass(e.target.value)}  style={inputStyle} />
+      <input type="password" placeholder="Confirm new password" value={confirm}  onChange={e => setConfirm(e.target.value)}  style={inputStyle}
+        onKeyDown={e => e.key === "Enter" && handleChange()} />
+      {msg && (
+        <p style={{ fontSize: 12, marginBottom: 10, color: msg.type === "error" ? "#DC2626" : "#059669", fontWeight: 600 }}>
+          {msg.type === "success" ? "✅" : "❌"} {msg.text}
+        </p>
+      )}
+      <button onClick={handleChange} style={{ ...S.btn, ...S.btnPrimary, width: "100%" }}>
+        Update Password
       </button>
     </div>
   );
@@ -498,6 +546,10 @@ export default function AdminDashboard() {
             </a>
           ))}
         </div>
+
+        {/* Change Password */}
+        <div style={S.sectionTitle}>Change Admin Password</div>
+        <ChangePassword />
 
         <div style={{ textAlign: "center", marginTop: 40, fontSize: 11, color: "#CBD5E1" }}>
           Vantiq CUET Admin · {new Date().getFullYear()} · Internal use only
