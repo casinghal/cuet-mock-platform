@@ -663,3 +663,30 @@ Return ONLY the JSON object. Begin with { — nothing before it.`;
       res.status(500).json({ error: "Could not generate insights. Try again." });
     }
   });
+
+// ─── 8. getCacheStatus ───────────────────────────────────────────────────────
+// Lightweight read-only status check — no generation, responds in < 2s
+exports.getCacheStatus = functions
+  .runWith({ timeoutSeconds: 10, memory: "128MB" })
+  .https.onRequest(async (req, res) => {
+    setCORS(res);
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+    const adminKey    = req.body?.adminKey || req.headers["x-admin-key"] || "";
+    const cfg         = functions.config();
+    const expectedKey = cfg.admin?.key || process.env.ADMIN_KEY || "";
+    if (!adminKey || adminKey !== expectedKey) {
+      res.status(403).json({ error: "Forbidden" }); return;
+    }
+    try {
+      const cutoff = new Date(Date.now() - CACHE_TTL_MS);
+      const status = {};
+      for (const mode of MODES) {
+        const snap  = await db.collection("questionCache").where("mode", "==", mode).get();
+        const fresh = snap.docs.filter(d => d.data().createdAt?.toDate() > cutoff);
+        status[mode] = { current: fresh.length, total: CACHE_SIZE, needed: Math.max(0, CACHE_SIZE - fresh.length) };
+      }
+      res.status(200).json({ status, checkedAt: new Date().toISOString() });
+    } catch(e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
