@@ -785,7 +785,8 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
               {Object.entries(MODES).map(([k, cfg]) => (
                 <div key={k} onClick={() => setMode(k)} style={{
                   border: `2px solid ${mode === k ? "var(--navy)" : "var(--border)"}`,
-                  borderRadius: 10, padding: "12px 18px", cursor: "pointer", minWidth: 160,
+                  borderRadius: 10, padding: "12px 18px", cursor: "pointer",
+                  flex: "1 1 140px",  // grow to fill, shrink to 140px — stacks naturally on mobile
                   background: mode === k ? "#EEF2FF" : "#fff",
                   boxShadow: mode === k ? "0 2px 8px rgba(67,56,202,.12)" : "none",
                   transition: "all .15s", position: "relative",
