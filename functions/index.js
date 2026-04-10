@@ -145,8 +145,8 @@ async function generateQuestionSet(mode, apiKey) {
   // Mock — batched parallel
   const { promptA, promptB } = buildMockPrompts();
   const [batchA, batchB] = [
-    await callAnthropic(promptA, 8000, apiKey),
-    await callAnthropic(promptB, 7000, apiKey),
+    await callAnthropic(promptA, 11000, apiKey),  // 35% buffer above 8000 actual need
+    await callAnthropic(promptB, 9500, apiKey),   // 35% buffer above 7000 actual need
   ];
   const questions = [...batchA, ...batchB];
   if (questions.length < 40) throw new Error(`INCOMPLETE_SET:${questions.length}`);
