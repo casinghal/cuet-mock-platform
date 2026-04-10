@@ -3,7 +3,7 @@
  * TWO-TIER ARCHITECTURE:
  *
  * TIER 1 — QuickPractice (FREE FOREVER)
- * - 50 questions, no timer, rotating question types (same count as Mock, accessible difficulty)
+ * - 15 questions, no timer, rotating question types
  * - Never counted toward freemium limit or daily limit
  * - Labelled "Always Free" — permanent hook to platform
  *
@@ -76,42 +76,29 @@ async function callAnthropic(prompt, maxTokens, apiKey) {
   return parsed.questions || parsed;
 }
 
-function buildQuickPracticePrompts() {
-  const promptA = `You are an NTA CUET English (101) question generator for a practice session.
-Generate exactly 28 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
+function buildPrompt(mode) {
+  if (mode === "QuickPractice") {
+    return `You are an NTA CUET English (101) question generator.
+Generate exactly 15 MCQ questions for a quick practice session. Return ONLY a JSON object — no markdown, no preamble.
 
 JSON schema:
-{"questions":[{"question":"...","options":["A","B","C","D"],"correct":0,"topic":"Reading Comprehension","passage":"full passage text or null","explanation":"2-3 sentences"}]}
+{"questions":[{"question":"...","options":["A","B","C","D"],"correct":0,"topic":"Reading Comprehension","passage":"short passage text or null","explanation":"1-2 sentences"}]}
 
-Topic distribution (MANDATORY):
-- Reading Comprehension: 15 questions across 2 passages (Passage 1: factual 200-250 words × 8q, Passage 2: narrative 200-250 words × 7q)
-- Synonyms and Antonyms: 9 questions (passage = null)
-- Sentence Rearrangement: 4 questions (passage = null)
-
-Rules: correct is 0-indexed. All questions sharing a passage must have identical passage text. Explanation: 2-3 sentences. Difficulty: accessible — suitable for CUET beginners.
-Return ONLY the JSON object. Begin with { — nothing before it.`;
-
-  const promptB = `You are an NTA CUET English (101) question generator for a practice session.
-Generate exactly 22 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
-
-JSON schema:
-{"questions":[{"question":"...","options":["A","B","C","D"],"correct":0,"topic":"Reading Comprehension","passage":"full passage text or null","explanation":"2-3 sentences"}]}
-
-Topic distribution (MANDATORY):
-- Reading Comprehension: 7 questions (Passage 3: literary/philosophical 200-250 words × 7q)
+Topic distribution (MANDATORY — exactly these counts):
+- Reading Comprehension: 5 questions (1 short passage, 120-150 words, factual or narrative)
+- Synonyms and Antonyms: 3 questions (passage = null)
 - Sentence Rearrangement: 3 questions (passage = null)
-- Choosing Correct Word: 7 questions (passage = null)
-- Match the Following: 3 questions (passage = null)
+- Choosing Correct Word: 2 questions (passage = null)
 - Grammar and Vocabulary: 2 questions (passage = null)
 
-Rules: correct is 0-indexed. All RC questions must share identical passage text. Explanation: 2-3 sentences. Difficulty: accessible — suitable for CUET beginners.
-Return ONLY the JSON object. Begin with { — nothing before it.`;
-
-  return { promptA, promptB };
-}
-
-function buildPrompt(mode) {
-  // Legacy — not used anymore, both modes use batched prompts
+Rules:
+1. correct is 0-indexed (0=A,1=B,2=C,3=D)
+2. All RC questions must share identical passage text
+3. Every question must have exactly 4 options
+4. Every question must have an explanation
+5. Difficulty: accessible — suitable for first-time platform visitors
+6. Return ONLY the JSON object. Begin with { — nothing before it.`;
+  }
   return null;
 }
 
@@ -151,11 +138,11 @@ Return ONLY the JSON object. Begin with { — nothing before it.`;
 
 // ── Quality Gate — validates every question before accepting the set ──────────
 function validateQuestionSet(questions, mode) {
-  const REQUIRED_COUNT = 50; // Exact 50 questions for ALL modes — zero tolerance
+  const REQUIRED_COUNT = mode === "Mock" ? 50 : 15; // Exact count — zero tolerance
   const errors = [];
 
   if (questions.length !== REQUIRED_COUNT) {
-    errors.push(`COUNT:${questions.length}/50 — must be exactly 50`);
+    errors.push(`COUNT:${questions.length}/${REQUIRED_COUNT} — must be exactly ${REQUIRED_COUNT}`);
   }
 
   questions.forEach((q, i) => {
@@ -195,15 +182,17 @@ async function generateQuestionSet(mode, apiKey) {
     try {
       let questions;
 
-      // Both modes now generate 50 questions using batched sequential calls
-      const { promptA, promptB } = mode === "QuickPractice"
-        ? buildQuickPracticePrompts()
-        : buildMockPrompts();
-      const [batchA, batchB] = [
-        await callAnthropic(promptA, 11000, apiKey),
-        await callAnthropic(promptB, 9500, apiKey),
-      ];
-      questions = [...batchA, ...batchB];
+      if (mode === "QuickPractice") {
+        const prompt = buildPrompt("QuickPractice");
+        questions = await callAnthropic(prompt, 5000, apiKey);
+      } else {
+        const { promptA, promptB } = buildMockPrompts();
+        const [batchA, batchB] = [
+          await callAnthropic(promptA, 11000, apiKey),
+          await callAnthropic(promptB, 9500, apiKey),
+        ];
+        questions = [...batchA, ...batchB];
+      }
 
       // ── Quality gate ────────────────────────────────────────────────────────
       const errors = validateQuestionSet(questions, mode);
@@ -356,13 +345,14 @@ exports.generateQuestions = functions
       const allSnap   = await db.collection("questionCache").where("mode", "==", mode).get();
       const usedSet   = new Set(usedSetIds);
       // Quality filter — reject any cached set with fewer than expected questions
+      const REQUIRED_Q = mode === "Mock" ? 50 : 15;
       const available = allSnap.docs.filter(d => {
         if (usedSet.has(d.id)) return false;
         if (d.data().createdAt?.toDate() <= cutoff) return false;
         const count = d.data().questionCount || (d.data().questions?.length ?? 0);
-        if (count !== 50) {
-          functions.logger.warn("CACHE_SET_SUBSTANDARD", { id: d.id, mode, count, required: 50 });
-          return false; // Skip any set that is not exactly 50 questions
+        if (count !== REQUIRED_Q) {
+          functions.logger.warn("CACHE_SET_SUBSTANDARD", { id: d.id, mode, count, required: REQUIRED_Q });
+          return false;
         }
         return true;
       });
