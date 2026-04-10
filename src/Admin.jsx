@@ -696,7 +696,12 @@ export default function AdminDashboard() {
         ].sort((a, b) => b.time - a.time).slice(0, 8);
 
         setLiveStats({ newToday, activeToday, active7d, dormant, paid, freeActive, testsToday: testsToday2, total: allUsers.length, recentActivity });
-      } catch(e) { console.warn("Live stats error:", e.message); }
+      } catch(e) {
+        console.warn("Live stats error:", e.message);
+        // Set safe empty state so UI shows 0s instead of "Loading live data..." forever
+        // This happens when Firestore indexes are still building (takes ~5 min after first deploy)
+        setLiveStats({ newToday: 0, activeToday: 0, active7d: 0, dormant: 0, paid: 0, freeActive: 0, testsToday: 0, total: 0, recentActivity: [], error: e.message });
+      }
 
       // ── Revenue ──────────────────────────────────────────────────────────
       const allPay    = await getDocs(collection(db, "payments"));
@@ -1107,6 +1112,13 @@ export default function AdminDashboard() {
 
         {liveStats ? (
           <>
+            {/* Index-building notice — shown when Firestore indexes are still initialising */}
+            {liveStats.error && (
+              <div style={{ background: "#FEF3C7", border: "1px solid #FDE68A", borderRadius: 8, padding: "10px 14px", marginBottom: 10, fontSize: 12, color: "#92400E" }}>
+                ⏳ Live stats are initialising — Firestore indexes may still be building (takes ~5 min after first deploy). Refresh in a moment.
+                <span style={{ display: "block", fontSize: 10, color: "#B45309", marginTop: 3, fontFamily: "monospace" }}>{liveStats.error}</span>
+              </div>
+            )}
             {/* 4-metric KPI strip */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 10 }}>
               {[
