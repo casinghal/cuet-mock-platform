@@ -25,12 +25,15 @@ jobs:
         run: |
           echo "Triggering cache warm at $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 
+          # triggerCacheWarm is a synchronous 8-minute function — it responds only after
+          # all sets are generated. --max-time 30 was timing out before any response.
+          # 570 = 540s CF timeout + 30s buffer — wait for the full function response.
           response=$(curl -s -w "\n%{http_code}" -X POST \
             https://us-central1-vantiq-cuet.cloudfunctions.net/triggerCacheWarm \
             -H "x-admin-key: ${{ secrets.CACHE_ADMIN_KEY }}" \
             -H "Content-Type: application/json" \
             -d "{}" \
-            --max-time 30)
+            --max-time 570)
 
           http_code=$(echo "$response" | tail -1)
           body=$(echo "$response" | head -n -1)
@@ -74,7 +77,7 @@ jobs:
             -H "x-admin-key: ${{ secrets.CACHE_ADMIN_KEY }}" \
             -H "Content-Type: application/json" \
             -d "{}" \
-            --max-time 30)
+            --max-time 570)
 
           http_code=$(echo "$response" | tail -1)
           body=$(echo "$response" | head -n -1)
