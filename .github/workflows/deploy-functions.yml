@@ -6,6 +6,9 @@ on:
       - main
     paths:
       - 'functions/**'
+      - 'firestore.rules'
+      - 'firestore.indexes.json'
+      - 'firebase.json'
 
 jobs:
   deploy:
