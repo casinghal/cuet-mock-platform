@@ -36,5 +36,18 @@ service cloud.firestore {
       allow read:  if isAdmin();
       allow write: if false;
     }
+
+    // Feedback: any logged-in user can submit; admin can read all
+    match /feedback/{docId} {
+      allow create: if request.auth != null;
+      allow read:   if isAdmin();
+    }
+
+    // Ratings: user can create/update own rating; admin can read all
+    match /ratings/{docId} {
+      allow create: if request.auth != null;
+      allow update: if request.auth != null && resource.data.uid == request.auth.uid;
+      allow read:   if isAdmin();
+    }
   }
 }

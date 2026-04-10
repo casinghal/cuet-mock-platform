@@ -1295,6 +1295,188 @@ async function generateQuestions(config, uid) {
   throw new Error("Cloud Function URL not configured. Set VITE_CLOUD_FUNCTION_BASE in environment variables.");
 }
 
+
+// ── Feedback Button & Modal ───────────────────────────────────────────────────
+function FeedbackWidget({ user }) {
+  const [open,    setOpen]    = useState(false);
+  const [text,    setText]    = useState("");
+  const [sending, setSending] = useState(false);
+  const [sent,    setSent]    = useState(false);
+
+  async function handleSubmit() {
+    if (!text.trim()) return;
+    setSending(true);
+    try {
+      await addDoc(collection(db, "feedback"), {
+        uid:       user?.uid || "anonymous",
+        email:     user?.email || "",
+        text:      text.trim(),
+        createdAt: serverTimestamp(),
+        page:      window.location.pathname,
+      });
+      setSent(true);
+      setText("");
+      setTimeout(() => { setSent(false); setOpen(false); }, 2000);
+    } catch(e) {
+      console.warn("Feedback submit failed:", e.message);
+    }
+    setSending(false);
+  }
+
+  return (
+    <>
+      {/* Floating feedback button */}
+      <button
+        onClick={() => setOpen(true)}
+        style={{
+          position: "fixed", bottom: 24, right: 24, zIndex: 999,
+          background: "#0F2747", color: "#fff",
+          border: "none", borderRadius: 28, padding: "10px 18px",
+          fontSize: 13, fontWeight: 600, fontFamily: "var(--font-body)",
+          cursor: "pointer", boxShadow: "0 4px 16px rgba(15,39,71,.35)",
+          display: "flex", alignItems: "center", gap: 7,
+          transition: "transform .15s, box-shadow .15s",
+        }}
+        onMouseOver={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 6px 20px rgba(15,39,71,.45)"; }}
+        onMouseOut={e => { e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.boxShadow = "0 4px 16px rgba(15,39,71,.35)"; }}
+      >
+        <span style={{ fontSize: 16 }}>💬</span> Feedback
+      </button>
+
+      {/* Feedback modal */}
+      {open && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", zIndex: 1000, display: "flex", alignItems: "flex-end", justifyContent: "flex-end", padding: "0 24px 80px" }}
+          onClick={() => setOpen(false)}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: 340, boxShadow: "0 8px 32px rgba(0,0,0,.2)" }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <h3 style={{ fontFamily: "var(--font-body)", fontSize: 16, fontWeight: 700, color: "#0F2747", margin: 0 }}>
+                Feedback / Query
+              </h3>
+              <button onClick={() => setOpen(false)} style={{ background: "none", border: "none", fontSize: 18, cursor: "pointer", color: "#94A3B8", padding: 0 }}>✕</button>
+            </div>
+            <p style={{ fontSize: 12, color: "#64748B", marginBottom: 12 }}>
+              Report an issue, suggest a feature, or ask a question. We read every message.
+            </p>
+            {sent ? (
+              <div style={{ textAlign: "center", padding: "20px 0", color: "#059669", fontWeight: 600, fontSize: 14 }}>
+                ✅ Thank you! Your feedback has been submitted.
+              </div>
+            ) : (
+              <>
+                <textarea
+                  value={text}
+                  onChange={e => setText(e.target.value)}
+                  placeholder="Describe your issue, query, or suggestion..."
+                  rows={5}
+                  style={{
+                    width: "100%", padding: "10px 12px", border: "1px solid #E2E8F0",
+                    borderRadius: 8, fontFamily: "var(--font-body)", fontSize: 13,
+                    resize: "vertical", outline: "none", boxSizing: "border-box",
+                    color: "#1E293B", lineHeight: 1.6,
+                  }}
+                  autoFocus
+                />
+                <button
+                  onClick={handleSubmit}
+                  disabled={sending || !text.trim()}
+                  style={{
+                    marginTop: 12, width: "100%", padding: "11px 0",
+                    background: !text.trim() ? "#E2E8F0" : "#0F2747",
+                    color: !text.trim() ? "#94A3B8" : "#fff",
+                    border: "none", borderRadius: 8, fontFamily: "var(--font-body)",
+                    fontSize: 14, fontWeight: 600, cursor: !text.trim() ? "not-allowed" : "pointer",
+                    transition: "all .15s",
+                  }}
+                >
+                  {sending ? "Submitting..." : "Submit Feedback"}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ── Star Rating Modal ─────────────────────────────────────────────────────────
+function StarRatingModal({ user, onDismiss }) {
+  const [rating,      setRating]      = useState(0);
+  const [hovering,    setHovering]    = useState(0);
+  const [submitting,  setSubmitting]  = useState(false);
+  const [submitted,   setSubmitted]   = useState(false);
+
+  async function handleRate(stars) {
+    setRating(stars);
+    setSubmitting(true);
+    try {
+      await addDoc(collection(db, "ratings"), {
+        uid:       user?.uid,
+        email:     user?.email || "",
+        stars,
+        createdAt: serverTimestamp(),
+      });
+    } catch(e) { console.warn("Rating submit failed:", e.message); }
+    setSubmitting(false);
+    setSubmitted(true);
+    setTimeout(onDismiss, 1800);
+  }
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.35)", zIndex: 998, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ background: "#fff", borderRadius: 20, padding: "32px 36px", width: 320, textAlign: "center", boxShadow: "0 12px 40px rgba(0,0,0,.18)", position: "relative" }}>
+        {/* Skip button — faded, top-right */}
+        <button
+          onClick={onDismiss}
+          style={{ position: "absolute", top: 14, right: 16, background: "none", border: "none", fontSize: 12, color: "#CBD5E1", cursor: "pointer", fontFamily: "var(--font-body)" }}
+        >
+          Skip
+        </button>
+
+        {submitted ? (
+          <>
+            <div style={{ fontSize: 36, marginBottom: 8 }}>🙏</div>
+            <p style={{ fontSize: 15, fontWeight: 600, color: "#0F2747" }}>Thank you!</p>
+            <p style={{ fontSize: 13, color: "#64748B" }}>Your rating helps us improve.</p>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize: 28, marginBottom: 6 }}>⭐</div>
+            <h3 style={{ fontFamily: "var(--font-body)", fontSize: 16, fontWeight: 700, color: "#0F2747", marginBottom: 6 }}>
+              How are we doing?
+            </h3>
+            <p style={{ fontSize: 12, color: "#64748B", marginBottom: 20 }}>
+              Rate your experience on Vantiq CUET
+            </p>
+            <div style={{ display: "flex", gap: 8, justifyContent: "center", marginBottom: 8 }}>
+              {[1, 2, 3, 4, 5].map(s => (
+                <button
+                  key={s}
+                  onClick={() => handleRate(s)}
+                  onMouseOver={() => setHovering(s)}
+                  onMouseOut={() => setHovering(0)}
+                  disabled={submitting}
+                  style={{
+                    fontSize: 32, background: "none", border: "none",
+                    cursor: "pointer", padding: "2px 4px",
+                    transform: (hovering >= s || rating >= s) ? "scale(1.2)" : "scale(1)",
+                    transition: "transform .1s",
+                    filter: (hovering >= s || rating >= s) ? "none" : "grayscale(1) opacity(0.4)",
+                  }}
+                >
+                  ⭐
+                </button>
+              ))}
+            </div>
+            <p style={{ fontSize: 11, color: "#CBD5E1" }}>Tap a star to rate</p>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── ROOT APP ──────────────────────────────────────────────────────────────────
 export default function App() {
   const [screen,      setScreen]     = useState("auth");
@@ -1306,6 +1488,7 @@ export default function App() {
   const [answers,     setAnswers]    = useState({});
   const [toast,       setToast]      = useState(null);
   const [authLoading, setAuthLoad]   = useState(true);
+  const [showRating,  setShowRating] = useState(false);
 
   const showToast = (message, type = "info") => setToast({ message, type, key: Date.now() });
 
@@ -1324,8 +1507,8 @@ export default function App() {
     // If Firebase not configured — go straight to auth screen (localStorage-only mode)
     if (!auth) { setAuthLoad(false); setScreen("auth"); return; }
     return onAuthStateChanged(auth, async u => {
-      if (u) { setUser(u); await loadUserData(u); setScreen("dashboard"); }
-      else { setUser(null); setUserData(null); setHistory([]); setScreen("auth"); }
+      if (u) { setUser(u); await loadUserData(u); setScreen("dashboard"); setShowRating(true); }
+      else { setUser(null); setUserData(null); setHistory([]); setScreen("auth"); setShowRating(false); }
       setAuthLoad(false);
     });
   }, []);
@@ -1395,6 +1578,12 @@ export default function App() {
       {screen === "generating" && <GeneratingScreen config={testConfig} />}
       {screen === "exam"       && <ExamScreen      questions={questions} config={testConfig} user={user} onSubmit={handleSubmitTest} showToast={showToast} />}
       {screen === "results"    && <ResultsScreen   questions={questions} answers={answers} config={testConfig} user={user} onNewTest={() => setScreen("dashboard")} onReview={() => setScreen("review")} />}
+      {/* Feedback button — always visible when logged in */}
+      {user && screen !== "auth" && <FeedbackWidget user={user} />}
+      {/* Star rating — shown once per login session */}
+      {user && showRating && screen === "dashboard" && (
+        <StarRatingModal user={user} onDismiss={() => setShowRating(false)} />
+      )}
       {screen === "review"     && <ReviewScreen    questions={questions} answers={answers} onBack={() => setScreen("results")} />}
     </React.Fragment>
   );
