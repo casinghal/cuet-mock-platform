@@ -319,6 +319,13 @@ export default function AdminDashboard() {
   const loadData = useCallback(async () => {
     setLoading(true);
     addLog("Loading dashboard data...");
+    // Wait for auth — Firestore rules require authentication
+    const user = auth.currentUser;
+    if (!user) {
+      addLog("Not authenticated — sign in to view stats", "error");
+      setLoading(false);
+      return;
+    }
     try {
       // ── User stats ───────────────────────────────────────────────────────
       const usersSnap  = await getCountFromServer(collection(db, "users"));
@@ -376,11 +383,10 @@ export default function AdminDashboard() {
     setFilling(mode);
     addLog(`Starting ${mode} cache fill...`);
     try {
-      const token = await auth.currentUser?.getIdToken();
       const res = await fetch(`${CF_BASE}/triggerCacheWarm`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-admin-key": ADMIN_KEY },
-        body: JSON.stringify({ mode }),
+        body: JSON.stringify({ mode, adminKey: ADMIN_KEY }),
       });
       const d = await res.json();
       if (d.message) {

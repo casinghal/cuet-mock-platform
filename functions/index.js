@@ -160,7 +160,7 @@ exports.triggerCacheWarm = functions
     setCORS(res);
     if (req.method === "OPTIONS") { res.status(204).send(""); return; }
     try {
-      const adminKey    = req.headers["x-admin-key"] || "";
+      const adminKey    = req.headers["x-admin-key"] || req.body?.adminKey || "";
       const cfg         = functions.config();
       const expectedKey = cfg.admin?.key || process.env.ADMIN_KEY || "";
       if (!adminKey || adminKey !== expectedKey) {
