@@ -320,8 +320,8 @@ function AuthScreen({ onLogin, showToast }) {
   ];
 
   const features = [
-    { icon: "✨", title: "Lifetime Free Practice",  desc: "Quick Practice is free forever. 15 questions, every day, no limits. No card needed, ever." },
-    { icon: "⚡", title: "Instant Topic Analytics", desc: "Know your weak spots the moment you submit — sorted weakest first, so you fix what matters." },
+    { icon: "✨", title: "Lifetime Free Mock Papers", desc: "15-question practice papers — free forever, no card needed, no limits. Test yourself daily." },
+    { icon: "⚡", title: "Instant Weak Area Report",  desc: "Know your weak topics the moment you submit — sorted weakest first. You decide how to fix them." },
     { icon: "✅", title: "Exact NTA Pattern",        desc: "+5 correct, −1 wrong. Same interface, same marking, same pressure as the real exam." },
   ];
 
@@ -551,13 +551,13 @@ function AuthScreen({ onLogin, showToast }) {
           </div>
 
           <h1 style={S.h1}>
-            Start Your CUET 2026
-            <span style={S.h1accent}>Preparation — Free</span>
+            Practice CUET 2026 Mock Tests
+            <span style={S.h1accent}>— Free to Start</span>
           </h1>
 
           <p style={S.subtext}>
-            NTA-pattern English (101) mock tests — free to start, no card needed.
-            Know exactly where you stand before exam day.
+            NTA-standard mock test papers for CUET English (101) — not coaching, not notes.
+            Just real exam simulation so you know exactly where you stand.
           </p>
 
           {/* Social proof */}
@@ -604,17 +604,17 @@ function AuthScreen({ onLogin, showToast }) {
 
         {/* ── Right: Auth Card ── */}
         <div style={S.authCard}>
-          <h2 style={S.authHeading}>Start Preparing — Free</h2>
+          <h2 style={S.authHeading}>Try a Free Mock Test Now</h2>
           <p style={S.authSub}>
-            No credit card. No catch. Start right now.
+            No coaching. No content. Just the real exam — simulated.
           </p>
 
           {/* Free trial badge */}
           <div style={S.trialBadge}>
             <span style={S.trialIcon}>&#127381;</span>
             <div style={S.trialText}>
-              <span style={S.trialStrong}>Lifetime free Quick Practice.</span>{" "}
-              Plus 4 full Mock Exams free — then ₹199 for unlimited access till 30 June.
+              <span style={S.trialStrong}>4 full Mock Exams free.</span>{" "}
+              Quick Practice free forever. Unlimited Mock Exams at ₹199 till 30 June.
             </div>
           </div>
 
@@ -632,7 +632,7 @@ function AuthScreen({ onLogin, showToast }) {
 
           {/* Hook line */}
           <p style={{ fontSize: 14, color: "rgba(255,255,255,0.55)", lineHeight: 1.6, marginBottom: 20, textAlign: "center" }}>
-            Find your weak topics before the exam finds them for you.
+            Know your score. Know your gaps. Walk into exam day prepared.
           </p>
 
           {/* Error */}
