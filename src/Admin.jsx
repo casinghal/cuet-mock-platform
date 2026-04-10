@@ -523,6 +523,8 @@ export default function AdminDashboard() {
   const [recentPay,   setRecentPay]   = useState([]);
   const [feedback,    setFeedback]    = useState([]);
   const [ratings,     setRatings]     = useState([]);
+  const [insights,    setInsights]    = useState(null);
+  const [insightLoad, setInsightLoad] = useState(false);
   const [logs,        setLogs]        = useState([]);
   const [filling,     setFilling]     = useState(null);
   const [lastRefresh, setLastRefresh] = useState(null);
@@ -647,6 +649,25 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (unlocked) loadData();
   }, [unlocked, loadData]);
+
+  async function generateInsights() {
+    setInsightLoad(true);
+    addLog("Generating feedback insights...");
+    try {
+      const r = await fetch(`${CF_BASE}/generateFeedbackInsights`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adminKey: ADMIN_KEY }),
+      });
+      const d = await r.json();
+      if (d.error) throw new Error(d.error);
+      setInsights(d);
+      addLog(`Insights generated from ${feedback.length} feedback submissions`, "success");
+    } catch(e) {
+      addLog(`Insights error: ${e.message}`, "error");
+    }
+    setInsightLoad(false);
+  }
 
   async function fillCache(mode) {
     setFilling(mode);
@@ -819,6 +840,74 @@ export default function AdminDashboard() {
           </div>
         </div>
 
+
+        {/* ── Feedback Insights ──────────────────────────────────────────── */}
+        <div style={S.sectionTitle}>Feedback Insights</div>
+        <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, padding: "16px 20px", marginBottom: 24 }}>
+          {!insights ? (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: "#0F2747" }}>Synthesized Insights</div>
+                <div style={{ fontSize: 12, color: "#94A3B8", marginTop: 2 }}>
+                  {feedback.length === 0
+                    ? "No feedback yet — insights will appear once users submit feedback."
+                    : `Analyse ${feedback.length} feedback submission${feedback.length !== 1 ? "s" : ""} with Claude to surface top 3 actionable improvements.`}
+                </div>
+              </div>
+              <button
+                onClick={generateInsights}
+                disabled={insightLoad || feedback.length === 0}
+                style={{
+                  padding: "9px 18px", background: feedback.length === 0 ? "#E2E8F0" : "#4338CA",
+                  color: feedback.length === 0 ? "#94A3B8" : "#fff",
+                  border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600,
+                  cursor: feedback.length === 0 ? "not-allowed" : "pointer", whiteSpace: "nowrap",
+                }}
+              >
+                {insightLoad ? "Analysing..." : "✦ Generate Insights"}
+              </button>
+            </div>
+          ) : (
+            <div>
+              {/* Overall summary */}
+              {insights.summary && (
+                <div style={{ background: "#F8FAFC", borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#334155", lineHeight: 1.6, borderLeft: "3px solid #4338CA" }}>
+                  {insights.summary}
+                </div>
+              )}
+              {/* Top 3 insight cards */}
+              {(insights.insights || []).map((ins, i) => (
+                <div key={i} style={{
+                  border: "1px solid #E2E8F0", borderRadius: 10, padding: "14px 16px",
+                  marginBottom: i < 2 ? 10 : 0,
+                  borderLeft: `4px solid ${["#DC2626","#D97706","#059669"][i]}`,
+                }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: ["#DC2626","#D97706","#059669"][i], background: ["#FEF2F2","#FEF3C7","#ECFDF5"][i], borderRadius: 6, padding: "2px 8px" }}>
+                        #{ins.rank}
+                      </span>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: "#0F2747" }}>{ins.title}</span>
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                      <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 10, background: "#F1F5F9", color: "#64748B" }}>{ins.tone}</span>
+                      <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 10, background: "#F1F5F9", color: "#64748B" }}>{ins.frequency}</span>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 12, color: "#64748B", marginBottom: 6 }}><strong>Signal:</strong> {ins.signal}</div>
+                  <div style={{ fontSize: 13, color: "#0F2747", background: "#F8FAFC", borderRadius: 6, padding: "8px 10px" }}>
+                    <strong>Action:</strong> {ins.action}
+                  </div>
+                </div>
+              ))}
+              <div style={{ textAlign: "right", marginTop: 10 }}>
+                <button onClick={() => setInsights(null)} style={{ background: "none", border: "none", fontSize: 11, color: "#94A3B8", cursor: "pointer" }}>
+                  Regenerate ↺
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* ── User Feedback & Ratings ─────────────────────────────────────── */}
         <div style={S.sectionTitle}>

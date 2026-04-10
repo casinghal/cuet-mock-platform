@@ -574,3 +574,92 @@ exports.razorpayWebhook = functions.runWith({ timeoutSeconds: 30, memory: "128MB
   }
   res.status(200).json({ status: "ok" });
 });
+
+// ─── 7. generateFeedbackInsights ────────────────────────────────────────────
+// Reads all feedback from Firestore, sends to Claude, returns top 3 actionable insights
+exports.generateFeedbackInsights = functions
+  .runWith({ timeoutSeconds: 60, memory: "256MB" })
+  .https.onRequest(async (req, res) => {
+    setCORS(res);
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+
+    const adminKey    = req.body?.adminKey || req.headers["x-admin-key"] || "";
+    const cfg         = functions.config();
+    const expectedKey = cfg.admin?.key || process.env.ADMIN_KEY || "";
+
+    if (!adminKey || adminKey !== expectedKey) {
+      res.status(403).json({ error: "Forbidden" }); return;
+    }
+
+    const KEY = cfg.anthropic?.api_key || process.env.ANTHROPIC_API_KEY;
+    if (!KEY) { res.status(500).json({ error: "API key not configured" }); return; }
+
+    try {
+      // Fetch all feedback from Firestore
+      const snap = await db.collection("feedback").orderBy("createdAt", "desc").limit(100).get();
+
+      if (snap.empty) {
+        res.status(200).json({ insights: [], message: "No feedback yet — insights will appear once users submit feedback." });
+        return;
+      }
+
+      // Build feedback list for prompt
+      const feedbackList = snap.docs.map((d, i) => {
+        const data = d.data();
+        const date = data.createdAt?.toDate?.()?.toLocaleDateString("en-IN") || "unknown date";
+        return `[${i + 1}] ${data.email || "anonymous"} (${date}): ${data.text}`;
+      }).join("\n");
+
+      const prompt = `You are a product improvement analyst for Vantiq CUET — an NTA-standard mock test platform for Indian 12th-grade students preparing for CUET 2026 (English subject).
+
+Here is ALL user feedback submitted so far:
+
+${feedbackList}
+
+Analyze this feedback and return ONLY a JSON object with exactly 3 actionable insights. Each insight must:
+- Be grounded in what multiple users are pointing to (or a critical single-user signal)
+- Name the specific problem area
+- Give one concrete fix the product team can implement
+- Note the tone (frustrated / confused / positive / neutral)
+
+JSON schema (return ONLY this, no markdown, no preamble):
+{
+  "insights": [
+    {
+      "rank": 1,
+      "title": "Short title (5-7 words)",
+      "theme": "What users are pointing to",
+      "signal": "Specific quotes or patterns from the feedback",
+      "action": "One concrete thing to fix or improve",
+      "tone": "frustrated | confused | positive | mixed",
+      "frequency": "X of Y users mention this"
+    }
+  ],
+  "summary": "One sentence overall assessment of where the platform stands based on feedback",
+  "generatedAt": "${new Date().toISOString()}"
+}
+
+Return ONLY the JSON object. Begin with { — nothing before it.`;
+
+      const r = await axios.post(
+        "https://api.anthropic.com/v1/messages",
+        {
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 1500,
+          messages: [{ role: "user", content: prompt }],
+        },
+        {
+          headers: { "Content-Type": "application/json", "x-api-key": KEY, "anthropic-version": "2023-06-01" },
+          timeout: 50000,
+        }
+      );
+
+      const result = extractJSON(r.data?.content?.[0]?.text || "");
+      functions.logger.info("INSIGHTS_GENERATED", { count: result?.insights?.length });
+      res.status(200).json(result);
+
+    } catch (e) {
+      functions.logger.error("INSIGHTS_FAILED", { error: e.message });
+      res.status(500).json({ error: "Could not generate insights. Try again." });
+    }
+  });
