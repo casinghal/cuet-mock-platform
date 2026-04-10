@@ -412,12 +412,13 @@ function ResetUserLimit({ addLog }) {
         setLoading(false); return;
       }
       const userDoc = snap.docs[0];
-      const { updateDoc, doc } = await import("firebase/firestore");
-      await updateDoc(doc(db, "users", userDoc.id), {
+      const { setDoc, doc } = await import("firebase/firestore");
+      // Use setDoc with merge:true — works even if user doc doesn't exist yet
+      await setDoc(doc(db, "users", userDoc.id), {
         testsUsed: 0,
         unlocked: false,
         dailyTests: {},
-      });
+      }, { merge: true });
       addLog(`Reset free limit for ${email} — testsUsed set to 0`, "success");
       setResult({ text: `✅ Free limit reset for ${email}. They now have 4 free Mock Exams again.`, type: "success" });
       setEmail("");

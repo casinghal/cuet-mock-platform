@@ -295,7 +295,8 @@ function AuthScreen({ onLogin, showToast }) {
     if (!snap.exists()) {
       await setDoc(ref, {
         uid: user.uid, email: user.email, displayName: user.displayName,
-        photoURL: user.photoURL, testsUsed: 0, unlocked: false, createdAt: serverTimestamp(),
+        photoURL: user.photoURL, testsUsed: 0, createdAt: serverTimestamp(),
+        // unlocked intentionally omitted — only CF admin SDK can set this field
       });
     }
   }
