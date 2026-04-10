@@ -377,21 +377,22 @@ exports.generateQuestions = functions
     const today     = todayIST();
 
     // Only increment counters for Mock (not QuickPractice)
+    // Use set() with merge:true — works even if user doc doesn't exist yet
     try {
       if (mode === "QuickPractice") {
-        await db.collection("users").doc(uid).update({
+        await db.collection("users").doc(uid).set({
           lastTestAt: admin.firestore.FieldValue.serverTimestamp(),
           usedCacheSetIds: admin.firestore.FieldValue.arrayUnion(setId),
-        });
+        }, { merge: true });
       } else {
-        await db.collection("users").doc(uid).update({
+        await db.collection("users").doc(uid).set({
           testsUsed: admin.firestore.FieldValue.increment(1),
           lastTestAt: admin.firestore.FieldValue.serverTimestamp(),
           usedCacheSetIds: admin.firestore.FieldValue.arrayUnion(setId),
           [`dailyTests.${today}`]: admin.firestore.FieldValue.increment(1),
-        });
+        }, { merge: true });
       }
-    } catch (e) { functions.logger.error("COUNTER_UPDATE_FAIL", { uid }); }
+    } catch (e) { functions.logger.error("COUNTER_UPDATE_FAIL", { uid, error: e.message }); }
 
     functions.logger.info("GENERATION_COMPLETE", { uid, mode, setId, source: "cache", questionCount: questions.length, durationMs: Date.now() - startTime });
     res.status(200).json({ questions });

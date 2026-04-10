@@ -407,8 +407,11 @@ function ResetUserLimit({ addLog }) {
         const ud = await getDoc(docRef2(db, "users", auth.currentUser.uid));
         if (ud.exists()) snap = { docs: [{ id: auth.currentUser.uid, data: () => ud.data() }], empty: false };
       }
+      // Last resort: create a fresh user doc for this email using CF lookup
       if (!snap.docs?.length) {
-        setResult({ text: `No user found for: ${email}. Check spelling or try exact registered email.`, type: "error" });
+        // If signed in as admin (different account), can't auto-lookup by UID
+        // Ask student to sign out + in once to create their doc, then retry
+        setResult({ text: `Account not found for ${email}. Ask the student to sign out and sign back in once — their account will be created automatically. Then try Reset Limit again.`, type: "error" });
         setLoading(false); return;
       }
       const userDoc = snap.docs[0];
