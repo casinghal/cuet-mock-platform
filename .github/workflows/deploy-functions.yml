@@ -43,3 +43,12 @@ jobs:
             --non-interactive
         env:
           GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa_key.json
+
+      - name: Deploy Firestore Rules and Indexes
+        run: |
+          firebase deploy \
+            --only firestore:rules,firestore:indexes \
+            --project vantiq-cuet \
+            --non-interactive
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/sa_key.json

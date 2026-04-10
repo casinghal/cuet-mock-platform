@@ -119,12 +119,18 @@ jobs:
           echo "  Next scheduled run will continue filling."
           echo "  To manually force-fill: trigger this workflow from GitHub Actions tab."
           echo "========================================"
-          # Critical alert only if Mock cache is below 20% (24 sets)
+          # Critical alert if either mode is below 20% of target
+          # Mock: 20% of 120 = 24 | QuickPractice: 20% of 200 = 40
+          CRITICAL=0
           if [ "$MOCK_NOW" -lt 24 ] 2>/dev/null; then
-            echo "CRITICAL: Mock cache below 20% after max loops. Manual fill required."
-            exit 1
+            echo "CRITICAL: Mock cache below 20% (${MOCK_NOW}/120). Manual fill required."
+            CRITICAL=1
           fi
-          exit 0
+          if [ "$QP_NOW" -lt 40 ] 2>/dev/null; then
+            echo "CRITICAL: QuickPractice cache below 20% (${QP_NOW}/200). Manual fill required."
+            CRITICAL=1
+          fi
+          exit $CRITICAL
 
   summary:
     name: Run Summary

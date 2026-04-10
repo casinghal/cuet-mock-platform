@@ -1668,7 +1668,7 @@ export default function App() {
       {/* Feedback button — always visible when logged in */}
       {user && screen !== "auth" && screen !== "exam" && <FeedbackWidget user={user} />}
       {/* Star rating — shown once per login session */}
-      {user && showRating && screen === "dashboard" && (
+      {user && showRating && (screen === "results" || screen === "dashboard") && (
         <StarRatingModal user={user} onDismiss={() => setShowRating(false)} />
       )}
       {screen === "review"     && <ReviewScreen    questions={questions} answers={answers} onBack={() => setScreen("results")} />}

@@ -24,7 +24,9 @@ const db    = getFirestore(fbApp);
 const auth  = getAuth(fbApp);
 
 const CF_BASE     = import.meta.env.VITE_CLOUD_FUNCTION_BASE || "";
-const DEFAULT_PASS = import.meta.env.VITE_ADMIN_PASSWORD || "vantiq-admin-2026";
+// Admin password loaded from env var — no hardcoded fallback
+// Set VITE_ADMIN_PASSWORD in Netlify env vars. If not set, dashboard is inaccessible.
+const DEFAULT_PASS = import.meta.env.VITE_ADMIN_PASSWORD || "";
 // localStorage override — set from inside the dashboard, takes precedence over env var
 const ADMIN_PASS  = localStorage.getItem("vantiq_admin_pw") || DEFAULT_PASS;
 // Admin key loaded from env var — NEVER hardcode. Set VITE_ADMIN_KEY in Netlify env vars.
@@ -629,7 +631,7 @@ export default function AdminDashboard() {
       for (const mode of ["Mock", "QuickPractice"]) {
         const snap  = await getDocs(query(collection(db, "questionCache"), where("mode", "==", mode)));
         const fresh = snap.docs.filter(d => d.data().createdAt?.toDate() > cutoff);
-        cacheData[mode] = { current: fresh.length, needed: Math.max(0, CACHE_SIZE - fresh.length) };
+        cacheData[mode] = { current: fresh.length, total: CACHE_CONFIG[mode]?.size || CACHE_SIZE, needed: Math.max(0, (CACHE_CONFIG[mode]?.size || CACHE_SIZE) - fresh.length) };
       }
       setCache(cacheData);
 
@@ -860,7 +862,8 @@ export default function AdminDashboard() {
       const d = await res.json();
       if (d.message) {
         const currentCount = d.status?.[mode]?.current ?? (cache[mode]?.current || 0);
-        addLog(`${mode} fill started — ${currentCount}/60 sets currently. Generating in background...`, "success");
+        const modeTarget = CACHE_CONFIG[mode]?.size || CACHE_SIZE;
+        addLog(`${mode} fill started — ${currentCount}/${modeTarget} sets. Generating in background...`, "success");
         // Start polling getCacheStatus every 15s to show live progress
         startFillPolling(mode, currentCount);
       } else {
@@ -1198,7 +1201,8 @@ export default function AdminDashboard() {
           const secs     = elapsed % 60;
           const added    = fillProgress.count - fillProgress.initialCount;
           const isActive = fillProgress.active;
-          const needed   = Math.max(0, 60 - fillProgress.count);
+          const modeTgt  = (CACHE_CONFIG[fillProgress.mode]?.size || CACHE_SIZE);
+          const needed   = Math.max(0, modeTgt - fillProgress.count);
           return (
             <div style={{
               display: "flex", alignItems: "center", gap: 10,
@@ -1226,7 +1230,7 @@ export default function AdminDashboard() {
                     <strong>{fillProgress.mode}</strong> cache generating
                     &nbsp;·&nbsp;
                     <span style={{ fontFamily: "var(--font-mono, monospace)" }}>
-                      {fillProgress.count}/60
+                      {fillProgress.count}/{modeTgt}
                     </span>
                     &nbsp;sets
                     &nbsp;·&nbsp;
@@ -1245,7 +1249,7 @@ export default function AdminDashboard() {
                     <strong>{fillProgress.mode}</strong> run complete
                     &nbsp;·&nbsp;
                     <span style={{ fontFamily: "var(--font-mono, monospace)" }}>
-                      {fillProgress.count}/60
+                      {fillProgress.count}/{modeTgt}
                     </span>
                     &nbsp;sets
                     {added > 0 && <span style={{ color: "#059669" }}>&nbsp;(+{added} added)</span>}
