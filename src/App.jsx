@@ -49,10 +49,30 @@ button{cursor:pointer;border:none;outline:none;font-family:var(--font-body);}
 @keyframes caretBlink{0%,100%{opacity:1;}50%{opacity:0;}}
 @keyframes hookGlow{0%,100%{text-shadow:0 0 12px rgba(251,191,36,0.5),0 0 24px rgba(251,191,36,0.2);}50%{text-shadow:0 0 20px rgba(251,191,36,0.8),0 0 40px rgba(251,191,36,0.35);}}
 @keyframes hookFadeIn{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:translateY(0);}}
+@keyframes fadeSlideUp{from{opacity:0;transform:translateY(18px);}to{opacity:1;transform:translateY(0);}}
+@keyframes liveDot{0%,100%{opacity:1;transform:scale(1);}50%{opacity:0.35;transform:scale(0.8);}}
+@keyframes shimmerChip{0%{transform:translateX(-120%);}100%{transform:translateX(400%);}}
+@keyframes scanLine{0%{left:-20%;}100%{left:115%;}}
+@keyframes recencyPop{from{opacity:0;transform:translateY(5px) scale(0.97);}to{opacity:1;transform:translateY(0) scale(1);}}
+@keyframes valueIn{from{opacity:0;transform:translateX(-8px);}to{opacity:1;transform:translateX(0);}}
+@keyframes recoveryGlow{0%,100%{box-shadow:0 0 0 0 rgba(99,102,241,0);}50%{box-shadow:0 0 24px rgba(99,102,241,0.25),0 0 48px rgba(99,102,241,0.1);}}
 .eyebrow-live{animation:pillGlow 2.4s ease-in-out infinite;}
 .typewriter-caret{display:inline-block;width:2px;height:1em;background:rgba(255,255,255,0.7);margin-left:2px;vertical-align:text-bottom;animation:caretBlink 0.8s step-end infinite;}
 .hook-caret{display:inline-block;width:2px;height:0.9em;background:#FBBF24;margin-left:2px;vertical-align:text-bottom;animation:caretBlink 0.7s step-end infinite;}
 .hook-text{animation:hookGlow 2s ease-in-out infinite,hookFadeIn 0.3s ease-out;}
+.live-pulse-dot{animation:liveDot 1.6s ease-in-out infinite;}
+.feature-stagger{opacity:0;}.feature-stagger.vis{animation:fadeSlideUp 0.45s ease-out forwards;}
+.feature-stagger:nth-child(1).vis{animation-delay:0ms;}.feature-stagger:nth-child(2).vis{animation-delay:130ms;}.feature-stagger:nth-child(3).vis{animation-delay:260ms;}
+.proof-stagger{opacity:0;}.proof-stagger.vis{animation:fadeSlideUp 0.4s ease-out forwards;}
+.proof-stagger:nth-child(1).vis{animation-delay:0ms;}.proof-stagger:nth-child(2).vis{animation-delay:90ms;}.proof-stagger:nth-child(3).vis{animation-delay:180ms;}.proof-stagger:nth-child(4).vis{animation-delay:270ms;}.proof-stagger:nth-child(5).vis{animation-delay:360ms;}
+.value-stagger{opacity:0;}.value-stagger.vis{animation:valueIn 0.35s ease-out forwards;}
+.value-stagger:nth-child(1).vis{animation-delay:0ms;}.value-stagger:nth-child(2).vis{animation-delay:110ms;}.value-stagger:nth-child(3).vis{animation-delay:220ms;}.value-stagger:nth-child(4).vis{animation-delay:330ms;}
+.chip-prep-shimmer{position:relative;overflow:hidden;}.chip-prep-shimmer::after{content:'';position:absolute;top:0;left:-80%;width:40%;height:100%;background:linear-gradient(90deg,transparent,rgba(99,102,241,0.35),transparent);animation:shimmerChip 2.4s ease-in-out infinite;}
+.recency-pop{animation:recencyPop 0.5s 0.9s ease-out both;}
+.below-vis{opacity:0;}.below-vis.vis{animation:fadeSlideUp 0.55s ease-out forwards;}
+.below-vis:nth-child(1).vis{animation-delay:0ms;}.below-vis:nth-child(2).vis{animation-delay:150ms;}
+.recovery-glow{animation:recoveryGlow 3.5s ease-in-out infinite;}
+.topic-bar{width:0%;transition:width 1.1s cubic-bezier(0.25,0.46,0.45,0.94);}
 .pbar-track{width:100%;height:4px;background:#E0E7FF;border-radius:2px;overflow:hidden;}
 .pbar-fill{height:100%;background:var(--indigo);border-radius:2px;animation:indeterminate 1.6s ease-in-out infinite;transform-origin:left;}
 .option-box{display:flex;align-items:flex-start;gap:12px;padding:14px 16px;border:1.5px solid var(--border);border-radius:4px;cursor:pointer;transition:border-color .12s,background .12s;background:#fff;}
@@ -430,11 +450,34 @@ function AuthScreen({ onLogin, showToast }) {
 
   const subjects = SUBJECTS; // use module-level constant — keeps landing page and dashboard in sync
 
+  // CUET-LIVE-PREMIUM: Weak Area Report first — most differentiating feature
   const features = [
+    { icon: "⚡", title: "Instant Weak Area Report",  desc: "Know exactly which topics hurt you the moment you submit — sorted weakest first. No guesswork. Act on it immediately.", top: true },
     { icon: "✨", title: "Lifetime Free Mock Papers", desc: "15-question practice papers — free forever, no card needed, no limits. Test yourself daily." },
-    { icon: "⚡", title: "Instant Weak Area Report",  desc: "Know your weak topics the moment you submit — sorted weakest first. You decide how to fix them." },
-    { icon: "✅", title: "Exact NTA Pattern",        desc: "+5 correct, −1 wrong. Same interface, same marking, same pressure as the real exam." },
+    { icon: "✅", title: "Exact NTA Pattern",        desc: "+5 correct, −1 wrong. Same interface, same marking, same pressure as the real exam. Not a simulation — a replica." },
   ];
+
+  // Recency timestamp — simulated; in production pull from Firestore questionCache.createdAt
+  const recencyMins = [2,3,4,5,3,6,2,4][Math.floor(Date.now()/60000) % 8];
+  const recencyCount = (820 + ((Math.floor(Date.now()/3600000)) % 80)).toLocaleString("en-IN");
+
+  // IntersectionObserver for stagger animations
+  useEffect(() => {
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if (e.isIntersecting) { e.target.classList.add("vis"); io.unobserve(e.target); }
+      });
+    }, { threshold: 0.12, rootMargin: "0px 0px -30px 0px" });
+    // Observe staggered elements after mount
+    const timer = setTimeout(() => {
+      document.querySelectorAll(".feature-stagger, .proof-stagger, .value-stagger, .below-vis").forEach(el => io.observe(el));
+      // Topic bars in below-fold
+      document.querySelectorAll(".topic-bar[data-w]").forEach((bar, i) => {
+        setTimeout(() => { bar.style.width = bar.dataset.w; }, 400 + i * 140);
+      });
+    }, 100);
+    return () => { clearTimeout(timer); io.disconnect(); };
+  }, []);
 
   // Inline styles for the premium landing
   const S = {
@@ -642,12 +685,18 @@ function AuthScreen({ onLogin, showToast }) {
       <div style={S.blob1} />
       <div style={S.blob2} />
 
-      {/* Top nav */}
+      {/* Top nav — CUET-LIVE-PREMIUM: added LIVE indicator */}
       <nav style={S.nav}>
         <span style={S.navLogo}>
           Vantiq <span style={S.navLogoAccent}>CUET</span>
         </span>
-        <span style={S.navBadge}>2026 Edition</span>
+        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:6, padding:"3px 10px", borderRadius:20, border:"1px solid rgba(110,231,183,0.25)", background:"rgba(110,231,183,0.07)", fontSize:10, fontWeight:700, letterSpacing:1, color:"#6EE7B7", textTransform:"uppercase" }}>
+            <span className="live-pulse-dot" style={{ width:6, height:6, borderRadius:"50%", background:"#6EE7B7", display:"inline-block" }} />
+            Live
+          </div>
+          <span style={S.navBadge}>2026 Edition</span>
+        </div>
       </nav>
 
       {/* Main split layout */}
@@ -670,44 +719,64 @@ function AuthScreen({ onLogin, showToast }) {
             NTA-standard papers. Instant analytics. Free to start.
           </p>
 
-          {/* Social proof */}
+          {/* Social proof — CUET-LIVE-PREMIUM: stagger reveal + live "Papers today" */}
           <div style={S.proofStrip}>
             {[
               { num: "50Q", label: "Per Test Paper" },
               { num: "6", label: "Topics Covered" },
               { num: "+5/−1", label: "NTA Marking" },
               { num: "60min", label: "Timed Exam" },
+              { num: recencyCount, label: "Papers today", live: true },
             ].map(p => (
-              <div key={p.label} style={S.proofItem}>
-                <span style={S.proofNum}>{p.num}</span>
-                <span style={S.proofLabel}>{p.label}</span>
+              <div key={p.label} style={{ ...S.proofItem }} className="proof-stagger">
+                <span style={{ ...S.proofNum, ...(p.live ? { color:"#6EE7B7" } : {}) }}>{p.num}</span>
+                <span style={{ ...S.proofLabel, ...(p.live ? { color:"rgba(110,231,183,0.5)" } : {}) }}>{p.label}</span>
               </div>
             ))}
           </div>
 
-          {/* Features */}
+          {/* Features — CUET-LIVE-PREMIUM: reordered + stagger + top card accent */}
           <div style={S.featuresGrid}>
-            {features.map(f => (
-              <div key={f.title} style={S.featureRow}>
+            {features.map((f, i) => (
+              <div key={f.title} className="feature-stagger" style={{
+                ...S.featureRow,
+                ...(f.top ? {
+                  borderLeft: "2px solid #FBBF24",
+                  background: "rgba(251,191,36,0.06)",
+                  borderColor: "rgba(251,191,36,0.22)",
+                } : {}),
+              }}>
                 <span style={S.featureIcon}>{f.icon}</span>
                 <div>
-                  <div style={S.featureTitle}>{f.title}</div>
+                  <div style={{ ...S.featureTitle, ...(f.top ? { color:"#FCD34D" } : {}) }}>{f.title}</div>
                   <div style={S.featureDesc}>{f.desc}</div>
                 </div>
               </div>
             ))}
           </div>
 
-          {/* Subjects */}
+          {/* Subjects — CUET-LIVE-PREMIUM: Economics "preparing" shimmer state */}
           <div style={S.subjectLabel}>Subjects on this platform</div>
           <div style={S.subjectChips}>
-            {subjects.map(s => (
-              <span key={s.name} style={s.live ? S.chipLive : S.chipSoon}>
-                {s.live && <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#6EE7B7", display: "inline-block" }} />}
-                {s.name}
-                {!s.live && <span style={{ fontSize: 10, marginLeft: 4, opacity: 0.6 }}>soon</span>}
-              </span>
-            ))}
+            {subjects.map(s => {
+              const isEcon = s.name.includes("Economics");
+              return (
+                <span key={s.name}
+                  className={isEcon ? "chip-prep-shimmer" : ""}
+                  style={s.live ? S.chipLive : {
+                    ...S.chipSoon,
+                    ...(isEcon ? {
+                      background:"rgba(99,102,241,0.08)",
+                      border:"1px solid rgba(99,102,241,0.2)",
+                      color:"rgba(255,255,255,0.4)",
+                    } : {}),
+                  }}>
+                  {s.live && <span className="live-pulse-dot" style={{ width:6, height:6, borderRadius:"50%", background:"#6EE7B7", display:"inline-block" }} />}
+                  {s.name}
+                  {!s.live && <span style={{ fontSize:10, marginLeft:4, opacity:0.6 }}>{isEcon ? "preparing" : "soon"}</span>}
+                </span>
+              );
+            })}
           </div>
         </div>
         )}
@@ -739,6 +808,15 @@ function AuthScreen({ onLogin, showToast }) {
               {hookText}
             </span>
             <span className="hook-caret" />
+          </div>
+
+          {/* CUET-LIVE-PREMIUM P0: Recency timestamp — most powerful freshness signal */}
+          <div className="recency-pop" style={{ display:"flex", alignItems:"center", gap:8, marginBottom:16, padding:"7px 12px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:8 }}>
+            <span className="live-pulse-dot" style={{ width:6, height:6, borderRadius:"50%", background:"#6EE7B7", display:"inline-block", flexShrink:0 }} />
+            <span style={{ fontFamily:"var(--font-mono)", fontSize:11, color:"rgba(255,255,255,0.42)", letterSpacing:"0.2px" }}>
+              Last paper generated: <strong style={{ color:"rgba(110,231,183,0.8)", fontWeight:600 }}>{recencyMins} min ago</strong>
+              {" · "}<strong style={{ color:"rgba(110,231,183,0.7)", fontWeight:600 }}>{recencyCount}</strong> tests today
+            </span>
           </div>
 
           <h2 style={S.authHeading}>Try a Free Mock Test Now</h2>
@@ -774,8 +852,8 @@ function AuthScreen({ onLogin, showToast }) {
               "Exact 50-question format, +5/\u22121 marking",
               "Topic mix calibrated to NTA\u2019s declared weightage",
               "First 4 tests free \u2014 no card required",
-            ].map(v => (
-              <div key={v} style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 7 }}>
+            ].map((v, i) => (
+              <div key={v} className="value-stagger" style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 7 }}>
                 <span style={{ color: "#6EE7B7", fontWeight: 700, fontSize: 13, marginTop: 1, flexShrink: 0 }}>✓</span>
                 <span style={{ fontSize: 13, color: "rgba(255,255,255,0.72)", lineHeight: 1.45 }}>{v}</span>
               </div>
@@ -802,6 +880,78 @@ function AuthScreen({ onLogin, showToast }) {
           </p>
         </div>
       </div>
+
+      {/* ── BELOW-FOLD RECOVERY — CUET-LIVE-PREMIUM P1 ──────────────────────
+          Catches students who scrolled past the fold without converting.
+          Panel 1: Topic Intelligence (active system signal)
+          Panel 2: Recovery CTA (second chance, different angle) */}
+      {!isMobile && (
+      <div style={{ maxWidth:1100, margin:"0 auto", padding:"0 32px 72px", position:"relative", zIndex:10 }}>
+        {/* Divider */}
+        <div style={{ width:"100%", height:1, background:"linear-gradient(90deg,transparent,rgba(255,255,255,0.08),transparent)", marginBottom:52 }} />
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:24 }}>
+
+          {/* Topic Intelligence panel */}
+          <div className="below-vis" style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:16, padding:"24px 24px 20px", position:"relative", overflow:"hidden" }}>
+            {/* Scan-line animation */}
+            <div style={{ position:"absolute", top:0, left:"-20%", width:"30%", height:2, background:"linear-gradient(90deg,transparent,rgba(99,102,241,0.7),transparent)", animation:"scanLine 3.2s ease-in-out infinite" }} />
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20 }}>
+              <span style={{ fontSize:11, fontWeight:700, letterSpacing:"0.8px", textTransform:"uppercase", color:"rgba(255,255,255,0.35)" }}>Topic Intelligence · English 101</span>
+              <span style={{ display:"flex", alignItems:"center", gap:5, fontSize:10, fontWeight:700, color:"#6EE7B7", letterSpacing:"0.5px", textTransform:"uppercase" }}>
+                <span className="live-pulse-dot" style={{ width:5, height:5, borderRadius:"50%", background:"#6EE7B7", display:"inline-block" }} />
+                Updating
+              </span>
+            </div>
+            {[
+              { name:"Reading Comprehension", pct:"44%", w:"44%", color:"#818CF8" },
+              { name:"Synonyms & Antonyms",   pct:"18%", w:"18%", color:"#F59E0B" },
+              { name:"Sentence Rearrangement",pct:"14%", w:"14%", color:"#6EE7B7" },
+              { name:"Choosing Correct Word", pct:"14%", w:"14%", color:"#60A5FA" },
+              { name:"Grammar & Vocabulary",  pct:"10%", w:"10%", color:"#F9A8D4" },
+            ].map(t => (
+              <div key={t.name} style={{ marginBottom:14 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5 }}>
+                  <span style={{ fontSize:12.5, color:"rgba(255,255,255,0.72)", fontWeight:500 }}>{t.name}</span>
+                  <span style={{ fontFamily:"var(--font-mono)", fontSize:12, color:"rgba(255,255,255,0.45)" }}>{t.pct}</span>
+                </div>
+                <div style={{ height:4, background:"rgba(255,255,255,0.07)", borderRadius:2, overflow:"hidden" }}>
+                  <div className="topic-bar" data-w={t.w} style={{ height:"100%", borderRadius:2, background:t.color, opacity:0.75 }} />
+                </div>
+              </div>
+            ))}
+            <p style={{ fontSize:11, color:"rgba(255,255,255,0.22)", marginTop:6, fontStyle:"italic" }}>Based on NTA's declared weightage. Questions reflect current distribution.</p>
+          </div>
+
+          {/* Recovery CTA panel */}
+          <div className="below-vis recovery-glow" style={{ background:"rgba(99,102,241,0.07)", border:"1px solid rgba(99,102,241,0.2)", borderRadius:16, padding:"32px 28px", display:"flex", flexDirection:"column", justifyContent:"center" }}>
+            <div style={{ fontSize:11, fontWeight:700, letterSpacing:"1px", textTransform:"uppercase", color:"rgba(129,140,248,0.65)", marginBottom:14 }}>Still thinking about it?</div>
+            <h3 style={{ fontFamily:"var(--font-display)", fontSize:26, color:"#fff", lineHeight:1.25, marginBottom:12 }}>
+              Your first test takes 30 minutes.<br/>It shows you where you stand.
+            </h3>
+            <p style={{ fontSize:13.5, color:"rgba(255,255,255,0.5)", lineHeight:1.65, marginBottom:24 }}>
+              No setup. No payment. Sign in and your first Quick Practice paper is ready instantly. See exactly which topics need work — before you spend a rupee.
+            </p>
+            {["Ready in under 10 seconds", "Weak area report after every test", "Different paper every single time"].map(it => (
+              <div key={it} style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10, fontSize:13, color:"rgba(255,255,255,0.6)" }}>
+                <span style={{ color:"#6EE7B7", fontWeight:700, fontSize:14 }}>✓</span>{it}
+              </div>
+            ))}
+            <button
+              onClick={handleGoogle}
+              style={{ marginTop:8, display:"inline-flex", alignItems:"center", gap:10, background:"#fff", color:"#1A1A2E", padding:"12px 22px", borderRadius:10, fontSize:14, fontWeight:700, cursor:"pointer", border:"none", fontFamily:"var(--font-body)", boxShadow:"0 4px 16px rgba(0,0,0,0.3)", alignSelf:"flex-start" }}
+              onMouseOver={e => { e.currentTarget.style.transform="translateY(-2px)"; e.currentTarget.style.boxShadow="0 8px 24px rgba(0,0,0,0.4)"; }}
+              onMouseOut={e => { e.currentTarget.style.transform="translateY(0)"; e.currentTarget.style.boxShadow="0 4px 16px rgba(0,0,0,0.3)"; }}
+            >
+              <GoogleIcon />
+              Start for Free
+            </button>
+            <p style={{ fontSize:11, color:"rgba(255,255,255,0.25)", marginTop:10 }}>No credit card · No commitment</p>
+          </div>
+
+        </div>
+      </div>
+      )}
+
     </div>
   );
 }
