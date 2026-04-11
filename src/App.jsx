@@ -617,7 +617,7 @@ function AuthScreen({ onLogin, showToast }) {
         <div style={S.hero}>
           <div style={S.eyebrow}>
             <span style={S.dot} />
-            English (101) Live Now
+            Continuously updated · English (101) Live Now
           </div>
 
           <h1 style={S.h1}>
@@ -626,8 +626,8 @@ function AuthScreen({ onLogin, showToast }) {
           </h1>
 
           <p style={S.subtext}>
-            NTA-standard mock test papers for CUET English (101) — not coaching, not notes.
-            Just real exam simulation so you know exactly where you stand.
+            Every test paper is new. Every question reflects the current exam pattern.
+            No recycled content, ever.
           </p>
 
           {/* Social proof */}
@@ -700,10 +700,20 @@ function AuthScreen({ onLogin, showToast }) {
             {loading === "google" ? "Signing you in..." : "Continue with Google"}
           </button>
 
-          {/* Hook line */}
-          <p style={{ fontSize: 14, color: "rgba(255,255,255,0.55)", lineHeight: 1.6, marginBottom: 20, textAlign: "center" }}>
-            Know your score. Know your gaps. Walk into exam day prepared.
-          </p>
+          {/* Value props */}
+          <div style={{ marginBottom: 20 }}>
+            {[
+              "Never the same paper twice",
+              "Exact 50-question format, +5/\u22121 marking",
+              "Topic mix calibrated to NTA\u2019s declared weightage",
+              "First 4 tests free \u2014 no card required",
+            ].map(v => (
+              <div key={v} style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 7 }}>
+                <span style={{ color: "#6EE7B7", fontWeight: 700, fontSize: 13, marginTop: 1, flexShrink: 0 }}>✓</span>
+                <span style={{ fontSize: 13, color: "rgba(255,255,255,0.72)", lineHeight: 1.45 }}>{v}</span>
+              </div>
+            ))}
+          </div>
 
           {/* Error */}
           {error && <div style={S.errorBox}>{error}</div>}
