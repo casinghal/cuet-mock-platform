@@ -486,13 +486,13 @@ Return ONLY the JSON object. Begin with { — nothing before it.`;
   if (batchNum === 3) {
     return `You are an NTA CUET GAT (General Aptitude Test 501) question paper generator.
 ${buildGATIntelligenceBrief(3)}
-Generate exactly 12 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
+Generate exactly 15 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
 JSON schema: ${schema}
 Topic distribution (MANDATORY — exact counts):
-- Awards and Honours (India): 2 questions (Padma awards, Sahitya Akademi, ICC/BCCI awards)
+- Awards and Honours (India): 3 questions (Padma awards, Sahitya Akademi, ICC/BCCI awards)
 - Books and Authors: 2 questions (confirmed real books by Indian or internationally known authors)
-- Indian History and National Movement: 2 questions (freedom movement events + 1 NCERT Class 9-10 treaty/summit)
-- Indian Geography: 2 questions (rivers, national parks, tiger reserves, states)
+- Indian History and National Movement: 3 questions (freedom movement events + 1 NCERT Class 9-10 treaty/summit)
+- Indian Geography: 3 questions (rivers, national parks, tiger reserves, states)
 - Indian Polity and Constitution: 1 question (Constitution articles, commissions, national institutions)
 - Science and Technology (ISRO/DRDO): 2 questions (ISRO missions, DRDO weapons, space milestones)
 - Sports Historical Records: 1 question (first Indian to win X, Olympic record, national championship)
@@ -503,17 +503,18 @@ Return ONLY the JSON object. Begin with { — nothing before it.`;
   if (batchNum === 4) {
     const caSection = caContext
       ? `VERIFIED CURRENT AFFAIRS CONTEXT (use ONLY facts from this list — do not invent events):\n${caContext}\n`
-      : `FALLBACK (CA context unavailable): Generate 4 additional Static GK questions from Indian History, ISRO milestones, Padma Awards, or Constitution articles instead. No current events.\n`;
+      : `FALLBACK (CA context unavailable): Generate 10 Static GK questions from Indian History, ISRO milestones, Padma Awards, and Constitution articles instead. No current events. Do not invent current affairs facts.\n`;
 
     return `You are an NTA CUET GAT (General Aptitude Test 501) question paper generator.
 ${buildGATIntelligenceBrief(4)}
 ${caSection}
-Generate exactly 7 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
+Generate exactly 10 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
 JSON schema: ${schema}
-Topic distribution (MANDATORY):
-- Current Affairs standalone MCQs: 4 questions using ONLY confirmed facts from the context above (passage = null)
+Topic distribution (MANDATORY — exactly 10 questions total):
+- Current Affairs standalone MCQs: 6 questions using ONLY confirmed facts from the context above (passage = null)
 - Passage-based comprehension: 1 short passage (60-80 words on an India-relevant current topic) with 2 direct questions
   For passage questions: include the passage text in the "passage" field of BOTH questions. The answer must be findable within the passage.
+- Additional Static GK: 2 questions from ISRO missions, Padma Awards, or Indian History
 Rules: correct is 0-indexed. India-first: 70%+ questions about India. Explanation: 2-3 sentences.
 If uncertain about any fact in the context → replace that question with static GK from ISRO or Indian History.
 Return ONLY the JSON object. Begin with { — nothing before it.`;
@@ -793,11 +794,11 @@ async function generateQuestionSet(mode, apiKey) {
         const [b1raw, b2raw, b3raw, b4raw] = await Promise.all([
           callAnthropic(buildGATBatch(1, caContext), 8000, apiKey),
           callAnthropic(buildGATBatch(2, caContext), 8000, apiKey),
-          callAnthropic(buildGATBatch(3, caContext), 5000, apiKey),
-          callAnthropic(buildGATBatch(4, caContext), 4000, apiKey),
+          callAnthropic(buildGATBatch(3, caContext), 6000, apiKey), // 15 questions now (was 12)
+          callAnthropic(buildGATBatch(4, caContext), 5000, apiKey), // 10 questions now (was 7)
         ]);
 
-        // Prompts request 20/20/12/7 with buffer — slice to exact targets: 17/17/10/6 = 50
+        // Prompts request 20/20/15/10 with buffer — slice to exact targets: 17/17/10/6 = 50
         const b1 = Array.isArray(b1raw) ? b1raw.slice(0, 17) : [];
         const b2 = Array.isArray(b2raw) ? b2raw.slice(0, 17) : [];
         const b3 = Array.isArray(b3raw) ? b3raw.slice(0, 10) : [];
@@ -805,7 +806,7 @@ async function generateQuestionSet(mode, apiKey) {
 
         functions.logger.info("GAT_BATCH_COUNTS", { b1: b1.length, b2: b2.length, b3: b3.length, b4: b4.length });
 
-        if (b1.length < 17 || b2.length < 17 || b3.length < 10 || b4.length < 6) {
+        if (b1.length < 15 || b2.length < 15 || b3.length < 9 || b4.length < 5) {
           throw new Error(`GAT_BATCH_LOW: b1=${b1.length}/17 b2=${b2.length}/17 b3=${b3.length}/10 b4=${b4.length}/6`);
         }
         questions = [...b1, ...b2, ...b3, ...b4]; // exactly 50
