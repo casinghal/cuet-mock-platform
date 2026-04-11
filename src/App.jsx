@@ -45,6 +45,10 @@ button{cursor:pointer;border:none;outline:none;font-family:var(--font-body);}
 .btn-outline{background:transparent;color:var(--navy);border:1.5px solid var(--navy);height:44px;padding:0 24px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;transition:all .15s;}
 .btn-outline:hover{background:var(--navy);color:#fff;}
 @keyframes indeterminate{0%{transform:translateX(-100%) scaleX(.5)}50%{transform:translateX(0) scaleX(.5)}100%{transform:translateX(100%) scaleX(.5)}}
+@keyframes pillGlow{0%,100%{box-shadow:0 0 0 0 rgba(110,231,183,0);}50%{box-shadow:0 0 0 4px rgba(110,231,183,0.18),0 0 16px rgba(110,231,183,0.12);}}
+@keyframes caretBlink{0%,100%{opacity:1;}50%{opacity:0;}}
+.eyebrow-live{animation:pillGlow 2.4s ease-in-out infinite;}
+.typewriter-caret{display:inline-block;width:2px;height:1em;background:rgba(255,255,255,0.7);margin-left:2px;vertical-align:text-bottom;animation:caretBlink 0.8s step-end infinite;}
 .pbar-track{width:100%;height:4px;background:#E0E7FF;border-radius:2px;overflow:hidden;}
 .pbar-fill{height:100%;background:var(--indigo);border-radius:2px;animation:indeterminate 1.6s ease-in-out infinite;transform-origin:left;}
 .option-box{display:flex;align-items:flex-start;gap:12px;padding:14px 16px;border:1.5px solid var(--border);border-radius:4px;cursor:pointer;transition:border-color .12s,background .12s;background:#fff;}
@@ -325,6 +329,23 @@ function AuthScreen({ onLogin, showToast }) {
   const [error,   setError]   = useState(null);
   const [mode,    setMode]    = useState("login");
   const isMobile = useMobile();
+
+  // ── Typewriter effect for sub-headline ──────────────────────────────────────
+  const TYPEWRITER_FULL = "Every test paper is new. Every question reflects the current exam pattern. No recycled content, ever.";
+  const [twText, setTwText]         = useState("");
+  const [twDone, setTwDone]         = useState(false);
+  useEffect(() => {
+    let i = 0;
+    const delay = setTimeout(() => {
+      const interval = setInterval(() => {
+        i++;
+        setTwText(TYPEWRITER_FULL.slice(0, i));
+        if (i >= TYPEWRITER_FULL.length) { clearInterval(interval); setTwDone(true); }
+      }, 28);
+      return () => clearInterval(interval);
+    }, 600); // 600ms pause before typing starts
+    return () => clearTimeout(delay);
+  }, []);
 
   useEffect(() => { logEvent("page_view", { page: "auth" }); }, []);
 
@@ -615,7 +636,7 @@ function AuthScreen({ onLogin, showToast }) {
         {/* ── Left: Hero — hidden on mobile ── */}
         {!isMobile && (
         <div style={S.hero}>
-          <div style={S.eyebrow}>
+          <div style={S.eyebrow} className="eyebrow-live">
             <span style={S.dot} />
             Continuously updated · English (101) Live Now
           </div>
@@ -626,8 +647,7 @@ function AuthScreen({ onLogin, showToast }) {
           </h1>
 
           <p style={S.subtext}>
-            Every test paper is new. Every question reflects the current exam pattern.
-            No recycled content, ever.
+            {twText}{!twDone && <span className="typewriter-caret" />}
           </p>
 
           {/* Social proof */}
