@@ -1327,10 +1327,10 @@ export default function AdminDashboard() {
           </button>
           {/* Individual mode fills — each bypasses lock and targets only that mode */}
           <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
-            <button onClick={() => fillMode("GAT_Mock")} style={{ ...S.btnSmall("primary"), background:"#DC2626", borderColor:"#DC2626" }} disabled={filling} title="Force fill GAT Mock — overrides lock">
+            <button onClick={() => fillMode("GAT_Mock")} style={{ ...S.btnSmall("primary"), background:"#DC2626", borderColor:"#DC2626" }} title="Force fill GAT Mock — overrides lock">
               {filling && fillProgress?.targetMode==="GAT_Mock" ? "⏳ GAT Mock…" : "⚡ GAT Mock"}
             </button>
-            <button onClick={() => fillMode("GAT_QP")} style={{ ...S.btnSmall("primary"), background:"#EA580C", borderColor:"#EA580C" }} disabled={filling} title="Force fill GAT QP — overrides lock">
+            <button onClick={() => fillMode("GAT_QP")} style={{ ...S.btnSmall("primary"), background:"#EA580C", borderColor:"#EA580C" }} title="Force fill GAT QP — overrides lock">
               {filling && fillProgress?.targetMode==="GAT_QP" ? "⏳ GAT QP…" : "⚡ GAT QP"}
             </button>
             <button onClick={() => fillMode("Mock")} style={S.btnSmall()} disabled={filling} title="Fill English Mock">
@@ -1759,10 +1759,10 @@ export default function AdminDashboard() {
             <div style={S.cardHeader}>
               <span style={S.cardTitle}>Cache Health</span>
               <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-                <button onClick={() => fillMode("GAT_Mock")} style={{ ...S.btnSmall("primary"), background:"#DC2626" }} disabled={filling}>
+                <button onClick={() => fillMode("GAT_Mock")} style={{ ...S.btnSmall("primary"), background:"#DC2626" }}>
                   {filling && fillProgress?.targetMode==="GAT_Mock" ? "⏳…" : "⚡ GAT Mock"}
                 </button>
-                <button onClick={() => fillMode("GAT_QP")} style={{ ...S.btnSmall("primary"), background:"#EA580C" }} disabled={filling}>
+                <button onClick={() => fillMode("GAT_QP")} style={{ ...S.btnSmall("primary"), background:"#EA580C" }}>
                   {filling && fillProgress?.targetMode==="GAT_QP" ? "⏳…" : "⚡ GAT QP"}
                 </button>
                 <button onClick={() => fillMode("Mock")} style={S.btnSmall()} disabled={filling}>
