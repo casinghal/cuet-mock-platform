@@ -15,7 +15,7 @@ service cloud.firestore {
                     && !request.resource.data.keys().hasAny(['unlocked']);
       // Regular users: can update own doc but cannot touch protected fields
       allow update: if request.auth != null && request.auth.uid == uid
-                    && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['unlocked', 'paymentId', 'unlockedAt', 'graceReturns', 'testsUsed', 'blocked', 'blockedUntil', 'blockReason', 'blockCount', 'lastBlockedAt']);
+                    && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['unlocked', 'paymentId', 'orderId', 'unlockedAt', 'graceReturns', 'testsUsed', 'gatTestsUsed', 'dailyTests', 'blocked', 'blockedUntil', 'blockReason', 'blockCount', 'lastBlockedAt']);
       // Admin: can update any user doc (for grantAccess / revokeAccess / resetLimit from dashboard)
       allow update: if isAdmin();
     }

@@ -1,5 +1,5 @@
 /**
- * CUET English Mock Test Platform — App.jsx v2.0
+ * CUET Mock Test Platform — App.jsx v2.0
  * React + Firebase + Razorpay + GA4
  * Subject: English 101 | CUET UG 2026
  * All 6 screens: auth, dashboard, generating, exam, results, review
@@ -189,7 +189,7 @@ function Toast({ message, type, onDismiss }) {
 }
 
 // ── Paywall Modal ─────────────────────────────────────────────────────────────
-function PaywallModal({ user, onSuccess, onClose }) {
+function PaywallModal({ user, onSuccess, onClose, subject }) {
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState(null);
 
@@ -259,7 +259,7 @@ function PaywallModal({ user, onSuccess, onClose }) {
             Unlock Full Access
           </h2>
           <p style={{ color: "var(--text-secondary)", fontSize: 14, lineHeight: 1.6 }}>
-            You have used all 4 free Mock Exams. Unlock unlimited access for CUET English 2026.
+            You have used all 4 free Mock Exams. Unlock unlimited access for CUET {subject === "GAT" ? "GAT + English" : "English"} 2026.
           </p>
         </div>
         <div style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 10, padding: "16px 20px", marginBottom: 24 }}>
@@ -852,7 +852,7 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
-      {showPaywall && <PaywallModal user={user} onSuccess={handlePaySuccess} onClose={() => setShowPaywall(false)} />}
+      {showPaywall && <PaywallModal user={user} onSuccess={handlePaySuccess} onClose={() => setShowPaywall(false)} subject={activeSubject} />}
 
       <div className="nta-header">
         <span className="nta-logo">Vantiq <span>CUET</span></span>
@@ -1437,6 +1437,12 @@ async function generateQuestions(config, uid) {
     });
     const d = await res.json();
     if (d.paywall) throw Object.assign(new Error("Paywall"), { paywall: true });
+    // 403 = blocked user — surface proper error rather than generic "Generation failed"
+    if (res.status === 403) {
+      if (d.code === "permanently_blocked") throw Object.assign(new Error(d.error), { blocked: true, permanent: true });
+      if (d.code === "temporarily_blocked") throw Object.assign(new Error(d.error), { blocked: true, minutesLeft: d.minutesLeft });
+      throw new Error(d.error || "Access denied.");
+    }
     if (!d.questions) throw new Error(d.error || "Generation failed");
     return d.questions;
   }
@@ -1731,6 +1737,13 @@ export default function App() {
       if (e.paywall) {
         setScreen("dashboard");
         setShowPaywall(true);
+      } else if (e.blocked) {
+        // User was blocked mid-session — sign them out and show block screen
+        showToast(e.permanent
+          ? "Your account has been permanently blocked."
+          : `Access suspended for ${e.minutesLeft || "some"} minutes due to unusual activity.`,
+          "error");
+        setScreen("dashboard");
       } else {
         showToast("Could not generate test. Please try again.", "error");
         setScreen("dashboard");
