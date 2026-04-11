@@ -439,88 +439,95 @@ No trigonometry, SI, CI in quant. No image-dependent reasoning. India-first for 
 All 4 options must be plausible. Explanations: why correct is right AND why top distractor is wrong.`;
 }
 
-// ── GAT Batch Prompts — 4 parallel batches for GAT_Mock (50 questions total) ──
-// Batch 1: 17 Quant | Batch 2: 17 Reasoning | Batch 3: 10 Static GK | Batch 4: 6 CA
-// All batches run in parallel via Promise.all() — wall time ~15-16 seconds
-function buildGATBatch(batchNum, caContext) {
+// ── GAT Mock Batch Prompts — 6 sequential batches, mirrors English architecture ─
+// English model: request with buffer → slice to exact count → sequential → reliable
+// GAT same model: 6 batches → 10+7+10+7+10+6 = 50 questions
+function buildGATMockBatch(batchNum, caContext) {
   const schema = '{"questions":[{"question":"...","options":["A","B","C","D"],"correct":0,"topic":"...","passage":null,"explanation":"2-3 sentences"}]}';
 
-  if (batchNum === 1) {
-    return `You are an NTA CUET GAT (General Aptitude Test 501) question paper generator.
-${buildGATIntelligenceBrief(1)}
-Generate exactly 20 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
+  switch(batchNum) {
+
+    // ── Batch 1: Quantitative Part 1 — request 12, slice to 10 ──────────────
+    case 1: return `You are an NTA CUET GAT (General Aptitude Test 501) question paper generator.
+Generate exactly 12 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
 JSON schema: ${schema}
-Topic distribution (MANDATORY — exact counts):
-- Number System / Arithmetic: 4 questions (number properties, HCF, LCM, basic operations)
-- Percentage / Ratio / Proportion: 4 questions
-- Profit and Loss: 3 questions (cost price, selling price, discount, markup)
-- Time, Speed and Distance: 3 questions (trains, boats optional)
-- Mensuration / Geometry 2D: 3 questions (area, perimeter of triangles, rectangles, circles)
+Topic distribution (MANDATORY — 12 questions):
+- Number System / Basic Arithmetic: 3 questions (divisibility, HCF, LCM, remainder)
+- Percentage: 3 questions (successive change, CP/SP applications)
+- Ratio, Proportion, and Variation: 3 questions
+- Profit and Loss: 3 questions (discount, markup, profit%)
+Rules: correct is 0-indexed (0=A,1=B,2=C,3=D). passage = null for all. Difficulty: CUET standard. Explanation: 2-3 sentences.
+Return ONLY the JSON object. Begin with { — nothing before it.`;
+
+    // ── Batch 2: Quantitative Part 2 — request 9, slice to 7 ────────────────
+    case 2: return `You are an NTA CUET GAT (General Aptitude Test 501) question paper generator.
+Generate exactly 9 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
+JSON schema: ${schema}
+Topic distribution (MANDATORY — 9 questions):
+- Time, Speed, and Distance: 3 questions (trains, boats optional)
+- Mensuration / Geometry: 3 questions (area, perimeter, circles, triangles)
 - Time and Work: 2 questions
-- Data Interpretation: 1 question (embed table data in question text as: 'Given data: Year|Sales — 2022|500, 2023|650, 2024|800')
-Rules: correct is 0-indexed (0=A,1=B,2=C,3=D). passage = null for ALL questions. Explanation: 2-3 sentences.
-Do NOT generate: Trigonometry, Simple Interest, Compound Interest.
+- Data Interpretation: 1 question (embed small table in question text as: 'Year|Sales: 2022|500, 2023|650, 2024|800')
+Rules: correct is 0-indexed. passage = null. No trigonometry. Difficulty: CUET standard. Explanation: 2-3 sentences.
 Return ONLY the JSON object. Begin with { — nothing before it.`;
-  }
 
-  if (batchNum === 2) {
-    return `You are an NTA CUET GAT (General Aptitude Test 501) question paper generator.
-${buildGATIntelligenceBrief(2)}
-Generate exactly 20 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
+    // ── Batch 3: Reasoning Part 1 — request 12, slice to 10 ─────────────────
+    case 3: return `You are an NTA CUET GAT (General Aptitude Test 501) question paper generator.
+Generate exactly 12 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
 JSON schema: ${schema}
-Topic distribution (MANDATORY — exact counts):
-- Number / Missing Series: 4 questions (include at least 2 difference-of-difference patterns)
+Topic distribution (MANDATORY — 12 questions):
+- Number Series / Missing Number: 4 questions (include at least 2 difference-of-difference patterns)
 - Analogy and Classification: 3 questions (word-pair analogy or odd-one-out)
-- Logical Venn Diagram: 2 questions (3-circle set, meaningful intersections)
-- Blood Relations: 2 questions (3 generations max, state gender explicitly)
-- Coding-Decoding: 2 questions (letter shift 2-3 positions OR symbol substitution — not both)
-- Calendar / Clocks: 2 questions (provide anchor day in question)
-- Mirror Image / Water Image: 2 questions (use letter strings like REPUBLIC — no image files)
-- Direction Sense: 1 question (4-directional navigation problem)
-- Seating Arrangement: 1 question (linear or circular — vary between sets)
+- Blood Relations: 3 questions (max 3 generations, state gender explicitly in question)
+- Logical Venn Diagram: 2 questions (3-circle sets, meaningful intersections)
+Rules: correct is 0-indexed. passage = null. No image-dependent questions. Explanation: 2-3 sentences.
+Return ONLY the JSON object. Begin with { — nothing before it.`;
+
+    // ── Batch 4: Reasoning Part 2 — request 9, slice to 7 ───────────────────
+    case 4: return `You are an NTA CUET GAT (General Aptitude Test 501) question paper generator.
+Generate exactly 9 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
+JSON schema: ${schema}
+Topic distribution (MANDATORY — 9 questions):
+- Coding-Decoding: 2 questions (letter shift OR symbol substitution — not both)
+- Direction Sense: 2 questions (4-directional navigation, no diagonal, state starting point)
+- Calendar and Clocks: 2 questions (provide anchor day in question)
 - Alphabet Series: 1 question
-Rules: correct is 0-indexed. passage = null for ALL questions. Explanation: 2-3 sentences.
+- Seating Arrangement: 2 questions (linear, 5 people, solvable from stated clues)
+Rules: correct is 0-indexed. passage = null. No image-dependent questions. Explanation: 2-3 sentences.
 Return ONLY the JSON object. Begin with { — nothing before it.`;
-  }
 
-  if (batchNum === 3) {
-    return `You are an NTA CUET GAT (General Aptitude Test 501) question paper generator.
-${buildGATIntelligenceBrief(3)}
-Generate exactly 15 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
+    // ── Batch 5: Static GK — request 12, slice to 10 ────────────────────────
+    case 5: return `You are an NTA CUET GAT (General Aptitude Test 501) question paper generator.
+Generate exactly 12 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
 JSON schema: ${schema}
-Topic distribution (MANDATORY — exact counts):
-- Awards and Honours (India): 3 questions (Padma awards, Sahitya Akademi, ICC/BCCI awards)
+Topic distribution (MANDATORY — 12 questions):
+- Awards and Honours (India): 2 questions (Padma awards, Sahitya Akademi, sports awards)
 - Books and Authors: 2 questions (confirmed real books by Indian or internationally known authors)
-- Indian History and National Movement: 3 questions (freedom movement events + 1 NCERT Class 9-10 treaty/summit)
-- Indian Geography: 3 questions (rivers, national parks, tiger reserves, states)
-- Indian Polity and Constitution: 1 question (Constitution articles, commissions, national institutions)
-- Science and Technology (ISRO/DRDO): 2 questions (ISRO missions, DRDO weapons, space milestones)
-- Sports Historical Records: 1 question (first Indian to win X, Olympic record, national championship)
-Rules: correct is 0-indexed. passage = null for ALL questions. All 4 options must be plausible real names/dates. Explanation: 2-3 sentences.
+- Indian History and National Movement: 2 questions (freedom movement, treaties, major events)
+- Indian Geography: 2 questions (rivers, national parks, tiger reserves, states/UTs)
+- Science and Technology: 2 questions (ISRO missions, DRDO, space milestones — confirmed facts only)
+- Indian Polity and Constitution: 2 questions (Articles, commissions, national institutions)
+Rules: correct is 0-indexed. passage = null. All 4 options must be plausible real names/dates. Explanation: 2-3 sentences.
 Return ONLY the JSON object. Begin with { — nothing before it.`;
-  }
 
-  if (batchNum === 4) {
-    const caSection = caContext
-      ? `VERIFIED CURRENT AFFAIRS CONTEXT (use ONLY facts from this list — do not invent events):\n${caContext}\n`
-      : `FALLBACK (CA context unavailable): Generate 10 Static GK questions from Indian History, ISRO milestones, Padma Awards, and Constitution articles instead. No current events. Do not invent current affairs facts.\n`;
-
-    return `You are an NTA CUET GAT (General Aptitude Test 501) question paper generator.
-${buildGATIntelligenceBrief(4)}
+    // ── Batch 6: Current Affairs — request 8, slice to 6 ────────────────────
+    default: {
+      const caSection = caContext
+        ? "VERIFIED CURRENT AFFAIRS CONTEXT (use ONLY facts from this list — do not invent events):\n" + caContext + "\n"
+        : "FALLBACK (CA context unavailable): Generate 8 additional Static GK questions from Indian History, ISRO milestones, Padma Awards, or Constitution articles. No current events.\n";
+      return `You are an NTA CUET GAT (General Aptitude Test 501) question paper generator.
 ${caSection}
-Generate exactly 10 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
+Generate exactly 8 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
 JSON schema: ${schema}
-Topic distribution (MANDATORY — exactly 10 questions total):
-- Current Affairs standalone MCQs: 6 questions using ONLY confirmed facts from the context above (passage = null)
-- Passage-based comprehension: 1 short passage (60-80 words on an India-relevant current topic) with 2 direct questions
-  For passage questions: include the passage text in the "passage" field of BOTH questions. The answer must be findable within the passage.
-- Additional Static GK: 2 questions from ISRO missions, Padma Awards, or Indian History
-Rules: correct is 0-indexed. India-first: 70%+ questions about India. Explanation: 2-3 sentences.
-If uncertain about any fact in the context → replace that question with static GK from ISRO or Indian History.
+Topic distribution (MANDATORY — 8 questions total):
+- Current Affairs standalone MCQs: 5 questions using ONLY confirmed facts from context above (passage = null)
+- Passage-based Current Affairs: 1 short passage (60-80 words, India-relevant topic) with 2 questions
+  For passage questions: include passage text in the "passage" field of BOTH questions. Answer must be findable within the passage.
+Rules: correct is 0-indexed. India-first: 70%+ India-related. Explanation: 2-3 sentences.
+If uncertain about any fact → replace that question with static GK from ISRO or Indian History.
 Return ONLY the JSON object. Begin with { — nothing before it.`;
+    }
   }
-
-  return null;
 }
 
 // ── GAT Quick Practice — single 15-question balanced prompt ──────────────────
@@ -777,9 +784,15 @@ async function generateQuestionSet(mode, apiKey) {
         questions = await callAnthropic(buildGATQPPrompt(), 3000, apiKey);
 
       } else if (mode === "GAT_Mock") {
-        // ── GAT Mock — 4 parallel batches via Promise.all ────────────────────
-        // Batch 1: Quant 17q | Batch 2: Reasoning 17q | Batch 3: Static GK 10q | Batch 4: CA 6q
-        // All independent — run simultaneously. Wall time ~15-16s (max of 4 parallel calls).
+        // ── GAT Mock — 6 sequential batches, mirrors proven English architecture ──────
+        // English model: request with buffer → slice to exact count → sequential → reliable
+        // GAT same model: 6 batches → 10+7+10+7+10+6 = 50 questions
+        // Batch 1: Quant Part 1 (req 12 → take 10)
+        // Batch 2: Quant Part 2 (req  9 → take  7) → Quant total: 17
+        // Batch 3: Reasoning Part 1 (req 12 → take 10)
+        // Batch 4: Reasoning Part 2 (req  9 → take  7) → Reasoning total: 17
+        // Batch 5: Static GK (req 12 → take 10) → StaticGK total: 10
+        // Batch 6: Current Affairs (req 8 → take 6) → CA total: 6
         let caContext = "";
         try {
           const caSnap = await db.collection("cuetIntelligence").doc("GAT_501").get();
@@ -791,25 +804,31 @@ async function generateQuestionSet(mode, apiKey) {
         }
         functions.logger.info("GAT_MOCK_START", { attempt, hasCaContext: !!caContext });
 
-        const [b1raw, b2raw, b3raw, b4raw] = await Promise.all([
-          callAnthropic(buildGATBatch(1, caContext), 8000, apiKey),
-          callAnthropic(buildGATBatch(2, caContext), 8000, apiKey),
-          callAnthropic(buildGATBatch(3, caContext), 6000, apiKey), // 15 questions now (was 12)
-          callAnthropic(buildGATBatch(4, caContext), 5000, apiKey), // 10 questions now (was 7)
-        ]);
+        const b1raw = await callAnthropic(buildGATMockBatch(1, caContext), 6000, apiKey);
+        const b1 = Array.isArray(b1raw) ? b1raw.slice(0, 10) : [];
 
-        // Prompts request 20/20/15/10 with buffer — slice to exact targets: 17/17/10/6 = 50
-        const b1 = Array.isArray(b1raw) ? b1raw.slice(0, 17) : [];
-        const b2 = Array.isArray(b2raw) ? b2raw.slice(0, 17) : [];
+        const b2raw = await callAnthropic(buildGATMockBatch(2, caContext), 5000, apiKey);
+        const b2 = Array.isArray(b2raw) ? b2raw.slice(0, 7) : [];
+
+        const b3raw = await callAnthropic(buildGATMockBatch(3, caContext), 6000, apiKey);
         const b3 = Array.isArray(b3raw) ? b3raw.slice(0, 10) : [];
-        const b4 = Array.isArray(b4raw) ? b4raw.slice(0, 6)  : [];
 
-        functions.logger.info("GAT_BATCH_COUNTS", { b1: b1.length, b2: b2.length, b3: b3.length, b4: b4.length });
+        const b4raw = await callAnthropic(buildGATMockBatch(4, caContext), 5000, apiKey);
+        const b4 = Array.isArray(b4raw) ? b4raw.slice(0, 7) : [];
 
-        if (b1.length < 15 || b2.length < 15 || b3.length < 9 || b4.length < 5) {
-          throw new Error(`GAT_BATCH_LOW: b1=${b1.length}/17 b2=${b2.length}/17 b3=${b3.length}/10 b4=${b4.length}/6`);
+        const b5raw = await callAnthropic(buildGATMockBatch(5, caContext), 6000, apiKey);
+        const b5 = Array.isArray(b5raw) ? b5raw.slice(0, 10) : [];
+
+        const b6raw = await callAnthropic(buildGATMockBatch(6, caContext), 5000, apiKey);
+        const b6 = Array.isArray(b6raw) ? b6raw.slice(0, 6) : [];
+
+        functions.logger.info("GAT_BATCH_COUNTS", { b1: b1.length, b2: b2.length, b3: b3.length, b4: b4.length, b5: b5.length, b6: b6.length });
+
+        // Same validation pattern as English — generous minimums (1-2 below target)
+        if (b1.length < 8 || b2.length < 6 || b3.length < 8 || b4.length < 6 || b5.length < 8 || b6.length < 5) {
+          throw new Error(`GAT_BATCH_LOW: b1=${b1.length}/10 b2=${b2.length}/7 b3=${b3.length}/10 b4=${b4.length}/7 b5=${b5.length}/10 b6=${b6.length}/6`);
         }
-        questions = [...b1, ...b2, ...b3, ...b4]; // exactly 50
+        questions = [...b1, ...b2, ...b3, ...b4, ...b5, ...b6]; // exactly 50
 
       } else if (mode === "QuickPractice") {
         // ── English Quick Practice ────────────────────────────────────────────
