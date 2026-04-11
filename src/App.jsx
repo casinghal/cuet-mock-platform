@@ -104,14 +104,29 @@ button{cursor:pointer;border:none;outline:none;font-family:var(--font-body);}
 .error-msg{background:#FEF2F2;border:1px solid #FECACA;color:var(--danger);border-radius:8px;padding:10px 14px;font-size:13px;margin-top:8px;}
 ::-webkit-scrollbar{width:6px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
 @media(max-width:700px){
-  .nta-header{padding:0 16px;height:48px;}
-  .nta-logo{font-size:15px;}
-  .section-bar{padding:6px 16px;font-size:11px;}
-  .modal-box{padding:24px 20px;}
-  .btn-primary{font-size:13px;}
-  .option-box{padding:12px 14px;}
+  .nta-header{padding:0 12px;height:48px;}
+  .nta-logo{font-size:14px;}
+  .section-bar{padding:5px 12px;font-size:11px;}
+  .modal-box{padding:20px 16px;}
+  .btn-primary{font-size:13px;height:40px;}
+  .btn-navy-sm{font-size:12px;height:32px;padding:0 12px;}
+  .option-box{padding:11px 12px;font-size:13px;}
   table{font-size:12px;}
-  th,td{padding:8px 10px !important;}
+  th,td{padding:7px 8px !important;}
+  /* Dashboard stat strip */
+  .stat-strip{flex-wrap:wrap;gap:8px;}
+  .stat-item{min-width:calc(50% - 4px);}
+  /* Exam palette — full width on mobile */
+  .palette-grid{grid-template-columns:repeat(8,1fr) !important;}
+  /* Results topic table */
+  .topic-table th,.topic-table td{padding:6px 8px !important;font-size:11px;}
+  /* Toast */
+  .toast{left:12px;right:12px;bottom:16px;font-size:12px;}
+}
+@media(max-width:420px){
+  .nta-header{padding:0 10px;}
+  .option-box{padding:10px 11px;font-size:12px;}
+  .palette-grid{grid-template-columns:repeat(6,1fr) !important;}
 }
 `;
 if (!document.getElementById("cuet-styles")) {
@@ -483,7 +498,8 @@ function AuthScreen({ onLogin, showToast }) {
   const S = {
     page: {
       minHeight: "100vh",
-      background: "linear-gradient(135deg, #080F1E 0%, #0D1B3E 50%, #0A1628 100%)",
+      // ORIGINAL BACKGROUND (restore by swapping comments): "linear-gradient(135deg, #080F1E 0%, #0D1B3E 50%, #0A1628 100%)"
+      background: "linear-gradient(135deg, #1C1C1C 0%, #2A2A2A 50%, #232323 100%)", // charcoal grey
       display: "flex",
       flexDirection: "column",
       fontFamily: "var(--font-body)",
@@ -863,13 +879,7 @@ function AuthScreen({ onLogin, showToast }) {
           {/* Error */}
           {error && <div style={S.errorBox}>{error}</div>}
 
-          {/* Toggle */}
-          <p style={S.toggleText}>
-            {mode === "login"
-              ? <React.Fragment>New here?{" "}<span style={S.toggleLink} onClick={() => setMode("register")}>Create your account</span></React.Fragment>
-              : <React.Fragment>Have an account?{" "}<span style={S.toggleLink} onClick={() => setMode("login")}>Sign in</span></React.Fragment>
-            }
-          </p>
+          {/* Toggle link removed — platform uses Google Sign-In only */}
 
           {/* Trust */}
           <p style={S.trustLine}>
@@ -1102,7 +1112,7 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
           <span style={{ fontSize: 11, color: "var(--success)", fontWeight: 600 }}>● Quick Practice: Lifetime Free</span>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12, marginBottom: 36 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 12, marginBottom: 36 }}>
           {[
             { label: "Tests Taken",  val: activeSubject === "GAT" ? gatTestsUsed : testsUsed, sub: unlocked ? "Unlimited" : `${testsLeft} free left` },
             { label: "Avg. Score",   val: avgScore != null ? `${avgScore}%` : "—", sub: "across all tests" },

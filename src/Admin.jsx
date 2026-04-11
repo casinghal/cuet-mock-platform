@@ -1149,21 +1149,48 @@ export default function AdminDashboard() {
           .kpi-grid { grid-template-columns: repeat(3,1fr) !important; }
           .live-section { grid-template-columns: 1fr !important; }
         }
+        @media (max-width: 700px) {
+          /* Header — hide email chip, keep buttons */
+          .admin-email-chip { display: none !important; }
+          /* Status bar — smaller pills */
+          .status-bar-wrap { padding: 5px 12px !important; gap: 6px !important; }
+          /* Command bar */
+          .cmd-bar { padding: 6px 12px !important; flex-wrap: wrap; gap: 6px !important; }
+          /* Body padding */
+          .admin-body { padding: 12px !important; }
+          /* Cards */
+          .admin-card { padding: 12px 14px !important; }
+          /* Tab bar — scrollable */
+          .admin-tab-bar { padding: 0 12px !important; overflow-x: auto; flex-wrap: nowrap !important; }
+          .admin-tab-item { white-space: nowrap; font-size: 12px !important; padding: 10px 10px !important; }
+          /* Tables — horizontal scroll */
+          .admin-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+          /* KPI tiles — smaller numbers */
+          .kpi-val { font-size: 20px !important; }
+          /* Anomaly panel */
+          .anomaly-flag { flex-direction: column !important; }
+          .anomaly-actions { flex-direction: row; flex-wrap: wrap; }
+          /* User management input full width */
+          .user-lookup-input { max-width: 100% !important; width: 100% !important; }
+          /* Fill progress strip */
+          .fill-strip { font-size: 11px !important; padding: 6px 10px !important; }
+        }
         @media (max-width: 600px) {
           .kpi-grid { grid-template-columns: repeat(2,1fr) !important; }
+          .admin-header-title { font-size: 12px !important; }
         }
       `}</style>
 
       {/* ── HEADER ── */}
       <div style={S.header}>
         <div style={S.headerLeft}>
-          <div style={S.headerTitle}>Vantiq CUET · Admin</div>
+          <div style={S.headerTitle} className="admin-header-title">Vantiq CUET · Admin</div>
           <span style={S.envBadge}>LIVE</span>
         </div>
         <div style={S.headerRight}>
           {fbUser ? (
             <>
-              <span style={S.emailChip}>{fbUser.email}</span>
+              <span style={S.emailChip} className="admin-email-chip">{fbUser.email}</span>
               <button
                 onClick={() => signOut(auth)}
                 style={{ ...S.btnSmall(), background: "rgba(255,255,255,0.08)", color: "#cbd5e1", border: "1px solid rgba(255,255,255,0.1)" }}
@@ -1247,7 +1274,7 @@ export default function AdminDashboard() {
       )}
 
       {/* ── ZONE 1: STATUS BAR ── */}
-      <div style={S.statusBar}>
+      <div style={S.statusBar} className="status-bar-wrap">
         <StatusPill
           label="Platform"
           value={platformStatus === "healthy" ? "HEALTHY" : platformStatus === "unknown" ? "—" : platformStatus.toUpperCase()}
@@ -1459,12 +1486,12 @@ export default function AdminDashboard() {
       </div>
 
       {/* ── TAB BAR ── */}
-      <div style={S.tabBar}>
+      <div style={S.tabBar} className="admin-tab-bar">
         {["students", "platform", "payments", "content", "settings"].map((t) => (
           <button
             key={t}
             onClick={() => setActiveTab(t)}
-            style={S.tabItem(activeTab === t)}
+            style={S.tabItem(activeTab === t)} className="admin-tab-item"
           >
             {t.charAt(0).toUpperCase() + t.slice(1)}
           </button>
@@ -1486,7 +1513,7 @@ export default function AdminDashboard() {
             <div style={{ padding: "10px 14px" }}>
               <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
                 <input
-                  style={{ ...S.input, maxWidth: 280, fontSize: 12 }}
+                  style={{ ...S.input, maxWidth: 280, fontSize: 12 }} className="user-lookup-input"
                   placeholder="Search by email address"
                   value={lookupEmail}
                   onChange={(e) => setLookupEmail(e.target.value)}
@@ -1614,7 +1641,7 @@ export default function AdminDashboard() {
             <div style={S.cardHeader}>
               <span style={S.cardTitle}>All Students · {userBreakdown.length}</span>
             </div>
-            <div style={{ overflowX: "auto" }}>
+            <div style={{ overflowX: "auto" }} className="admin-table-wrap">
               <div style={{ minWidth: 700 }}>
                 <div
                   style={{
@@ -1667,7 +1694,7 @@ export default function AdminDashboard() {
             <div style={S.cardHeader}>
               <span style={S.cardTitle}>Recent Tests · {recentTests.length}</span>
             </div>
-            <div style={{ overflowX: "auto" }}>
+            <div style={{ overflowX: "auto" }} className="admin-table-wrap">
               <div style={{ minWidth: 700 }}>
                 <div
                   style={{
@@ -1860,7 +1887,7 @@ export default function AdminDashboard() {
             {recentPay.length === 0 ? (
               <div style={{ padding: "20px 14px", color: "#94A3B8", fontSize: 12 }}>No payment records</div>
             ) : (
-              <div style={{ overflowX: "auto" }}>
+              <div style={{ overflowX: "auto" }} className="admin-table-wrap">
                 <div style={{ minWidth: 600 }}>
                   <div
                     style={{
