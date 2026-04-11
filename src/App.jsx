@@ -106,11 +106,16 @@ button{cursor:pointer;border:none;outline:none;font-family:var(--font-body);}
 @media(max-width:700px){
   .nta-header{padding:0 12px;height:48px;}
   .nta-logo{font-size:14px;}
-  .section-bar{padding:5px 12px;font-size:11px;}
+  /* Section bar: truncate long labels — GAT label is very long */
+  .section-bar{padding:5px 12px;font-size:11px;overflow:hidden;}
+  .section-bar span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1;}
   .modal-box{padding:20px 16px;}
   .btn-primary{font-size:13px;height:40px;}
   .btn-navy-sm{font-size:12px;height:32px;padding:0 12px;}
-  .option-box{padding:11px 12px;font-size:13px;}
+  .btn-amber{font-size:12px;height:32px;padding:0 10px;}
+  /* Option boxes: prevent text overflow */
+  .option-box{padding:11px 12px;font-size:13px;min-width:0;}
+  .option-box span:last-child{min-width:0;word-break:break-word;}
   table{font-size:12px;}
   th,td{padding:7px 8px !important;}
   /* Dashboard stat strip */
@@ -122,11 +127,21 @@ button{cursor:pointer;border:none;outline:none;font-family:var(--font-body);}
   .topic-table th,.topic-table td{padding:6px 8px !important;font-size:11px;}
   /* Toast */
   .toast{left:12px;right:12px;bottom:16px;font-size:12px;}
+  /* Results stat pills — smaller on mobile */
+  .result-stat-pill{font-size:14px !important;padding:3px 10px !important;}
+  /* Review screen answer lines */
+  .review-answer{flex-wrap:wrap;gap:4px !important;}
+  /* Feedback button — move up to avoid nav bar */
+  .feedback-float{bottom:80px !important;}
 }
 @media(max-width:420px){
-  .nta-header{padding:0 10px;}
+  .nta-header{padding:0 10px;height:44px;}
+  .nta-logo{font-size:13px;}
   .option-box{padding:10px 11px;font-size:12px;}
   .palette-grid{grid-template-columns:repeat(6,1fr) !important;}
+  /* Bottom nav: wrap to 2 rows on tiny screens */
+  .exam-footer{flex-wrap:wrap;gap:6px !important;}
+  .exam-footer-right{width:100%;justify-content:flex-end;}
 }
 `;
 if (!document.getElementById("cuet-styles")) {
@@ -1387,14 +1402,14 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
 
       <div className="nta-header">
         <span className="nta-logo">Vantiq <span>CUET</span></span>
-        <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 10 : 20, minWidth: 0 }}>
           {isTimed && (
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: 16, fontWeight: 600, color: warn ? "#FCD34D" : "#fff", background: warn ? "rgba(220,38,38,.15)" : "transparent", padding: warn ? "4px 10px" : "0", borderRadius: 6, transition: "all .3s" }}>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: isMobile ? 14 : 16, fontWeight: 700, color: warn ? "#FCD34D" : "#fff", background: warn ? "rgba(220,38,38,.2)" : "rgba(255,255,255,.1)", padding: "4px 8px", borderRadius: 6, transition: "all .3s", flexShrink: 0 }}>
               &#9201; {fmtTimer(timeLeft)}
             </div>
           )}
-          <div style={{ fontSize: 12, opacity: 0.8, textAlign: "right" }}>
-            <div style={{ fontWeight: 600 }}>{user?.displayName}</div>
+          <div style={{ fontSize: 12, opacity: 0.8, textAlign: "right", minWidth: 0 }}>
+            <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: isMobile ? 90 : 180 }}>{user?.displayName}</div>
             <button onClick={() => setExitModal(true)} style={{ background: "transparent", border: "none", color: "rgba(255,255,255,.5)", fontSize: 11, cursor: "pointer", fontFamily: "var(--font-body)", padding: 0 }}>
               Exit Test
             </button>
@@ -1411,7 +1426,7 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
       <div style={{ flex: 1, display: "flex", overflow: "hidden", flexDirection: "column" }}>
         <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? "20px 16px" : "28px 32px" }}>
           {q.passage && (
-            <div style={{ borderLeft: "4px solid var(--indigo)", background: "#F5F7FF", borderRadius: "0 8px 8px 0", padding: "16px 20px", marginBottom: 20, fontSize: 13.5, lineHeight: 1.8, color: "var(--text-primary)" }}>
+            <div style={{ borderLeft: "4px solid var(--indigo)", background: "#F5F7FF", borderRadius: "0 8px 8px 0", padding: isMobile ? "12px 14px" : "16px 20px", marginBottom: 20, fontSize: isMobile ? 13 : 13.5, lineHeight: 1.8, color: "var(--text-primary)", overflowWrap: "break-word", wordBreak: "break-word" }}>
               <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".05em", textTransform: "uppercase", color: "var(--indigo)", marginBottom: 8 }}>Reading Passage</div>
               {q.passage}
             </div>
@@ -1486,19 +1501,19 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
         </div>
       )}
 
-      <div style={{ borderTop: "1px solid var(--border)", background: "#fff", padding: isMobile ? "10px 16px" : "12px 32px", display: "flex", alignItems: "center", gap: isMobile ? 8 : 12 }}>
+      <div className="exam-footer" style={{ borderTop: "1px solid var(--border)", background: "#fff", padding: isMobile ? "10px 12px" : "12px 32px", display: "flex", alignItems: "center", gap: isMobile ? 6 : 12, flexShrink: 0 }}>
         <button className="btn-amber" onClick={() => setMarked(p => { const n = new Set(p); n.has(current) ? n.delete(current) : n.add(current); return n; })}>
           {marked.has(current) ? "✓ Marked" : "Mark"}
         </button>
         {isMobile && (
-          <button onClick={() => setShowPalette(true)} style={{ height: 36, padding: "0 12px", border: "1.5px solid var(--border)", borderRadius: 6, background: "#fff", fontSize: 12, fontWeight: 600, color: "var(--navy)", cursor: "pointer", fontFamily: "var(--font-body)" }}>
-            Questions ({Object.keys(answers).length}/{questions.length})
+          <button onClick={() => setShowPalette(true)} style={{ height: 32, padding: "0 10px", border: "1.5px solid var(--border)", borderRadius: 6, background: "#fff", fontSize: 11, fontWeight: 600, color: "var(--navy)", cursor: "pointer", fontFamily: "var(--font-body)", whiteSpace: "nowrap" }}>
+            {Object.keys(answers).length}/{questions.length} Q
           </button>
         )}
-        <div style={{ marginLeft: "auto", display: "flex", gap: isMobile ? 8 : 10 }}>
+        <div className="exam-footer-right" style={{ marginLeft: "auto", display: "flex", gap: isMobile ? 6 : 10 }}>
           <button
             onClick={() => current > 0 && setCurrent(c => c - 1)}
-            style={{ height: 36, padding: "0 14px", border: "1.5px solid var(--border)", borderRadius: 6, background: "#fff", fontSize: 13, fontWeight: 500, color: "var(--text-secondary)", cursor: current > 0 ? "pointer" : "not-allowed", opacity: current > 0 ? 1 : 0.4, fontFamily: "var(--font-body)", display: "flex", alignItems: "center", gap: 4 }}
+            style={{ height: 32, padding: "0 12px", border: "1.5px solid var(--border)", borderRadius: 6, background: "#fff", fontSize: isMobile ? 12 : 13, fontWeight: 500, color: "var(--text-secondary)", cursor: current > 0 ? "pointer" : "not-allowed", opacity: current > 0 ? 1 : 0.4, fontFamily: "var(--font-body)", display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}
           >
             ← {!isMobile && "Back"}
           </button>
@@ -1515,6 +1530,7 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
 function ResultsScreen({ questions, answers, config, user, onNewTest, onReview }) {
   const [analysis, setAnalysis]  = useState(null);
   const [aLoading, setALoading]  = useState(true);
+  const isMobile = useMobile();
 
   useEffect(() => { logEvent("page_view", { page: "results" }); }, []);
 
@@ -1572,18 +1588,18 @@ function ResultsScreen({ questions, answers, config, user, onNewTest, onReview }
         <span className="nta-logo">Vantiq <span>CUET</span></span>
         <span className="pill pill-indigo" style={{ fontSize: 11 }}>{config?.mode}</span>
       </div>
-      <div style={{ flex: 1, maxWidth: 860, margin: "0 auto", width: "100%", padding: "28px 24px" }}>
+      <div style={{ flex: 1, maxWidth: 860, margin: "0 auto", width: "100%", padding: isMobile ? "16px 14px" : "28px 24px", boxSizing: "border-box" }}>
         <h1 style={{ fontFamily: "var(--font-display)", fontSize: 26, color: "var(--navy)", marginBottom: 24 }}>
           Test Performance Report
         </h1>
 
-        <div className="card" style={{ padding: "28px 32px", marginBottom: 20, display: "flex", alignItems: "center", gap: 32, flexWrap: "wrap" }}>
+        <div className="card" style={{ padding: isMobile ? "20px 16px" : "28px 32px", marginBottom: 20, display: "flex", alignItems: isMobile ? "flex-start" : "center", gap: isMobile ? 16 : 32, flexWrap: "wrap" }}>
           <div>
             <div style={{ fontSize: 12, fontWeight: 600, color: "var(--navy)", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 4 }}>Total Score</div>
             <div style={{ fontFamily: "var(--font-mono)", fontSize: 48, fontWeight: 700, color: scoreColor(pct), lineHeight: 1 }}>{pct}%</div>
             <div style={{ fontFamily: "var(--font-mono)", fontSize: 20, color: "var(--navy)", marginTop: 4 }}>{totalScore} / {maxScore}</div>
           </div>
-          <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             {[
               { l: "Attempted", v: attempted, c: "pill-navy" },
               { l: "Correct",   v: correct,   c: "pill-green" },
@@ -1591,9 +1607,9 @@ function ResultsScreen({ questions, answers, config, user, onNewTest, onReview }
               { l: "Wrong",     v: wrong,      c: "pill-red" },
               { l: "Skipped",   v: unanswered, c: "pill-amber" },
             ].map(s => (
-              <div key={s.l} style={{ textAlign: "center" }}>
-                <div className={"pill " + s.c} style={{ height: "auto", padding: "4px 12px", fontSize: 18, fontFamily: "var(--font-mono)", fontWeight: 700 }}>{s.v}</div>
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4, textTransform: "uppercase", letterSpacing: ".04em" }}>{s.l}</div>
+              <div key={s.l} style={{ textAlign: "center", minWidth: 52 }}>
+                <div className={"pill result-stat-pill " + s.c} style={{ height: "auto", padding: "4px 10px", fontSize: 18, fontFamily: "var(--font-mono)", fontWeight: 700 }}>{s.v}</div>
+                <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4, textTransform: "uppercase", letterSpacing: ".04em" }}>{s.l}</div>
               </div>
             ))}
           </div>
@@ -1773,6 +1789,7 @@ function FeedbackWidget({ user }) {
       {/* Floating feedback button */}
       <button
         onClick={() => setOpen(true)}
+        className="feedback-float"
         style={{
           position: "fixed", bottom: 24, right: 24, zIndex: 999,
           background: "#0F2747", color: "#fff",
