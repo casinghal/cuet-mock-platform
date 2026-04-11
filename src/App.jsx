@@ -638,7 +638,7 @@ function AuthScreen({ onLogin, showToast }) {
         <div style={S.hero}>
           <div style={S.eyebrow} className="eyebrow-live">
             <span style={S.dot} />
-            Continuously updated · English (101) Live Now
+            Continuously updated · English (101) + GAT (501) Live Now
           </div>
 
           <h1 style={S.h1}>
