@@ -961,17 +961,23 @@ exports.triggerCacheWarm = functions
       // any sets were stored. Immediate response fixes this permanently.
       // Fill lock — prevents concurrent fills (nightly cron + health check auto-trigger)
       // If another fill started within the last 15 minutes, skip to avoid duplicate credit burn
+      const forceMode = !!(req.body && req.body.force); // force:true bypasses lock for targeted fills
       const lockRef  = db.collection("cacheControl").doc("fillLock");
       const lockSnap = await lockRef.get();
       const lockData = lockSnap.data();
       const LOCK_TTL_MS = 15 * 60 * 1000; // 15 minutes
-      if (lockData?.lockedAt && (Date.now() - lockData.lockedAt.toMillis()) < LOCK_TTL_MS) {
+      if (!forceMode && lockData?.lockedAt && (Date.now() - lockData.lockedAt.toMillis()) < LOCK_TTL_MS) {
         functions.logger.info("FILL_LOCK_SKIPPED", { lockedSince: lockData.lockedAt.toDate().toISOString() });
         res.status(200).json({
           message: "Fill already in progress — skipped to prevent duplicate runs",
           locked: true, lockedSince: lockData.lockedAt.toDate().toISOString(), status,
         });
         return;
+      }
+      // If forced, release any existing lock first so targeted fill can proceed cleanly
+      if (forceMode && lockData?.lockedAt) {
+        await lockRef.delete();
+        functions.logger.info("FILL_LOCK_FORCE_RELEASED", { targetMode, forceMode });
       }
       // Acquire lock
       await lockRef.set({ lockedAt: admin.firestore.FieldValue.serverTimestamp(), triggeredBy: "triggerCacheWarm" });

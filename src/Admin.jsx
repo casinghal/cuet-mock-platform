@@ -758,6 +758,45 @@ export default function AdminDashboard() {
     }, 15000);
   }, [filling, loadCacheStatus, fillProgress, addLog]);
 
+  // ── Targeted mode fill — bypasses lock, fills only one mode ─────────────
+  const fillMode = useCallback(async (mode) => {
+    if (filling) {
+      addLog(`Pausing current fill — switching to ${mode}...`, "warn");
+      clearInterval(fillPollRef.current);
+      setFilling(false);
+      setFillProgress(null);
+      await new Promise(r => setTimeout(r, 800));
+    }
+    setFilling(true);
+    fillStartRef.current = Date.now();
+    stalePollsRef.current = 0;
+    addLog(`Starting targeted fill: ${mode} (force mode — overrides any active lock)...`, "info");
+    try {
+      const res = await cfFetch("triggerCacheWarm", { mode, force: true });
+      addLog(`${mode} fill started: ${res?.message || "running"}`, "success");
+      setFillProgress({ started: true, targetMode: mode });
+    } catch (e) {
+      addLog(`${mode} fill error: ${e.message}`, "error");
+      setFilling(false);
+      return;
+    }
+    fillPollRef.current = setInterval(async () => {
+      const elapsed = Math.round((Date.now() - fillStartRef.current) / 1000);
+      const status = await loadCacheStatus(true);
+      if (status) {
+        const cur = status[mode]?.current ?? 0;
+        const tgt = CACHE_CONFIG[mode]?.size ?? 80;
+        setFillProgress({ mock: cur, qp: cur, mockTarget: tgt, qpTarget: tgt, elapsed, targetMode: mode });
+        if (cur >= tgt || elapsed > 590) {
+          clearInterval(fillPollRef.current);
+          setFilling(false);
+          setFillProgress(null);
+          addLog(cur >= tgt ? `${mode} cache FULL at ${cur}/${tgt}` : `${mode} fill ended at ${cur}/${tgt}`, cur >= tgt ? "success" : "warn");
+        }
+      }
+    }, 12000);
+  }, [filling, loadCacheStatus, addLog]);
+
   // ── Auto-fill check on load ──────────────────────────────────────────────────
   const checkAndFill = useCallback(async () => {
     const status = await loadCacheStatus(true); // silent on auto-check
@@ -1286,9 +1325,24 @@ export default function AdminDashboard() {
           <button onClick={runHealthCheck} style={S.btnSmall()}>
             {healthLoad ? <span style={S.spinner} /> : "Run Health Check"}
           </button>
-          <button onClick={fillAllCache} style={S.btnSmall("primary")} disabled={filling}>
-            {filling ? "Filling…" : "Fill Cache"}
-          </button>
+          {/* Individual mode fills — each bypasses lock and targets only that mode */}
+          <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
+            <button onClick={() => fillMode("GAT_Mock")} style={{ ...S.btnSmall("primary"), background:"#DC2626", borderColor:"#DC2626" }} disabled={filling} title="Force fill GAT Mock — overrides lock">
+              {filling && fillProgress?.targetMode==="GAT_Mock" ? "⏳ GAT Mock…" : "⚡ GAT Mock"}
+            </button>
+            <button onClick={() => fillMode("GAT_QP")} style={{ ...S.btnSmall("primary"), background:"#EA580C", borderColor:"#EA580C" }} disabled={filling} title="Force fill GAT QP — overrides lock">
+              {filling && fillProgress?.targetMode==="GAT_QP" ? "⏳ GAT QP…" : "⚡ GAT QP"}
+            </button>
+            <button onClick={() => fillMode("Mock")} style={S.btnSmall()} disabled={filling} title="Fill English Mock">
+              {filling && fillProgress?.targetMode==="Mock" ? "⏳ Eng Mock…" : "Eng Mock"}
+            </button>
+            <button onClick={() => fillMode("QuickPractice")} style={S.btnSmall()} disabled={filling} title="Fill English QP">
+              {filling && fillProgress?.targetMode==="QuickPractice" ? "⏳ Eng QP…" : "Eng QP"}
+            </button>
+            <button onClick={fillAllCache} style={S.btnSmall("primary")} disabled={filling} title="Fill all 4 modes sequentially">
+              {filling && !fillProgress?.targetMode ? "Filling All…" : "Fill All"}
+            </button>
+          </div>
           <a
             href="https://console.firebase.google.com/project/vantiq-cuet/functions/logs"
             target="_blank"
@@ -1704,9 +1758,23 @@ export default function AdminDashboard() {
           <div style={{ ...S.card, marginBottom: 16 }}>
             <div style={S.cardHeader}>
               <span style={S.cardTitle}>Cache Health</span>
-              <button onClick={fillAllCache} style={S.btnSmall("primary")} disabled={filling}>
-                {filling ? "Filling…" : "Fill All Cache"}
-              </button>
+              <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                <button onClick={() => fillMode("GAT_Mock")} style={{ ...S.btnSmall("primary"), background:"#DC2626" }} disabled={filling}>
+                  {filling && fillProgress?.targetMode==="GAT_Mock" ? "⏳…" : "⚡ GAT Mock"}
+                </button>
+                <button onClick={() => fillMode("GAT_QP")} style={{ ...S.btnSmall("primary"), background:"#EA580C" }} disabled={filling}>
+                  {filling && fillProgress?.targetMode==="GAT_QP" ? "⏳…" : "⚡ GAT QP"}
+                </button>
+                <button onClick={() => fillMode("Mock")} style={S.btnSmall()} disabled={filling}>
+                  Eng Mock
+                </button>
+                <button onClick={() => fillMode("QuickPractice")} style={S.btnSmall()} disabled={filling}>
+                  Eng QP
+                </button>
+                <button onClick={fillAllCache} style={S.btnSmall("primary")} disabled={filling}>
+                  {filling && !fillProgress?.targetMode ? "Filling All…" : "Fill All"}
+                </button>
+              </div>
             </div>
             {Object.entries(CACHE_CONFIG).map(([mode, config]) => (
               <CacheBar
