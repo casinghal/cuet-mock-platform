@@ -320,7 +320,7 @@ function PaywallModal({ user, onSuccess, onClose, subject }) {
 // Flip live: false → true when a subject is ready to launch
 const SUBJECTS = [
   { name: "English (101)",               live: true  },
-  { name: "General Aptitude Test (GAT)", live: false }, // flip to true after quality review
+  { name: "General Aptitude Test (GAT)", live: true  }, // GAT is live
   { name: "Economics",                   live: false },
 ];
 
