@@ -540,6 +540,7 @@ export default function AdminDashboard() {
   const [insights,    setInsights]    = useState(null);
   const [insightLoad, setInsightLoad] = useState(false);
   const [liveUsers,   setLiveUsers]   = useState([]);
+  const [userBreakdown, setUserBreakdown] = useState([]); // per-user test stats
   const [liveStats,   setLiveStats]   = useState(null);
   const [logs,        setLogs]        = useState([]);
   const [filling,     setFilling]     = useState(null);
@@ -686,7 +687,12 @@ export default function AdminDashboard() {
         const testsSnap2 = await getDocs(query(collection(db, "tests"), orderBy("completedAt", "desc"), limit(50)));
         const testsToday2 = testsSnap2.docs.filter(d => d.data().completedAt?.toDate?.() > todayStart).length;
 
-        // Recent activity feed (last 10 events across signups + tests + payments)
+        // Build uid → email lookup from users collection
+        const uidToEmail = {};
+        const uidToName  = {};
+        allUsers.forEach(u => { uidToEmail[u.id] = u.email || u.displayName || u.id.substring(0,8); uidToName[u.id] = u.displayName || u.email || u.id.substring(0,8); });
+
+        // Recent activity feed — now shows real email from user lookup
         const recentActivity = [
           ...allUsers
             .filter(u => u.createdAt?.toDate?.())
@@ -694,8 +700,48 @@ export default function AdminDashboard() {
           ...testsSnap2.docs
             .filter(d => d.data().completedAt?.toDate?.())
             .slice(0, 20)
-            .map(d => ({ type: "test", email: d.data().email || d.data().uid?.substring(0,8), time: d.data().completedAt.toDate(), label: `Mock test · ${d.data().score ?? 0} marks` })),
-        ].sort((a, b) => b.time - a.time).slice(0, 8);
+            .map(d => {
+              const uid = d.data().uid;
+              const email = uidToEmail[uid] || d.data().uid?.substring(0,8) || "unknown";
+              return { type: "test", email, time: d.data().completedAt.toDate(), label: `${d.data().mode || "Mock"} · ${d.data().totalScore ?? d.data().score ?? 0} marks` };
+            }),
+        ].sort((a, b) => b.time - a.time).slice(0, 10);
+
+        // Build uid → unlocked map from allUsers
+        const uidToUnlocked = {};
+        const uidToTestsUsed = {};
+        allUsers.forEach(u => { uidToUnlocked[u.id] = !!u.unlocked; uidToTestsUsed[u.id] = u.testsUsed || 0; });
+
+        // Per-user breakdown: aggregate all tests by uid, join with user email + access status
+        const userMap = {};
+        testsSnap2.docs.forEach(d => {
+          const t = d.data();
+          if (!t.uid) return;
+          if (!userMap[t.uid]) {
+            userMap[t.uid] = {
+              uid: t.uid,
+              email: uidToEmail[t.uid] || t.uid.substring(0,8),
+              name: uidToName[t.uid] || "—",
+              unlocked: uidToUnlocked[t.uid] || false,
+              testsUsed: uidToTestsUsed[t.uid] || 0,
+              tests: 0, mockTests: 0, qpTests: 0,
+              totalScore: 0, avgScore: 0, bestScore: 0,
+              lastTestAt: null,
+            };
+          }
+          const u = userMap[t.uid];
+          u.tests++;
+          if (t.mode === "Mock") u.mockTests++; else u.qpTests++;
+          const sc = t.totalScore ?? t.score ?? 0;
+          u.totalScore += sc;
+          if (sc > u.bestScore) u.bestScore = sc;
+          const ts = t.completedAt?.toDate?.();
+          if (ts && (!u.lastTestAt || ts > u.lastTestAt)) u.lastTestAt = ts;
+        });
+        const breakdown = Object.values(userMap)
+          .map(u => ({ ...u, avgScore: u.tests > 0 ? Math.round(u.totalScore / u.mockTests || 0) : 0 }))
+          .sort((a, b) => b.tests - a.tests);
+        setUserBreakdown(breakdown);
 
         setLiveStats({ newToday, activeToday, active7d, dormant, paid, freeActive, testsToday: testsToday2, total: allUsers.length, recentActivity });
       } catch(e) {
@@ -1321,16 +1367,23 @@ export default function AdminDashboard() {
               <table style={S.table}>
                 <thead>
                   <tr>
-                    {["Mode", "Score", "Accuracy", "Date"].map(h => (
+                    {["Student", "Mode", "Score", "Accuracy", "Date"].map(h => (
                       <th key={h} style={S.th}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {recentTests.length === 0 ? (
-                    <tr><td colSpan={4} style={{ ...S.td, textAlign: "center", color: "#94A3B8" }}>No tests yet</td></tr>
-                  ) : recentTests.map((t, i) => (
+                    <tr><td colSpan={5} style={{ ...S.td, textAlign: "center", color: "#94A3B8" }}>No tests yet</td></tr>
+                  ) : recentTests.map((t, i) => {
+                    const email = (liveStats && liveStats.total > 0)
+                      ? (userBreakdown.find(u => u.uid === t.uid)?.email || t.uid?.substring(0,10) || "—")
+                      : (t.uid?.substring(0,10) || "—");
+                    return (
                     <tr key={i}>
+                      <td style={{ ...S.td, maxWidth: 160, fontSize: 11 }}>
+                        <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#0F2747", fontWeight: 600 }}>{email}</div>
+                      </td>
                       <td style={S.td}><span style={S.pill("indigo")}>{t.mode || "Mock"}</span></td>
                       <td style={{ ...S.td, fontFamily: "monospace" }}>{t.totalScore ?? "—"}</td>
                       <td style={{ ...S.td, fontWeight: 600, color: (t.accuracy || 0) >= 70 ? "#059669" : (t.accuracy || 0) >= 45 ? "#D97706" : "#DC2626" }}>
@@ -1338,7 +1391,7 @@ export default function AdminDashboard() {
                       </td>
                       <td style={{ ...S.td, color: "#94A3B8", fontSize: 11 }}>{fmtDate(t.completedAt)}</td>
                     </tr>
-                  ))}
+                  );})}
                 </tbody>
               </table>
             </div>
@@ -1372,6 +1425,59 @@ export default function AdminDashboard() {
           </div>
         </div>
 
+
+        {/* ── Per-User Test Breakdown ─────────────────────────────────────── */}
+        <div style={S.sectionTitle}>
+          Student Test Breakdown
+          {userBreakdown.length > 0 && (
+            <span style={{ marginLeft: 8, background: "#4338CA", color: "#fff", borderRadius: 12, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>
+              {userBreakdown.length} students
+            </span>
+          )}
+        </div>
+        <div style={{ ...S.card, padding: 0, overflow: "hidden", marginBottom: 24 }}>
+          {userBreakdown.length === 0 ? (
+            <div style={{ padding: "28px 20px", textAlign: "center", color: "#94A3B8", fontSize: 13 }}>No test data yet</div>
+          ) : (
+            <table style={{ ...S.table, width: "100%" }}>
+              <thead>
+                <tr>
+                  {["Student", "Access", "Mock", "QP", "Avg Score", "Best", "Last Test"].map(h => (
+                    <th key={h} style={S.th}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {userBreakdown.map((u, i) => {
+                  const userRecord = liveStats && liveStats.paid !== undefined
+                    ? null : null; // access status from allUsers
+                  return (
+                    <tr key={u.uid} style={{ borderBottom: i < userBreakdown.length - 1 ? "1px solid #F1F5F9" : "none", background: i % 2 === 0 ? "#fff" : "#FAFAFA" }}>
+                      <td style={{ ...S.td, maxWidth: 200 }}>
+                        <div style={{ fontWeight: 600, fontSize: 12, color: "#0F2747", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {u.email}
+                        </div>
+                        <div style={{ fontSize: 10, color: "#94A3B8", marginTop: 2, fontFamily: "monospace" }}>{u.uid.substring(0,12)}…</div>
+                      </td>
+                      <td style={S.td}>
+                        <span style={S.pill(u.unlocked ? "green" : "indigo")}>{u.unlocked ? "Pro" : "Free"}</span>
+                      </td>
+                      <td style={{ ...S.td, fontFamily: "monospace", fontWeight: 700, color: "#0F2747", textAlign: "center" }}>{u.mockTests}</td>
+                      <td style={{ ...S.td, fontFamily: "monospace", color: "#4338CA", textAlign: "center" }}>{u.qpTests}</td>
+                      <td style={{ ...S.td, fontFamily: "monospace", textAlign: "center", color: u.avgScore >= 70 ? "#059669" : u.avgScore >= 45 ? "#D97706" : "#94A3B8" }}>
+                        {u.mockTests > 0 ? u.avgScore : "—"}
+                      </td>
+                      <td style={{ ...S.td, fontFamily: "monospace", fontWeight: 600, textAlign: "center", color: "#059669" }}>{u.bestScore > 0 ? u.bestScore : "—"}</td>
+                      <td style={{ ...S.td, fontSize: 11, color: "#94A3B8", whiteSpace: "nowrap" }}>
+                        {u.lastTestAt ? u.lastTestAt.toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
 
         {/* ── Feedback Insights ──────────────────────────────────────────── */}
         <div style={S.sectionTitle}>Feedback Insights</div>
