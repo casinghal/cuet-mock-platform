@@ -513,6 +513,12 @@ export default function AdminDashboard() {
   // ── User management state ───────────────────────────────────────────────────
   const [lookupEmail, setLookupEmail] = useState("");
   const [lookupResult, setLookupResult] = useState(null);
+  const [anomalies,    setAnomalies]    = useState([]);
+  const [anomalyLoad,  setAnomalyLoad]  = useState(false);
+  const [anomalyTs,    setAnomalyTs]    = useState(null);
+  const [blockLoad,    setBlockLoad]    = useState(null); // uid being blocked
+  const [adminNotes,   setAdminNotes]   = useState("");
+  const [notesUid,     setNotesUid]     = useState(null);
   const [lookupLoad, setLookupLoad] = useState(false);
 
   // ── Change password state ───────────────────────────────────────────────────
@@ -585,6 +591,8 @@ export default function AdminDashboard() {
           unlocked: u.unlocked,
           lastTest: u.lastTestAt,
           testsUsed: u.testsUsed || 0,
+          blocked: !!u.blocked || !!(u.blockedUntil && (u.blockedUntil.toDate ? u.blockedUntil.toDate() : new Date(u.blockedUntil)) > new Date()),
+          blockCount: u.blockCount || 0,
         };
       });
       allTests.forEach((t) => {
@@ -770,6 +778,7 @@ export default function AdminDashboard() {
     if (authed && fbUser) {
       loadData();
       checkAndFill();
+      setTimeout(() => runAnomalyDetection(), 4000);
     } else if (authed && !fbUser && !fbLoading) {
       loadCacheStatus();
     }
@@ -870,6 +879,74 @@ export default function AdminDashboard() {
       addLog("User lookup error: " + e.message, "error");
     } finally {
       setLookupLoad(false);
+    }
+  };
+
+  // ── Anomaly detection ──────────────────────────────────────────────────────
+  const runAnomalyDetection = async () => {
+    setAnomalyLoad(true);
+    try {
+      const data = await cfFetch("detectAnomalies");
+      setAnomalies(data.flags || []);
+      setAnomalyTs(new Date());
+      if (data.autoBlocked?.length) {
+        data.autoBlocked.forEach(u =>
+          addLog(`AUTO-BLOCKED ${u.email} — ${u.isPermanent ? "PERMANENT" : "1 hour"} (offense #${u.blockCount})`, "error")
+        );
+      }
+      addLog(`Anomaly scan complete — ${data.flags?.length || 0} flag(s), ${data.autoBlocked?.length || 0} auto-blocked`, data.flags?.length ? "warn" : "success");
+    } catch (e) {
+      addLog("Anomaly detection error: " + e.message, "error");
+    } finally {
+      setAnomalyLoad(false);
+    }
+  };
+
+  // ── Block / unblock user ────────────────────────────────────────────────────
+  const blockUser = async (uid, email, duration, reason) => {
+    setBlockLoad(uid);
+    try {
+      const data = await cfFetch("blockUser", { uid, duration, reason });
+      addLog(`${duration === "unblock" ? "Unblocked" : duration === "permanent" ? "PERMANENTLY BLOCKED" : "Blocked 1hr"}: ${email} (offense #${data.blockCount || 1})`, duration === "unblock" ? "success" : "error");
+      setLookupResult(p => p ? { ...p,
+        blocked: duration === "permanent",
+        blockedUntil: duration === "1h" ? new Date(Date.now() + 3600000) : null,
+        blockCount: data.blockCount || 1,
+      } : p);
+      // Remove from anomaly list if acted on
+      setAnomalies(prev => prev.filter(a => a.uid !== uid));
+    } catch (e) {
+      addLog("Block error: " + e.message, "error");
+    } finally {
+      setBlockLoad(null);
+    }
+  };
+
+  // ── Delete user ─────────────────────────────────────────────────────────────
+  const deleteUser = async (uid, email) => {
+    if (!window.confirm(`Permanently delete ${email}? This removes ALL their tests, payments, and auth account. Cannot be undone.`)) return;
+    setBlockLoad(uid);
+    try {
+      const data = await cfFetch("deleteUser", { uid });
+      addLog(`DELETED: ${email} — ${data.testsDeleted} tests, ${data.paymentsDeleted} payments removed`, "error");
+      setLookupResult(null);
+      // Refresh student list
+      loadData();
+    } catch (e) {
+      addLog("Delete error: " + e.message, "error");
+    } finally {
+      setBlockLoad(null);
+    }
+  };
+
+  // ── Save admin notes ────────────────────────────────────────────────────────
+  const saveAdminNotes = async (uid, notes) => {
+    try {
+      await setDoc(doc(db, "users", uid), { adminNotes: notes }, { merge: true });
+      addLog(`Notes saved for ${uid.slice(0,8)}`, "success");
+      setLookupResult(p => p ? { ...p, adminNotes: notes } : p);
+    } catch (e) {
+      addLog("Notes save error: " + e.message, "error");
     }
   };
 
@@ -1064,7 +1141,7 @@ export default function AdminDashboard() {
             </button>
           )}
           <button
-            onClick={() => { loadData(); loadCacheStatus(); }}
+            onClick={() => { loadData(); loadCacheStatus(); runAnomalyDetection(); }}
             style={{ ...S.btnSmall("primary"), marginLeft: 4 }}
           >
             {loading ? "↻" : "Refresh"}
@@ -1083,6 +1160,50 @@ export default function AdminDashboard() {
           >
             Sign in
           </button>
+        </div>
+      )}
+
+      {/* ── ANOMALY ALERT PANEL ─────────────────────────────────────────────── */}
+      {anomalies.length > 0 && (
+        <div style={{ background:"#FEF2F2", borderBottom:"2px solid #FECACA", padding:"10px 24px" }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:8 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+              <span style={{ fontSize:16 }}>🚨</span>
+              <span style={{ fontWeight:700, color:"#DC2626", fontSize:13 }}>
+                {anomalies.filter(a=>!a.alreadyBlocked).length} Anomal{anomalies.filter(a=>!a.alreadyBlocked).length===1?"y":"ies"} Detected
+              </span>
+              {anomalyTs && <span style={{ fontSize:10, color:"#94A3B8" }}>· scanned {anomalyTs.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})}</span>}
+            </div>
+            <div style={{ display:"flex", gap:6 }}>
+              <button onClick={runAnomalyDetection} disabled={anomalyLoad} style={{ ...S.btnSmall("muted"), fontSize:10, padding:"3px 10px" }}>
+                {anomalyLoad?"Scanning…":"Re-scan"}
+              </button>
+              <button onClick={()=>setAnomalies([])} style={{ ...S.btnSmall("muted"), fontSize:10, padding:"3px 10px" }}>Dismiss</button>
+            </div>
+          </div>
+          {anomalies.map((a,i) => (
+            <div key={i} style={{ background:"#fff", border:`1px solid ${a.severity==="critical"?"#FECACA":"#FCD34D"}`, borderLeft:`4px solid ${a.severity==="critical"?"#DC2626":"#D97706"}`, borderRadius:8, padding:"10px 14px", marginBottom:6, display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:12, flexWrap:"wrap" }}>
+              <div style={{ flex:1, minWidth:180 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:3 }}>
+                  <span style={{ fontSize:10, fontWeight:700, textTransform:"uppercase", color:a.severity==="critical"?"#DC2626":"#D97706" }}>
+                    {a.severity==="critical"?"⛔ CRITICAL":"⚠️ WARNING"} · {a.pattern.replace(/_/g," ")}
+                  </span>
+                  {a.autoBlocked && <span style={{ fontSize:10, background:"#DC2626", color:"#fff", borderRadius:10, padding:"1px 7px", fontWeight:700 }}>{a.permanentlyBlocked?"PERM-BANNED":"AUTO-BLOCKED 1HR"}</span>}
+                  {a.alreadyBlocked && <span style={{ fontSize:10, background:"#6B7280", color:"#fff", borderRadius:10, padding:"1px 7px" }}>already blocked</span>}
+                </div>
+                <div style={{ fontWeight:600, fontSize:12, color:"#0F2747", marginBottom:1 }}>{a.email}</div>
+                <div style={{ fontSize:11, color:"#64748B" }}>{a.detail}</div>
+                <div style={{ fontSize:11, color:"#94A3B8", fontStyle:"italic", marginTop:2 }}>💡 {a.suggestion}</div>
+              </div>
+              <div style={{ display:"flex", gap:6, flexShrink:0, paddingTop:2 }}>
+                {!a.autoBlocked && !a.alreadyBlocked && (<>
+                  <button onClick={()=>blockUser(a.uid,a.email,"1h",`Admin: ${a.pattern} — ${a.detail}`)} disabled={blockLoad===a.uid} style={{ ...S.btnSmall("danger"), fontSize:11 }}>{blockLoad===a.uid?"…":"Block 1h"}</button>
+                  <button onClick={()=>blockUser(a.uid,a.email,"permanent",`Admin: ${a.pattern} — ${a.detail}. Permanent.`)} disabled={blockLoad===a.uid} style={{ ...S.btnSmall("danger"), fontSize:11, background:"#7F1D1D", borderColor:"#7F1D1D" }}>Perm Ban</button>
+                </>)}
+                <button onClick={()=>{setLookupEmail(a.email); setTimeout(lookupUser,50);}} style={{ ...S.btnSmall("muted"), fontSize:11 }}>Profile</button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
@@ -1227,29 +1348,22 @@ export default function AdminDashboard() {
 
       {/* ── LIVE SECTION ── */}
       <div style={{ ...S.liveSection }} className="live-section">
-        {/* Recent Activity */}
+        {/* Recent Activity — compact */}
         <div style={S.card}>
-          <div style={S.cardHeader}>
+          <div style={{ ...S.cardHeader, paddingBottom: 6 }}>
             <span style={S.cardTitle}>Recent Activity</span>
-            <span style={{ fontSize: 10, color: "#94A3B8" }}>last 8 events</span>
+            <span style={{ fontSize: 10, color: "#94A3B8" }}>last 10</span>
           </div>
           {recentActivity.length === 0 ? (
-            <div style={{ padding: "20px 14px", fontSize: 12, color: "#94A3B8" }}>No activity yet</div>
+            <div style={{ padding: "12px 14px", fontSize: 11, color: "#94A3B8" }}>No activity yet</div>
           ) : (
             recentActivity.map((a, i) => (
-              <div
-                key={i}
-                style={{
-                  ...S.tableRow(i % 2),
-                  gridTemplateColumns: "auto 1fr auto",
-                  gap: 6,
-                }}
-              >
-                <span>{a.icon}</span>
-                <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#0F2747" }}>
-                  {trunc(a.email, 24)}
+              <div key={i} style={{ display:"flex", alignItems:"center", gap:6, padding:"5px 12px", borderBottom: i < recentActivity.length-1 ? "1px solid #F8FAFC" : "none", background: i%2===0?"#fff":"#FAFAFA" }}>
+                <span style={{ fontSize:12, flexShrink:0 }}>{a.icon}</span>
+                <span style={{ fontWeight:600, fontSize:11, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", color:"#0F2747", flex:1 }}>
+                  {trunc(a.email, 22)}
                 </span>
-                <span style={{ color: "#94A3B8", fontFamily: "'JetBrains Mono', monospace", fontSize: 10, whiteSpace: "nowrap" }}>
+                <span style={{ color:"#94A3B8", fontFamily:"'JetBrains Mono',monospace", fontSize:10, whiteSpace:"nowrap", flexShrink:0 }}>
                   {a.time}
                 </span>
               </div>
@@ -1257,46 +1371,33 @@ export default function AdminDashboard() {
           )}
         </div>
 
-        {/* Student Breakdown */}
+        {/* Student Breakdown — compact */}
         <div style={S.card}>
-          <div style={S.cardHeader}>
+          <div style={{ ...S.cardHeader, paddingBottom: 6 }}>
             <span style={S.cardTitle}>Student Breakdown</span>
-            <span style={{ fontSize: 10, color: "#94A3B8" }}>sorted by Mock count</span>
+            <span style={{ fontSize: 10, color: "#94A3B8" }}>Mock ↓</span>
           </div>
-          <div
-            style={{
-              ...S.tableHeader,
-              gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr",
-            }}
-          >
-            <span>Email</span>
-            <span style={{ textAlign: "center" }}>Mock</span>
-            <span style={{ textAlign: "center" }}>QP</span>
-            <span style={{ textAlign: "center" }}>Access</span>
-            <span>Last Test</span>
+          <div style={{ display:"grid", gridTemplateColumns:"2fr .6fr .6fr .8fr 1.2fr", padding:"5px 12px", borderBottom:"1px solid #F1F5F9" }}>
+            {["Email","Mock","QP","Access","Last"].map(h => (
+              <span key={h} style={{ fontSize:9, fontWeight:700, textTransform:"uppercase", letterSpacing:".05em", color:"#94A3B8", textAlign: h!=="Email"?"center":undefined }}>{h}</span>
+            ))}
           </div>
           {userBreakdown.length === 0 ? (
-            <div style={{ padding: "16px 14px", fontSize: 12, color: "#94A3B8" }}>No students yet</div>
+            <div style={{ padding: "12px 14px", fontSize: 11, color: "#94A3B8" }}>No students yet</div>
           ) : (
-            userBreakdown.slice(0, 8).map((u, i) => (
-              <div
-                key={i}
-                style={{
-                  ...S.tableRow(i % 2),
-                  gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr",
-                }}
-              >
-                <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#0F2747" }}>
-                  {trunc(u.email, 26)}
+            userBreakdown.slice(0, 10).map((u, i) => (
+              <div key={i} style={{ display:"grid", gridTemplateColumns:"2fr .6fr .6fr .8fr 1.2fr", padding:"5px 12px", borderBottom: i<9?"1px solid #F8FAFC":"none", background:i%2===0?"#fff":"#FAFAFA", alignItems:"center" }}>
+                <span style={{ fontWeight:600, fontSize:11, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", color: u.blocked?"#DC2626":"#0F2747" }}>
+                  {u.blocked && "⛔ "}{trunc(u.email, 24)}
                 </span>
-                <span style={{ textAlign: "center", fontFamily: "'JetBrains Mono', monospace" }}>{u.mock}</span>
-                <span style={{ textAlign: "center", fontFamily: "'JetBrains Mono', monospace" }}>{u.qp}</span>
-                <span style={{ textAlign: "center" }}>
-                  <span style={S.statusBadge(u.unlocked ? "paid" : "free")}>
-                    {u.unlocked ? "Paid" : "Free"}
+                <span style={{ textAlign:"center", fontFamily:"'JetBrains Mono',monospace", fontSize:11, fontWeight:700 }}>{u.mock}</span>
+                <span style={{ textAlign:"center", fontFamily:"'JetBrains Mono',monospace", fontSize:11, color:"#4338CA" }}>{u.qp}</span>
+                <span style={{ textAlign:"center" }}>
+                  <span style={{ fontSize:9, fontWeight:700, padding:"2px 6px", borderRadius:10, background: u.unlocked?"#DCFCE7":"#EEF2FF", color: u.unlocked?"#059669":"#4338CA" }}>
+                    {u.unlocked?"Pro":"Free"}
                   </span>
                 </span>
-                <span style={{ color: "#64748B", fontSize: 11 }}>{fmt(u.lastTest)}</span>
+                <span style={{ color:"#94A3B8", fontSize:10 }}>{fmt(u.lastTest)}</span>
               </div>
             ))
           )}
@@ -1328,10 +1429,10 @@ export default function AdminDashboard() {
             <div style={S.cardHeader}>
               <span style={S.cardTitle}>User Management</span>
             </div>
-            <div style={{ padding: "14px" }}>
-              <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+            <div style={{ padding: "10px 14px" }}>
+              <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
                 <input
-                  style={{ ...S.input, maxWidth: 300 }}
+                  style={{ ...S.input, maxWidth: 280, fontSize: 12 }}
                   placeholder="Search by email address"
                   value={lookupEmail}
                   onChange={(e) => setLookupEmail(e.target.value)}
@@ -1355,34 +1456,97 @@ export default function AdminDashboard() {
                     <div style={{ color: "#D97706", fontSize: 12 }}>No user found with that email.</div>
                   ) : (
                     <>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
+                      {/* Block status banner */}
+                      {(lookupResult.blocked || lookupResult.blockedUntil) && (
+                        <div style={{ background: lookupResult.blocked ? "#FEF2F2" : "#FEF3C7", border: `1px solid ${lookupResult.blocked ? "#FECACA" : "#FCD34D"}`, borderRadius: 8, padding: "10px 12px", marginBottom: 10 }}>
+                          <div style={{ fontWeight: 700, color: lookupResult.blocked ? "#DC2626" : "#D97706", fontSize: 12, marginBottom: 3 }}>
+                            {lookupResult.blocked ? "⛔ PERMANENTLY BLOCKED" : `⚠️ BLOCKED UNTIL ${new Date(lookupResult.blockedUntil?.toDate ? lookupResult.blockedUntil.toDate() : lookupResult.blockedUntil).toLocaleTimeString("en-IN", {hour:"2-digit",minute:"2-digit"})}`}
+                          </div>
+                          {lookupResult.blockReason && <div style={{ fontSize: 11, color: "#64748B" }}>{lookupResult.blockReason}</div>}
+                          {lookupResult.blockCount > 0 && <div style={{ fontSize: 10, color: "#94A3B8", marginTop: 3 }}>Offense #{lookupResult.blockCount}</div>}
+                        </div>
+                      )}
+
+                      {/* Info grid — 3 columns, compact */}
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "6px 10px", marginBottom: 12 }}>
                         {[
-                          ["Email", lookupResult.email],
-                          ["UID", lookupResult.id?.slice(0, 16) + "…"],
-                          ["Tests Used", lookupResult.testsUsed ?? 0],
-                          ["Access", lookupResult.unlocked ? "Paid / Unlocked" : "Free"],
-                          ["Last Test", fmt(lookupResult.lastTestAt)],
-                          ["Joined", fmt(lookupResult.createdAt)],
-                        ].map(([k, v]) => (
+                          ["Email",      lookupResult.email,                                   false],
+                          ["Access",     lookupResult.unlocked ? "Paid / Pro" : "Free",        false],
+                          ["Tests Used", lookupResult.testsUsed ?? 0,                          true ],
+                          ["Joined",     fmt(lookupResult.createdAt),                          false],
+                          ["Last Test",  fmt(lookupResult.lastTestAt),                         false],
+                          ["Block Count",lookupResult.blockCount ?? 0,                         true ],
+                        ].map(([k, v, mono]) => (
                           <div key={k}>
-                            <div style={{ fontSize: 10, textTransform: "uppercase", color: "#94A3B8", letterSpacing: "0.06em", marginBottom: 2 }}>{k}</div>
-                            <div style={{ fontSize: 12, fontWeight: 600, fontFamily: k === "UID" || k === "Tests Used" ? "'JetBrains Mono', monospace" : "inherit" }}>{v}</div>
+                            <div style={{ fontSize: 9, textTransform: "uppercase", color: "#94A3B8", letterSpacing: "0.06em", marginBottom: 1 }}>{k}</div>
+                            <div style={{ fontSize: 11, fontWeight: 600, fontFamily: mono ? "'JetBrains Mono',monospace" : "inherit", color: k==="Block Count" && v > 0 ? "#DC2626" : "#0F2747" }}>{v ?? "—"}</div>
                           </div>
                         ))}
                       </div>
-                      <div style={{ display: "flex", gap: 8 }}>
-                        {!lookupResult.unlocked ? (
-                          <button onClick={() => grantAccess(lookupResult.id)} style={S.btnSmall("primary")}>
-                            Grant Unlimited Access
+
+                      {/* Action buttons — all controls */}
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+                        {/* Access controls */}
+                        {!lookupResult.unlocked
+                          ? <button onClick={() => grantAccess(lookupResult.id)} style={S.btnSmall("primary")}>Grant Pro Access</button>
+                          : <button onClick={() => revokeAccess(lookupResult.id)} style={S.btnSmall("danger")}>Revoke Access</button>
+                        }
+                        <button onClick={() => resetFreeLimit(lookupResult.id)} style={S.btnSmall()}>Reset Free Limit</button>
+
+                        {/* Block controls */}
+                        {lookupResult.blocked || lookupResult.blockedUntil ? (
+                          <button
+                            onClick={() => blockUser(lookupResult.id, lookupResult.email, "unblock", "")}
+                            disabled={blockLoad === lookupResult.id}
+                            style={{ ...S.btnSmall("primary"), background: "#059669", borderColor: "#059669" }}
+                          >
+                            {blockLoad === lookupResult.id ? "…" : "✓ Unblock"}
                           </button>
                         ) : (
-                          <button onClick={() => revokeAccess(lookupResult.id)} style={S.btnSmall("danger")}>
-                            Revoke Access
-                          </button>
+                          <>
+                            <button
+                              onClick={() => blockUser(lookupResult.id, lookupResult.email, "1h", "Admin: manual 1-hour suspension")}
+                              disabled={blockLoad === lookupResult.id}
+                              style={S.btnSmall("danger")}
+                            >
+                              {blockLoad === lookupResult.id ? "…" : "Block 1 Hour"}
+                            </button>
+                            <button
+                              onClick={() => blockUser(lookupResult.id, lookupResult.email, "permanent", "Admin: permanent ban")}
+                              disabled={blockLoad === lookupResult.id}
+                              style={{ ...S.btnSmall("danger"), background: "#7F1D1D", borderColor: "#7F1D1D" }}
+                            >
+                              Perm Ban
+                            </button>
+                          </>
                         )}
-                        <button onClick={() => resetFreeLimit(lookupResult.id)} style={S.btnSmall()}>
-                          Reset Free Limit
+
+                        {/* Delete — destructive, right-aligned visually */}
+                        <button
+                          onClick={() => deleteUser(lookupResult.id, lookupResult.email)}
+                          disabled={blockLoad === lookupResult.id}
+                          style={{ ...S.btnSmall("danger"), marginLeft: "auto", background: "#1F2937", borderColor: "#1F2937" }}
+                        >
+                          🗑 Delete Account
                         </button>
+                      </div>
+
+                      {/* Admin notes */}
+                      <div style={{ borderTop: "1px solid #F1F5F9", paddingTop: 10 }}>
+                        <div style={{ fontSize: 9, textTransform: "uppercase", color: "#94A3B8", letterSpacing: ".06em", marginBottom: 4 }}>Admin Notes (internal only)</div>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <textarea
+                            value={notesUid === lookupResult.id ? adminNotes : (lookupResult.adminNotes || "")}
+                            onChange={e => { setNotesUid(lookupResult.id); setAdminNotes(e.target.value); }}
+                            rows={2}
+                            placeholder="Add private notes about this user…"
+                            style={{ flex: 1, fontSize: 11, border: "1px solid #E2E8F0", borderRadius: 6, padding: "6px 8px", fontFamily: "inherit", resize: "vertical" }}
+                          />
+                          <button
+                            onClick={() => saveAdminNotes(lookupResult.id, notesUid === lookupResult.id ? adminNotes : (lookupResult.adminNotes || ""))}
+                            style={{ ...S.btnSmall("primary"), alignSelf: "flex-end", fontSize: 11 }}
+                          >Save</button>
+                        </div>
                       </div>
                     </>
                   )}

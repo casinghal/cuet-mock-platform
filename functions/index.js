@@ -1035,6 +1035,22 @@ exports.generateQuestions = functions
       userDoc    = snap.data() || {};
     } catch (e) { res.status(500).json({ error: "Could not verify access. Please try again." }); return; }
 
+    // ── Block check — must run before any other limit check ─────────────────
+    if (userDoc.blocked) {
+      res.status(403).json({
+        error: "Your account has been permanently blocked due to repeated violations of platform rules. Contact support if you believe this is an error.",
+        code: "permanently_blocked"
+      }); return;
+    }
+    if (userDoc.blockedUntil && userDoc.blockedUntil.toDate && userDoc.blockedUntil.toDate() > new Date()) {
+      const minsLeft = Math.ceil((userDoc.blockedUntil.toDate() - new Date()) / 60000);
+      res.status(403).json({
+        error: `Unusual activity was detected on your account. Your access is suspended for ${minsLeft} more minute${minsLeft !== 1 ? "s" : ""}. Repeated violations will result in a permanent ban.`,
+        code: "temporarily_blocked",
+        minutesLeft: minsLeft
+      }); return;
+    }
+
     const mode = (req.body.config || {}).mode || "Mock";
 
     // ── Free modes: always allowed, no limit checks ───────────────────────────
@@ -1900,3 +1916,184 @@ exports.platformHealthCheck = functions
 // ─── 9. platformHealthCheck ──────────────────────────────────────────────────
 // Daily automated health check for all platform subsystems.
 // Auto-fixes: cache fills if below threshold (safe, additive only).
+// ─── blockUser ────────────────────────────────────────────────────────────────
+// Sets blockedUntil (1 hour) or blocked:true (permanent). Admin-only via key.
+// Also used by detectAnomalies for auto-lockout.
+exports.blockUser = functions.runWith({ timeoutSeconds: 30, memory: "128MB" }).https.onRequest(async (req, res) => {
+  setCORS(res);
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  const adminKey    = req.body?.adminKey || req.headers["x-admin-key"] || "";
+  const expectedKey = functions.config().admin?.key || process.env.ADMIN_KEY || "";
+  if (!adminKey || adminKey !== expectedKey) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { uid, duration, reason } = req.body;
+  // duration: "1h" | "permanent" | "unblock"
+  if (!uid || !duration) { res.status(400).json({ error: "uid and duration required" }); return; }
+
+  try {
+    const userRef = db.collection("users").doc(uid);
+    const userSnap = await userRef.get();
+    const userData = userSnap.data() || {};
+    const blockCount = (userData.blockCount || 0) + (duration !== "unblock" ? 1 : 0);
+
+    let update = { blockCount, lastBlockedAt: admin.firestore.FieldValue.serverTimestamp() };
+
+    if (duration === "permanent") {
+      update.blocked      = true;
+      update.blockedUntil = null;
+      update.blockReason  = reason || "Permanently blocked due to repeated violations.";
+    } else if (duration === "1h") {
+      update.blocked      = false;
+      update.blockedUntil = new Date(Date.now() + 60 * 60 * 1000);
+      update.blockReason  = reason || "Unusual activity detected. Access suspended for 1 hour.";
+    } else if (duration === "unblock") {
+      update.blocked      = false;
+      update.blockedUntil = null;
+      update.blockReason  = null;
+      update.blockCount   = userData.blockCount || 0; // don't increment on unblock
+    }
+
+    await userRef.set(update, { merge: true });
+    functions.logger.info("USER_BLOCKED", { uid, duration, reason, blockCount });
+    res.status(200).json({ success: true, uid, duration, blockCount });
+  } catch (e) {
+    functions.logger.error("BLOCK_USER_FAILED", { uid, error: e.message });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── deleteUser ───────────────────────────────────────────────────────────────
+// Deletes user's Firestore docs (user, tests, payments) + Firebase Auth account.
+exports.deleteUser = functions.runWith({ timeoutSeconds: 60, memory: "128MB" }).https.onRequest(async (req, res) => {
+  setCORS(res);
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  const adminKey    = req.body?.adminKey || req.headers["x-admin-key"] || "";
+  const expectedKey = functions.config().admin?.key || process.env.ADMIN_KEY || "";
+  if (!adminKey || adminKey !== expectedKey) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const { uid } = req.body;
+  if (!uid) { res.status(400).json({ error: "uid required" }); return; }
+
+  try {
+    // Delete test records
+    const testsSnap = await db.collection("tests").where("uid", "==", uid).get();
+    const batch = db.batch();
+    testsSnap.docs.forEach(d => batch.delete(d.ref));
+    // Delete payment records
+    const paySnap = await db.collection("payments").where("uid", "==", uid).get();
+    paySnap.docs.forEach(d => batch.delete(d.ref));
+    // Delete user doc
+    batch.delete(db.collection("users").doc(uid));
+    await batch.commit();
+    // Delete Firebase Auth account
+    try { await admin.auth().deleteUser(uid); } catch (_) { /* Auth user may not exist */ }
+    functions.logger.info("USER_DELETED", { uid, testsDeleted: testsSnap.size, paymentsDeleted: paySnap.size });
+    res.status(200).json({ success: true, uid, testsDeleted: testsSnap.size, paymentsDeleted: paySnap.size });
+  } catch (e) {
+    functions.logger.error("DELETE_USER_FAILED", { uid, error: e.message });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── detectAnomalies ─────────────────────────────────────────────────────────
+// Scans recent tests for suspicious patterns. Auto-blocks flagged users 1 hour.
+// Returns list of flagged events for admin dashboard.
+exports.detectAnomalies = functions.runWith({ timeoutSeconds: 60, memory: "256MB" }).https.onRequest(async (req, res) => {
+  setCORS(res);
+  if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+  const adminKey    = req.body?.adminKey || req.headers["x-admin-key"] || "";
+  const expectedKey = functions.config().admin?.key || process.env.ADMIN_KEY || "";
+  if (!adminKey || adminKey !== expectedKey) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  try {
+    const now       = new Date();
+    const oneHourAgo  = new Date(now - 60 * 60 * 1000);
+    const twoHoursAgo = new Date(now - 2 * 60 * 60 * 1000);
+    const todayIST_str = new Date(now.getTime() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+    // Fetch last 200 test records
+    const testsSnap = await db.collection("tests").orderBy("completedAt", "desc").limit(200).get();
+
+    // Group tests by uid
+    const byUid = {};
+    testsSnap.docs.forEach(d => {
+      const t = d.data();
+      if (!t.uid || !t.completedAt) return;
+      const ts = t.completedAt.toDate ? t.completedAt.toDate() : new Date(t.completedAt);
+      if (!byUid[t.uid]) byUid[t.uid] = { uid: t.uid, email: t.email || t.uid.substring(0,8), tests: [] };
+      byUid[t.uid].tests.push({ ts, score: t.totalScore ?? t.score ?? 0, mode: t.mode });
+    });
+
+    // Fetch users for block status and grace returns
+    const flags = [];
+    const autoBlocked = [];
+
+    for (const [uid, data] of Object.entries(byUid)) {
+      const { email, tests } = data;
+
+      // PATTERN 1: 5+ Mock tests in last 60 minutes (rapid hammering)
+      const recentMocks = tests.filter(t => t.mode === "Mock" && t.ts > oneHourAgo);
+      if (recentMocks.length >= 5) {
+        flags.push({ uid, email, pattern: "RAPID_TESTS", severity: "critical",
+          detail: `${recentMocks.length} Mock tests in the last hour`,
+          action: "block_1h",
+          suggestion: "Block 1 hour — possible attempt to exhaust or test cache limits" });
+      }
+
+      // PATTERN 2: 3+ zero-score submissions in last 2 hours (grace window abuse)
+      const zeroScores = tests.filter(t => t.ts > twoHoursAgo && t.score === 0);
+      if (zeroScores.length >= 3) {
+        flags.push({ uid, email, pattern: "ZERO_SCORE_SPAM", severity: "critical",
+          detail: `${zeroScores.length} zero-score submissions in 2 hours`,
+          action: "block_1h",
+          suggestion: "Block 1 hour — possible grace window abuse to reset test credits" });
+      }
+
+      // PATTERN 3: 10+ tests in last 2 hours (any mode — unusual volume)
+      const recentAll = tests.filter(t => t.ts > twoHoursAgo);
+      if (recentAll.length >= 10) {
+        flags.push({ uid, email, pattern: "UNUSUAL_VOLUME", severity: "warning",
+          detail: `${recentAll.length} tests in the last 2 hours`,
+          action: "review",
+          suggestion: "Review activity — may be legitimate heavy study or automation" });
+      }
+    }
+
+    // Auto-block critical flags (1-hour lockout)
+    const criticalFlags = flags.filter(f => f.severity === "critical" && f.action === "block_1h");
+    for (const flag of criticalFlags) {
+      const userSnap = await db.collection("users").doc(flag.uid).get();
+      const userData = userSnap.data() || {};
+
+      // Don't re-block if already blocked
+      if (userData.blocked || (userData.blockedUntil && userData.blockedUntil.toDate() > now)) {
+        flag.alreadyBlocked = true;
+        continue;
+      }
+
+      const blockCount = (userData.blockCount || 0) + 1;
+      const isPermanent = blockCount >= 3; // 3rd offense → permanent
+
+      await db.collection("users").doc(flag.uid).set({
+        blocked:        isPermanent,
+        blockedUntil:   isPermanent ? null : new Date(now.getTime() + 60 * 60 * 1000),
+        blockReason:    isPermanent
+          ? `Permanently blocked after ${blockCount} violations. Pattern: ${flag.pattern}.`
+          : `Unusual activity detected (${flag.detail}). Access suspended 1 hour. Repeated violations = permanent ban.`,
+        blockCount,
+        lastBlockedAt:  admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+
+      flag.autoBlocked = true;
+      flag.permanentlyBlocked = isPermanent;
+      flag.blockCount = blockCount;
+      autoBlocked.push({ uid: flag.uid, email: flag.email, isPermanent, blockCount });
+      functions.logger.warn("AUTO_BLOCKED", { uid: flag.uid, pattern: flag.pattern, blockCount, isPermanent });
+    }
+
+    res.status(200).json({ flags, autoBlocked, scannedUsers: Object.keys(byUid).length, checkedAt: now.toISOString() });
+  } catch (e) {
+    functions.logger.error("DETECT_ANOMALIES_FAILED", { error: e.message });
+    res.status(500).json({ error: e.message });
+  }
+});
