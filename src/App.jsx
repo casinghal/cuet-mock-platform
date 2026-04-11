@@ -1649,7 +1649,10 @@ export default function App() {
     const accuracy = (correct + wrong) > 0 ? Math.round((correct / (correct + wrong)) * 100) : 0;
     try {
       await addDoc(collection(db, "tests"), {
-        uid: user.uid, mode: testConfig?.mode, totalScore: total,
+        uid: user.uid,
+        email: user.email || null,          // stored for admin visibility — no join needed
+        displayName: user.displayName || null,
+        mode: testConfig?.mode, totalScore: total,
         correct, wrong, attempted: correct + wrong, accuracy, score: accuracy,
         completedAt: serverTimestamp(),
       });

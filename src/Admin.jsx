@@ -714,9 +714,10 @@ export default function AdminDashboard() {
             .filter(d => d.data().completedAt?.toDate?.())
             .slice(0, 20)
             .map(d => {
-              const uid = d.data().uid;
-              const email = uidToEmail[uid] || d.data().uid?.substring(0,8) || "unknown";
-              return { type: "test", email, time: d.data().completedAt.toDate(), label: `${d.data().mode || "Mock"} · ${d.data().totalScore ?? d.data().score ?? 0} marks` };
+              const uid   = d.data().uid;
+              const email = d.data().email || uidToEmail[uid] || uid?.substring(0,8) || "unknown";
+              const name  = d.data().displayName || email;
+              return { type: "test", email: name, time: d.data().completedAt.toDate(), label: `${d.data().mode || "Mock"} · ${d.data().totalScore ?? d.data().score ?? 0} marks` };
             }),
         ].sort((a, b) => b.time - a.time).slice(0, 10);
 
@@ -733,8 +734,8 @@ export default function AdminDashboard() {
           if (!userMap[t.uid]) {
             userMap[t.uid] = {
               uid: t.uid,
-              email: uidToEmail[t.uid] || t.uid.substring(0,8),
-              name: uidToName[t.uid] || "—",
+              email: t.email || uidToEmail[t.uid] || t.uid.substring(0,8),
+              name: t.displayName || uidToName[t.uid] || "—",
               unlocked: uidToUnlocked[t.uid] || false,
               testsUsed: uidToTestsUsed[t.uid] || 0,
               tests: 0, mockTests: 0, qpTests: 0,
@@ -1411,9 +1412,7 @@ export default function AdminDashboard() {
                   {recentTests.length === 0 ? (
                     <tr><td colSpan={5} style={{ ...S.td, textAlign: "center", color: "#94A3B8" }}>No tests yet</td></tr>
                   ) : recentTests.map((t, i) => {
-                    const email = (liveStats && liveStats.total > 0)
-                      ? (userBreakdown.find(u => u.uid === t.uid)?.email || t.uid?.substring(0,10) || "—")
-                      : (t.uid?.substring(0,10) || "—");
+                    const email = t.email || t.displayName || userBreakdown.find(u => u.uid === t.uid)?.email || t.uid?.substring(0,10) || "—";
                     return (
                     <tr key={i}>
                       <td style={{ ...S.td, maxWidth: 160, fontSize: 11 }}>
