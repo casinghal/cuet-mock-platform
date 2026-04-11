@@ -287,6 +287,14 @@ function PaywallModal({ user, onSuccess, onClose }) {
 }
 
 // ── AUTH SCREEN — Premium Landing Page ────────────────────────────────────────
+// ── Subjects catalogue — single source of truth for both AuthScreen and DashboardScreen ──
+// Flip live: false → true when a subject is ready to launch
+const SUBJECTS = [
+  { name: "English (101)",               live: true  },
+  { name: "General Aptitude Test (GAT)", live: false }, // flip to true after quality review
+  { name: "Economics",                   live: false },
+];
+
 function AuthScreen({ onLogin, showToast }) {
   const [loading, setLoading] = useState(null);
   const [error,   setError]   = useState(null);
@@ -328,11 +336,7 @@ function AuthScreen({ onLogin, showToast }) {
     finally { setLoading(null); }
   }
 
-  const subjects = [
-    { name: "English (101)", live: true  },
-    { name: "General Aptitude Test (GAT)", live: false },
-    { name: "Economics",     live: false },
-  ];
+  const subjects = SUBJECTS; // use module-level constant — keeps landing page and dashboard in sync
 
   const features = [
     { icon: "✨", title: "Lifetime Free Mock Papers", desc: "15-question practice papers — free forever, no card needed, no limits. Test yourself daily." },
@@ -686,8 +690,9 @@ function GoogleIcon() {
   );
 }
 // ── DASHBOARD SCREEN ──────────────────────────────────────────────────────────
-function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, showToast, showPaywallOverride, setShowPaywallOverride }) {
-  const [mode,        setMode]        = useState("Mock");
+function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, showToast, subjects, showPaywallOverride, setShowPaywallOverride }) {
+  const [mode,          setMode]          = useState("Mock");
+  const [activeSubject, setActiveSubject] = useState("English"); // "English" | "GAT"
   // showPaywall can be triggered from inside (handleBegin gate) or outside (handleBeginTest 402 catch)
   const [showPaywallLocal, setShowPaywallLocal] = useState(false);
   const showPaywall    = showPaywallLocal || (showPaywallOverride ?? false);
@@ -695,24 +700,47 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
   const [checking,    setChecking]    = useState(false);
   const isMobile = useMobile();
 
-  const testsUsed = userData?.testsUsed || 0;
-  const unlocked  = userData?.unlocked  || false;
-  const testsLeft = Math.max(0, FREE_LIMIT - testsUsed);
+  const testsUsed    = userData?.testsUsed    || 0;
+  const gatTestsUsed = userData?.gatTestsUsed || 0;
+  const unlocked     = userData?.unlocked     || false;
+  // Show tests left for the active subject
+  const testsLeft = activeSubject === "GAT"
+    ? Math.max(0, FREE_LIMIT - gatTestsUsed)
+    : Math.max(0, FREE_LIMIT - testsUsed);
   const scores    = testHistory.map(t => t.accuracy || 0);
   const avgScore  = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
   const bestScore = scores.length ? Math.max(...scores) : null;
 
+  // Which subjects are currently live — drives subject tab visibility
+  const liveSubjects = (subjects || []).filter(s => s.live);
+  const showSubjectTabs = liveSubjects.length > 1;
+
   useEffect(() => { logEvent("page_view", { page: "dashboard", user_id: user?.uid }); }, []);
 
-  const MODES = {
-    QuickPractice: { label: "Quick Practice", desc: "15 questions · All topics · Lifetime Free", free: true },
-    Mock:          { label: "Mock Exam",       desc: "50 questions · 60 min · NTA standard marking", free: false },
+  const ALL_MODES = {
+    QuickPractice: { label: "Quick Practice",     desc: "15 questions · All topics · Lifetime Free",   free: true,  subject: "English" },
+    Mock:          { label: "Mock Exam",           desc: "50 questions · 60 min · NTA standard marking", free: false, subject: "English" },
+    GAT_QP:        { label: "GAT Quick Practice",  desc: "15 questions · All aptitude topics · Always Free", free: true,  subject: "GAT" },
+    GAT_Mock:      { label: "GAT Mock Exam",       desc: "50 questions · 60 min · General Aptitude",    free: false, subject: "GAT" },
   };
 
+  // Filter mode tiles by active subject
+  const MODES = Object.fromEntries(
+    Object.entries(ALL_MODES).filter(([, cfg]) => cfg.subject === activeSubject)
+  );
+
+  // When subject changes, reset to the appropriate default mode
+  function handleSubjectChange(subj) {
+    setActiveSubject(subj);
+    setMode(subj === "GAT" ? "GAT_Mock" : "Mock");
+  }
+
+  const isCurrentModeFree = ALL_MODES[mode]?.free ?? false;
+
   async function handleBegin() {
-    // QuickPractice is always free — no limit check needed
-    if (mode === "QuickPractice") {
-      onBeginTest({ mode });
+    // Free modes: GAT_QP and QuickPractice — no limit check
+    if (isCurrentModeFree) {
+      onBeginTest({ mode, subject: activeSubject });
       return;
     }
 
@@ -721,41 +749,55 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
       if (CF_BASE) {
         const token = await getAuthToken();
         const r = await fetch(`${CF_BASE}/checkTestLimit`, {
-          method: "POST", headers: authHeaders(token), body: JSON.stringify({}),
+          method: "POST",
+          headers: authHeaders(token),
+          body: JSON.stringify({ mode }), // pass mode so CF checks the right pool
         });
         const d = await r.json();
         if (!d.allowed) {
-          logEvent("paywall_triggered", { user_id: user?.uid, tests_used: testsUsed });
+          logEvent("paywall_triggered", { user_id: user?.uid, tests_used: mode === "GAT_Mock" ? gatTestsUsed : testsUsed });
           setShowPaywall(true); return;
         }
       } else {
-        const effectiveCount = testsUsed || parseInt(localStorage.getItem("cuet_tests_used") || "0");
+        // localStorage fallback — check appropriate counter
+        const effectiveCount   = mode === "GAT_Mock"
+          ? (gatTestsUsed || parseInt(localStorage.getItem("cuet_gat_tests_used") || "0"))
+          : (testsUsed || parseInt(localStorage.getItem("cuet_tests_used") || "0"));
         const effectiveUnlocked = unlocked || localStorage.getItem("cuet_unlocked") === "true";
         if (!effectiveUnlocked && effectiveCount >= FREE_LIMIT) {
           logEvent("paywall_triggered", { user_id: user?.uid, tests_used: effectiveCount });
           setShowPaywall(true); return;
         }
       }
-      onBeginTest({ mode });
+      onBeginTest({ mode, subject: activeSubject });
     } catch(_) {
-      // CF call failed — fail safe: check local state, block if limit reached
-      const effectiveCount = testsUsed || parseInt(localStorage.getItem("cuet_tests_used") || "0");
+      const effectiveCount = mode === "GAT_Mock"
+        ? (gatTestsUsed || parseInt(localStorage.getItem("cuet_gat_tests_used") || "0"))
+        : (testsUsed || parseInt(localStorage.getItem("cuet_tests_used") || "0"));
       if (!unlocked && effectiveCount >= FREE_LIMIT) {
         setShowPaywall(true); return;
       }
-      // Only allow if clearly under limit — never allow on ambiguous failure
       if (!unlocked && effectiveCount >= FREE_LIMIT - 1) {
-        setShowPaywall(true); return; // Block when 1 away from limit too, to be safe
+        setShowPaywall(true); return;
       }
-      onBeginTest({ mode });
+      onBeginTest({ mode, subject: activeSubject });
     } finally { setChecking(false); }
   }
 
   function handlePaySuccess() {
     setShowPaywall(false);
     showToast("Payment verified! Full access unlocked.", "info");
-    onBeginTest({ mode });
+    onBeginTest({ mode, subject: activeSubject });
   }
+
+  // Section label and subject badge
+  const subjectBadge = activeSubject === "GAT" ? "GAT (501)" : "English (101)";
+  const sectionLabel = activeSubject === "GAT"
+    ? "Your Practice Summary — CUET GAT (501) 2026"
+    : "Your Practice Summary — CUET English (101) 2026";
+  const newTestLabel = activeSubject === "GAT"
+    ? "CUET GAT · Section III (501)"
+    : "CUET English · Section IA (101)";
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
@@ -765,7 +807,7 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
         <span className="nta-logo">Vantiq <span>CUET</span></span>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <span style={{ fontSize: 11, background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 4, padding: "3px 8px", color: "#fff", letterSpacing: ".03em" }}>
-            English (101)
+            {subjectBadge}
           </span>
           <span style={{ fontSize: 13, opacity: 0.8 }}>{user?.displayName?.split(" ")[0]}</span>
           <button onClick={onLogout} style={{ background: "transparent", color: "#fff", fontSize: 12, opacity: 0.7, padding: "4px 8px", border: "1px solid rgba(255,255,255,.2)", borderRadius: 4, fontFamily: "var(--font-body)", cursor: "pointer" }}>
@@ -777,14 +819,14 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
       <div style={{ flex: 1, maxWidth: 900, margin: "0 auto", width: "100%", padding: isMobile ? "20px 16px" : "28px 24px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
           <h2 style={{ fontSize: 12, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--text-muted)", margin: 0 }}>
-            Your Practice Summary — CUET English (101) 2026
+            {sectionLabel}
           </h2>
           <span style={{ fontSize: 11, color: "var(--success)", fontWeight: 600 }}>● Quick Practice: Lifetime Free</span>
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12, marginBottom: 36 }}>
           {[
-            { label: "Tests Taken",  val: testsUsed,  sub: unlocked ? "Unlimited" : `${testsLeft} free left` },
+            { label: "Tests Taken",  val: activeSubject === "GAT" ? gatTestsUsed : testsUsed, sub: unlocked ? "Unlimited" : `${testsLeft} free left` },
             { label: "Avg. Score",   val: avgScore != null ? `${avgScore}%` : "—", sub: "across all tests" },
             { label: "Best Score",   val: bestScore != null ? `${bestScore}%` : "—", sub: "personal best" },
             { label: "Access",       val: unlocked ? "Pro" : "Free", sub: unlocked ? "Unlimited till 30 Jun" : `${testsLeft} of 4 Mock Exams free` },
@@ -801,12 +843,34 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 4 }}>
             <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--navy)", margin: 0 }}>New Test Paper</h3>
             <span style={{ fontSize: 11, background: "#EEF2FF", color: "var(--indigo)", fontWeight: 600, padding: "3px 10px", borderRadius: 20, border: "1px solid #C7D2FE" }}>
-              CUET English · Section IA (101)
+              {newTestLabel}
             </span>
           </div>
-          <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 24 }}>
-            Choose a format and begin.
+          <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: showSubjectTabs ? 16 : 24 }}>
+            {showSubjectTabs ? "Choose a subject and format, then begin." : "Choose a format and begin."}
           </p>
+
+          {/* Subject tab bar — only visible when 2+ subjects are live */}
+          {showSubjectTabs && (
+            <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+              {liveSubjects.map(s => {
+                const key = s.name.includes("GAT") ? "GAT" : "English";
+                const label = s.name.includes("GAT") ? "GAT (501)" : "English (101)";
+                return (
+                  <button key={key} onClick={() => handleSubjectChange(key)} style={{
+                    padding: "8px 18px", borderRadius: 8, cursor: "pointer",
+                    border: `2px solid ${activeSubject === key ? "var(--navy)" : "var(--border)"}`,
+                    background: activeSubject === key ? "var(--navy)" : "#fff",
+                    color: activeSubject === key ? "#fff" : "var(--navy)",
+                    fontWeight: 600, fontSize: 13, fontFamily: "var(--font-body)",
+                    transition: "all .15s",
+                  }}>
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           <div style={{ marginBottom: 20 }}>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -814,7 +878,7 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
                 <div key={k} onClick={() => setMode(k)} style={{
                   border: `2px solid ${mode === k ? "var(--navy)" : "var(--border)"}`,
                   borderRadius: 10, padding: "12px 18px", cursor: "pointer",
-                  flex: "1 1 140px",  // grow to fill, shrink to 140px — stacks naturally on mobile
+                  flex: "1 1 140px",
                   background: mode === k ? "#EEF2FF" : "#fff",
                   boxShadow: mode === k ? "0 2px 8px rgba(67,56,202,.12)" : "none",
                   transition: "all .15s", position: "relative",
@@ -834,10 +898,10 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
             </div>
           </div>
 
-          <button className="btn-primary full" onClick={handleBegin} disabled={checking && mode !== "QuickPractice"}>
+          <button className="btn-primary full" onClick={handleBegin} disabled={checking && !isCurrentModeFree}>
             {checking ? "Checking..." : "Begin Test →"}
           </button>
-          {mode === "QuickPractice" ? (
+          {isCurrentModeFree ? (
             <p style={{ textAlign: "center", marginTop: 10, fontSize: 12, color: "var(--success)", fontWeight: 600 }}>
               ✓ Quick Practice is always free — no limits, ever.
             </p>
@@ -871,10 +935,11 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
               <tbody>
                 {testHistory.map((t, i) => {
                   const p = t.accuracy || 0;
+                  const modeLabel = { Mock: "Eng Mock", QuickPractice: "Eng QP", GAT_Mock: "GAT Mock", GAT_QP: "GAT QP" }[t.mode] || t.mode || "Mock";
                   return (
                     <tr key={i} style={{ borderBottom: i < testHistory.length - 1 ? "1px solid var(--border)" : "none" }}>
                       <td style={{ padding: "12px 14px", color: "var(--text-secondary)" }}>{fmtDate(t.completedAt)}</td>
-                      <td style={{ padding: "12px 14px" }}><span className="pill pill-navy">{t.mode || "Mock"}</span></td>
+                      <td style={{ padding: "12px 14px" }}><span className="pill pill-navy">{modeLabel}</span></td>
                       <td style={{ padding: "12px 14px", fontWeight: 600, fontFamily: "var(--font-mono)" }}>{t.totalScore ?? "—"}</td>
                       <td style={{ padding: "12px 14px", fontFamily: "var(--font-mono)" }}>{t.correct}/{t.attempted}</td>
                       <td style={{ padding: "12px 14px", fontWeight: 600, color: scoreColor(p), fontFamily: "var(--font-mono)" }}>{p}%</td>
@@ -905,9 +970,13 @@ function GeneratingScreen({ config }) {
       <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 24px" }}>
         <div style={{ width: "100%", maxWidth: 440, textAlign: "center" }}>
           <div style={{ display: "flex", gap: 8, justifyContent: "center", marginBottom: 32 }}>
-            <span className="pill pill-indigo">{config?.mode === "QuickPractice" ? "Quick Practice" : "Mock Exam"}</span>
-            <span className="pill pill-navy">English 101</span>
-            {config?.mode === "QuickPractice"
+            <span className="pill pill-indigo">
+              {config?.mode === "GAT_QP" ? "GAT Quick Practice" : config?.mode === "GAT_Mock" ? "GAT Mock Exam" : config?.mode === "QuickPractice" ? "Quick Practice" : "Mock Exam"}
+            </span>
+            <span className="pill pill-navy">
+              {config?.subject === "GAT" ? "GAT 501" : "English 101"}
+            </span>
+            {(config?.mode === "QuickPractice" || config?.mode === "GAT_QP")
               ? <span className="pill pill-green">15Q · Always Free</span>
               : <span className="pill pill-navy">50Q · 60 min</span>
             }
@@ -992,7 +1061,7 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
       </div>
 
       <div className="section-bar">
-        <span>Section I &mdash; Languages (English)</span>
+        <span>{config?.subject === "GAT" ? "Section III — General Aptitude Test (GAT)" : "Section I — Languages (English)"}</span>
         <span style={{ marginLeft: "auto" }}>Q {current + 1} of {questions.length}</span>
         <span className="pill pill-navy" style={{ marginLeft: 8 }}>{Object.keys(answers).length} answered</span>
       </div>
@@ -1139,7 +1208,10 @@ function ResultsScreen({ questions, answers, config, user, onNewTest, onReview }
           return;
         }
         const token = await getAuthToken();
-        const prompt = `You are a CUET English expert. Give a concise 3-4 sentence performance analysis for a student who scored ${pct}% (${correct}/${questions.length} correct, ${wrong} wrong, ${unanswered} unanswered) in ${config?.mode} mode. Weakest topic: ${topicRows[0]?.topic} at ${topicRows[0]?.accuracy}% accuracy. Give specific actionable advice. Be encouraging but honest. Do not mention AI or any generation tool.`;
+        const isGAT = testConfig?.subject === "GAT" || testConfig?.mode?.startsWith("GAT");
+        const subjectName = isGAT ? "GAT (General Aptitude Test)" : "CUET English (101)";
+        const weakTopicStr = topicRows[0] ? `Weakest topic: ${topicRows[0].topic} at ${topicRows[0].accuracy}% accuracy.` : "";
+        const prompt = `You are a CUET ${subjectName} expert. Give a concise 3-4 sentence performance analysis for a student who scored ${pct}% (${correct}/${questions.length} correct, ${wrong} wrong, ${unanswered} unanswered) in ${config?.mode} mode. ${weakTopicStr} Give specific actionable advice. Be encouraging but honest. Do not mention AI or any generation tool.`;
         const res = await fetch(`${CF_BASE}/generateAdvisory`, {
           method: "POST", headers: authHeaders(token),
           body: JSON.stringify({ prompt }),
@@ -1587,22 +1659,25 @@ export default function App() {
 
   async function handleBeginTest(config) {
     setConfig(config); setScreen("generating");
-    logEvent("test_started", { user_id: user?.uid, mode: config.mode });
+    logEvent("test_started", { user_id: user?.uid, mode: config.mode, subject: config.subject });
     try {
       const qs = await generateQuestions(config, user?.uid);
-      const required = config.mode === "Mock" ? 50 : 15;
+      const required = (config.mode === "Mock" || config.mode === "GAT_Mock") ? 50 : 15;
       if (!qs || qs.length !== required) throw new Error(`Incomplete test paper (${qs?.length ?? 0}/${required} questions). Please try again.`);
       setQuestions(qs); setAnswers({}); setScreen("exam");
-      examStartedAt.current = Date.now(); // record exact moment exam loaded for grace window
-      // CF generateQuestions handles testsUsed increment server-side (atomic)
-      // Optimistic local update for immediate UI feedback + fresh Firestore sync
-      incrementLocalTestCount();
-      setUserData(p => ({ ...p, testsUsed: (p?.testsUsed || 0) + 1 }));
-      // Sync Firestore in background — keeps testsUsed accurate if user abandons mid-exam
+      examStartedAt.current = Date.now();
+      // Optimistic local update per separate pool
+      if (config.mode === "GAT_Mock") {
+        setUserData(p => ({ ...p, gatTestsUsed: (p?.gatTestsUsed || 0) + 1 }));
+        try { localStorage.setItem("cuet_gat_tests_used", String((parseInt(localStorage.getItem("cuet_gat_tests_used") || "0")) + 1)); } catch(_) {}
+      } else if (config.mode === "Mock") {
+        incrementLocalTestCount();
+        setUserData(p => ({ ...p, testsUsed: (p?.testsUsed || 0) + 1 }));
+      }
+      // Sync Firestore in background
       if (user) loadUserData(user).catch(() => {});
     } catch(e) {
       if (e.paywall) {
-        // Open PaywallModal directly — toast alone loses the conversion opportunity
         setScreen("dashboard");
         setShowPaywall(true);
       } else {
@@ -1617,19 +1692,25 @@ export default function App() {
     // Prevents accidentally opening an exam from consuming a free test
     const answeredCount = Object.keys(submittedAnswers).length;
     const elapsedSecs   = examStartedAt.current ? Math.floor((Date.now() - examStartedAt.current) / 1000) : 999;
-    const isMockMode    = testConfig?.mode === "Mock";
+    const isMockMode    = testConfig?.mode === "Mock" || testConfig?.mode === "GAT_Mock";
     if (isMockMode && answeredCount === 0 && elapsedSecs < 60) {
-      // Return credit: CF decrements testsUsed by 1 (server-side, secure)
+      // Return credit: CF decrements the correct counter server-side (secure)
       try {
         const token = await getAuthToken();
         if (CF_BASE && token) {
           await fetch(`${CF_BASE}/returnTestCredit`, {
-            method: "POST", headers: authHeaders(token), body: JSON.stringify({}),
+            method: "POST", headers: authHeaders(token),
+            body: JSON.stringify({ mode: testConfig?.mode }), // pass mode so CF returns correct counter
           });
         }
         // Reverse the optimistic local update
-        setUserData(p => ({ ...p, testsUsed: Math.max(0, (p?.testsUsed || 1) - 1) }));
-        decrementLocalTestCount();
+        if (testConfig?.mode === "GAT_Mock") {
+          setUserData(p => ({ ...p, gatTestsUsed: Math.max(0, (p?.gatTestsUsed || 1) - 1) }));
+          try { localStorage.setItem("cuet_gat_tests_used", String(Math.max(0, parseInt(localStorage.getItem("cuet_gat_tests_used") || "1") - 1))); } catch(_) {}
+        } else {
+          setUserData(p => ({ ...p, testsUsed: Math.max(0, (p?.testsUsed || 1) - 1) }));
+          decrementLocalTestCount();
+        }
       } catch(_) { /* silent — worst case: counter stays incremented */ }
       showToast("No answers recorded — test returned to your account.", "info");
       examStartedAt.current = null;
@@ -1679,7 +1760,7 @@ export default function App() {
     <React.Fragment>
       {toast && <Toast key={toast.key} message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
       {screen === "auth"       && <AuthScreen      onLogin={u => { setUser(u); loadUserData(u); setScreen("dashboard"); }} showToast={showToast} />}
-      {screen === "dashboard"  && <DashboardScreen user={user} userData={userData} testHistory={testHistory} onBeginTest={handleBeginTest} onLogout={() => auth ? signOut(auth) : setScreen("auth")} showToast={showToast} showPaywallOverride={showPaywall} setShowPaywallOverride={setShowPaywall} />}
+      {screen === "dashboard"  && <DashboardScreen user={user} userData={userData} testHistory={testHistory} onBeginTest={handleBeginTest} onLogout={() => auth ? signOut(auth) : setScreen("auth")} showToast={showToast} subjects={SUBJECTS} showPaywallOverride={showPaywall} setShowPaywallOverride={setShowPaywall} />}
       {screen === "generating" && <GeneratingScreen config={testConfig} />}
       {screen === "exam"       && <ExamScreen      questions={questions} config={testConfig} user={user} onSubmit={handleSubmitTest} showToast={showToast} />}
       {screen === "results"    && <ResultsScreen   questions={questions} answers={answers} config={testConfig} user={user} onNewTest={() => setScreen("dashboard")} onReview={() => setScreen("review")} />}

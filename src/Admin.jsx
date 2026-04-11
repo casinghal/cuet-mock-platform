@@ -1,1786 +1,1976 @@
-/**
- * Vantiq CUET — Admin Dashboard
- * Route: /admin
- * Password-protected. Reads Firestore directly.
- * Controls: cache fill, view logs, student stats, revenue.
- */
-
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { initializeApp, getApps } from "firebase/app";
-import { getAuth, onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from "firebase/auth";
-import { getFirestore, collection, getDocs, query, where, orderBy, limit } from "firebase/firestore";
+import {
+  getAuth,
+  signInWithPopup,
+  GoogleAuthProvider,
+  onAuthStateChanged,
+  signOut,
+} from "firebase/auth";
+import {
+  getFirestore,
+  collection,
+  getDocs,
+  query,
+  orderBy,
+  limit,
+  where,
+  setDoc,
+  doc,
+} from "firebase/firestore";
 
-// ── Firebase (reuse existing app if already initialized) ──────────────────────
+// ─── Firebase init ────────────────────────────────────────────────────────────
 const firebaseConfig = {
-  apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId:         import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket:     import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId:             import.meta.env.VITE_FIREBASE_APP_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
-const fbApp = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
-const db    = getFirestore(fbApp);
-const auth  = getAuth(fbApp);
+const fbApp =
+  getApps().length > 0 ? getApps()[0] : initializeApp(firebaseConfig);
+const auth = getAuth(fbApp);
+const db = getFirestore(fbApp);
 
-const CF_BASE     = import.meta.env.VITE_CLOUD_FUNCTION_BASE || "";
-// Admin password loaded from env var — no hardcoded fallback
-// Set VITE_ADMIN_PASSWORD in Netlify env vars. If not set, dashboard is inaccessible.
-const DEFAULT_PASS = import.meta.env.VITE_ADMIN_PASSWORD || "";
-// localStorage override — set from inside the dashboard, takes precedence over env var
-const ADMIN_PASS  = localStorage.getItem("vantiq_admin_pw") || DEFAULT_PASS;
-// Admin key loaded from env var — NEVER hardcode. Set VITE_ADMIN_KEY in Netlify env vars.
-const ADMIN_KEY   = import.meta.env.VITE_ADMIN_KEY || "";
-// Mode-specific cache sizes — must match CACHE_CONFIG in functions/index.js
+const CF_BASE = import.meta.env.VITE_CLOUD_FUNCTION_BASE;
+const ADMIN_KEY = import.meta.env.VITE_ADMIN_KEY;
+const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || "";
+
+// ─── Cache config ─────────────────────────────────────────────────────────────
 const CACHE_CONFIG = {
-  Mock:          { size: 120, threshold: 100 },
-  QuickPractice: { size: 200, threshold: 160 },
+  Mock:          { size: 120, threshold: 100, label: "Mock Cache" },
+  QuickPractice: { size: 200, threshold: 160, label: "QP Cache" },
+  GAT_Mock:      { size: 80,  threshold: 60,  label: "GAT Mock Cache" },
+  GAT_QP:        { size: 150, threshold: 120, label: "GAT QP Cache" },
 };
-const CACHE_SIZE = 120; // kept for any legacy reference — use CACHE_CONFIG[mode].size for accuracy
 
-// ── Styles ────────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const fmt = (d) => {
+  if (!d) return "—";
+  const dt = d?.toDate ? d.toDate() : new Date(d);
+  return dt.toLocaleDateString("en-IN", { day: "numeric", month: "short" }) +
+    ", " + dt.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+};
+
+const trunc = (str, n) =>
+  str && str.length > n ? str.slice(0, n) + "…" : str || "—";
+
+const cfFetch = async (path, body = {}) => {
+  if (!CF_BASE) throw new Error("VITE_CLOUD_FUNCTION_BASE not set in Netlify env vars");
+  if (!ADMIN_KEY) throw new Error("VITE_ADMIN_KEY not set in Netlify env vars");
+  const res = await fetch(`${CF_BASE}/${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-admin-key": ADMIN_KEY },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`${path} → HTTP ${res.status}`);
+  return res.json();
+};
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const S = {
+  // Layout
   page: {
-    minHeight: "100vh",
-    background: "#F8FAFC",
     fontFamily: "'Sora', sans-serif",
+    background: "#F8FAFC",
+    minHeight: "100vh",
+    color: "#0F2747",
   },
   header: {
-    background: "#0F2747",
-    padding: "0 32px",
-    height: 56,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
     position: "sticky",
     top: 0,
     zIndex: 100,
-    boxShadow: "0 2px 12px rgba(0,0,0,0.3)",
+    background: "#0F2747",
+    height: 52,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "0 20px",
+    borderBottom: "1px solid #1a3a6b",
   },
+  headerLeft: { display: "flex", alignItems: "center", gap: 10 },
   headerTitle: {
     color: "#fff",
-    fontSize: 16,
     fontWeight: 700,
-    letterSpacing: ".02em",
+    fontSize: 14,
+    letterSpacing: "0.02em",
   },
-  headerBadge: {
-    background: "rgba(255,255,255,.12)",
-    color: "rgba(255,255,255,.7)",
-    fontSize: 11,
-    padding: "3px 10px",
+  envBadge: {
+    background: "#059669",
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: 700,
+    padding: "2px 7px",
     borderRadius: 20,
-    border: "1px solid rgba(255,255,255,.2)",
+    letterSpacing: "0.05em",
   },
-  body: {
-    maxWidth: 1100,
-    margin: "0 auto",
-    padding: "28px 24px",
+  headerRight: { display: "flex", alignItems: "center", gap: 8 },
+  emailChip: {
+    background: "rgba(255,255,255,0.1)",
+    color: "#cbd5e1",
+    fontSize: 11,
+    padding: "4px 10px",
+    borderRadius: 20,
+    maxWidth: 180,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
   },
-  grid: {
+  // Status bar
+  statusBar: {
+    position: "sticky",
+    top: 52,
+    zIndex: 99,
+    background: "#fff",
+    borderBottom: "1px solid #E2E8F0",
+    padding: "6px 20px",
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    overflowX: "auto",
+    height: 48,
+  },
+  pill: (color) => ({
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 5,
+    padding: "4px 10px",
+    background: "#F1F5F9",
+    borderRadius: 20,
+    fontSize: 11,
+    fontWeight: 600,
+    border: "1px solid #E2E8F0",
+    whiteSpace: "nowrap",
+    color: "#0F2747",
+  }),
+  pillDot: (color) => ({
+    width: 6,
+    height: 6,
+    borderRadius: "50%",
+    background: color,
+    flexShrink: 0,
+  }),
+  // Command row
+  commandRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "10px 20px",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  commandLeft: { display: "flex", gap: 8, flexWrap: "wrap" },
+  btnSmall: (variant = "default") => ({
+    height: 32,
+    padding: "0 14px",
+    borderRadius: 6,
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: "pointer",
+    border: variant === "primary" ? "none" : "1px solid #E2E8F0",
+    background:
+      variant === "primary"
+        ? "#4338CA"
+        : variant === "danger"
+        ? "#FEE2E2"
+        : "#fff",
+    color:
+      variant === "primary"
+        ? "#fff"
+        : variant === "danger"
+        ? "#DC2626"
+        : "#0F2747",
+    transition: "all 0.15s",
+  }),
+  lastRefresh: {
+    fontSize: 11,
+    color: "#94A3B8",
+    fontFamily: "'JetBrains Mono', monospace",
+  },
+  // Fill progress strip
+  fillStrip: {
+    background: "#ECFDF5",
+    border: "1px solid #A7F3D0",
+    borderRadius: 8,
+    padding: "7px 14px",
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    fontSize: 12,
+    margin: "0 20px 8px",
+  },
+  fillDot: {
+    width: 8,
+    height: 8,
+    borderRadius: "50%",
+    background: "#059669",
+    animation: "pulse 1.4s infinite",
+  },
+  // KPI grid
+  kpiGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-    gap: 16,
-    marginBottom: 28,
+    gridTemplateColumns: "repeat(6,1fr)",
+    gap: 12,
+    padding: "0 20px 12px",
+  },
+  kpiTile: (accent = "#4338CA") => ({
+    background: "#fff",
+    border: "1px solid #E2E8F0",
+    borderLeft: `3px solid ${accent}`,
+    borderRadius: 10,
+    padding: "12px 16px",
+    minWidth: 0,
+  }),
+  kpiVal: {
+    fontFamily: "'JetBrains Mono', monospace",
+    fontSize: 26,
+    fontWeight: 700,
+    color: "#0F2747",
+    lineHeight: 1,
+  },
+  kpiLabel: {
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: "0.07em",
+    textTransform: "uppercase",
+    color: "#94A3B8",
+    marginTop: 4,
+  },
+  kpiSub: { fontSize: 11, color: "#64748B", marginTop: 2 },
+  // Live section
+  liveSection: {
+    display: "grid",
+    gridTemplateColumns: "45% 55%",
+    gap: 12,
+    padding: "0 20px 12px",
   },
   card: {
     background: "#fff",
     border: "1px solid #E2E8F0",
-    borderRadius: 12,
-    padding: "20px 24px",
-  },
-  statVal: {
-    fontSize: 32,
-    fontWeight: 700,
-    color: "#0F2747",
-    fontFamily: "'JetBrains Mono', monospace",
-    lineHeight: 1,
-    marginBottom: 4,
-  },
-  statLabel: {
-    fontSize: 11,
-    fontWeight: 600,
-    color: "#94A3B8",
-    textTransform: "uppercase",
-    letterSpacing: ".06em",
-  },
-  statSub: {
-    fontSize: 11,
-    color: "#64748B",
-    marginTop: 4,
-  },
-  sectionTitle: {
-    fontSize: 12,
-    fontWeight: 600,
-    letterSpacing: ".06em",
-    textTransform: "uppercase",
-    color: "#94A3B8",
-    marginBottom: 14,
-    marginTop: 28,
-  },
-  btn: {
-    padding: "10px 20px",
-    borderRadius: 8,
-    border: "none",
-    fontFamily: "'Sora', sans-serif",
-    fontWeight: 600,
-    fontSize: 13,
-    cursor: "pointer",
-    transition: "all .15s",
-  },
-  btnPrimary: {
-    background: "#0F2747",
-    color: "#fff",
-  },
-  btnSuccess: {
-    background: "#059669",
-    color: "#fff",
-  },
-  btnDanger: {
-    background: "#DC2626",
-    color: "#fff",
-  },
-  btnMuted: {
-    background: "#E2E8F0",
-    color: "#475569",
-  },
-  progressBar: {
-    height: 6,
-    borderRadius: 3,
-    background: "#E2E8F0",
-    overflow: "hidden",
-    marginTop: 8,
-  },
-  progressFill: (pct, color) => ({
-    height: "100%",
-    width: `${Math.min(100, pct)}%`,
-    background: color,
-    borderRadius: 3,
-    transition: "width .4s",
-  }),
-  logBox: {
-    background: "#0F172A",
     borderRadius: 10,
-    padding: "16px 20px",
-    fontFamily: "'JetBrains Mono', monospace",
-    fontSize: 12,
-    color: "#94A3B8",
-    maxHeight: 200,
-    overflowY: "auto",
-    lineHeight: 1.7,
+    overflow: "hidden",
   },
-  pill: (color) => ({
-    display: "inline-block",
-    padding: "2px 8px",
-    borderRadius: 20,
-    fontSize: 11,
-    fontWeight: 600,
-    background: color === "green" ? "#DCFCE7" : color === "red" ? "#FEE2E2" : color === "amber" ? "#FEF3C7" : "#EEF2FF",
-    color: color === "green" ? "#059669" : color === "red" ? "#DC2626" : color === "amber" ? "#D97706" : "#4338CA",
-  }),
-  table: {
-    width: "100%",
-    borderCollapse: "collapse",
-    fontSize: 13,
-  },
-  th: {
+  cardHeader: {
     padding: "10px 14px",
-    textAlign: "left",
-    fontWeight: 600,
-    fontSize: 11,
-    textTransform: "uppercase",
-    letterSpacing: ".05em",
-    color: "#94A3B8",
-    background: "#F8FAFC",
-    borderBottom: "1px solid #E2E8F0",
-  },
-  td: {
-    padding: "12px 14px",
     borderBottom: "1px solid #F1F5F9",
-    color: "#334155",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  cardTitle: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#94A3B8" },
+  // Tables
+  tableRow: (alt) => ({
+    display: "grid",
+    alignItems: "center",
+    height: 34,
+    borderBottom: "1px solid #F1F5F9",
+    fontSize: 12,
+    background: alt ? "#FAFBFD" : "#fff",
+    padding: "0 14px",
+  }),
+  tableHeader: {
+    display: "grid",
+    alignItems: "center",
+    height: 30,
+    borderBottom: "1px solid #E2E8F0",
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
+    color: "#94A3B8",
+    padding: "0 14px",
+    background: "#F8FAFC",
+  },
+  // Tabs
+  tabBar: {
+    display: "flex",
+    borderBottom: "2px solid #E2E8F0",
+    padding: "0 20px",
+    gap: 0,
+  },
+  tabItem: (active) => ({
+    padding: "10px 18px",
+    fontSize: 12,
+    fontWeight: active ? 700 : 500,
+    color: active ? "#0F2747" : "#94A3B8",
+    borderBottom: active ? "2px solid #4338CA" : "2px solid transparent",
+    cursor: "pointer",
+    marginBottom: -2,
+    transition: "all 0.15s",
+    background: "none",
+    border: "none",
+    borderBottom: active ? "2px solid #4338CA" : "2px solid transparent",
+  }),
+  tabPanel: { padding: "16px 20px" },
+  // Misc
+  sectionLabel: {
+    fontSize: 10,
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    color: "#94A3B8",
+    padding: "12px 20px 6px",
+  },
+  statusBadge: (type) => {
+    const map = {
+      healthy: { bg: "#DCFCE7", color: "#059669" },
+      warning: { bg: "#FEF3C7", color: "#D97706" },
+      critical: { bg: "#FEE2E2", color: "#DC2626" },
+      info: { bg: "#EEF2FF", color: "#4338CA" },
+      paid: { bg: "#DCFCE7", color: "#059669" },
+      free: { bg: "#F1F5F9", color: "#64748B" },
+    };
+    const t = map[type] || map.info;
+    return {
+      display: "inline-flex",
+      alignItems: "center",
+      padding: "2px 8px",
+      borderRadius: 20,
+      fontSize: 10,
+      fontWeight: 700,
+      background: t.bg,
+      color: t.color,
+    };
+  },
+  // Input
+  input: {
+    height: 34,
+    border: "1px solid #E2E8F0",
+    borderRadius: 6,
+    padding: "0 12px",
+    fontSize: 12,
+    fontFamily: "'Sora', sans-serif",
+    color: "#0F2747",
+    background: "#fff",
+    outline: "none",
+    width: "100%",
+  },
+  // Log entry
+  logEntry: (type) => ({
+    padding: "4px 12px",
+    fontSize: 11,
+    fontFamily: "'JetBrains Mono', monospace",
+    color:
+      type === "error"
+        ? "#DC2626"
+        : type === "warn"
+        ? "#D97706"
+        : type === "success"
+        ? "#059669"
+        : "#64748B",
+    borderLeft: `2px solid ${
+      type === "error"
+        ? "#DC2626"
+        : type === "warn"
+        ? "#D97706"
+        : type === "success"
+        ? "#059669"
+        : "#E2E8F0"
+    }`,
+    marginBottom: 1,
+  }),
+  // Health check
+  healthItem: (ok) => ({
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "6px 0",
+    fontSize: 12,
+    borderBottom: "1px solid #F1F5F9",
+    color: ok ? "#059669" : "#DC2626",
+  }),
+  // Spinner
+  spinner: {
+    display: "inline-block",
+    width: 14,
+    height: 14,
+    border: "2px solid #E2E8F0",
+    borderTop: "2px solid #4338CA",
+    borderRadius: "50%",
+    animation: "spin 0.7s linear infinite",
   },
 };
 
-// ── Password Gate ─────────────────────────────────────────────────────────────
-function PasswordGate({ onUnlock }) {
-  const [pass, setPass] = useState("");
-  const [err, setErr]   = useState("");
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
-  function check() {
-    const currentPass = localStorage.getItem("vantiq_admin_pw") || DEFAULT_PASS;
-    if (pass === currentPass) { onUnlock(); }
-    else { setErr("Incorrect password."); }
-  }
-
+function StatusPill({ label, value, color = "#059669", warning = false, critical = false }) {
+  const dotColor = critical ? "#DC2626" : warning ? "#D97706" : color;
+  const pillStyle = {
+    ...S.pill(),
+    ...(critical
+      ? { background: "#FEE2E2", borderColor: "#FECACA" }
+      : warning
+      ? { background: "#FEF3C7", borderColor: "#FDE68A" }
+      : {}),
+  };
   return (
-    <div style={{ minHeight: "100vh", background: "#0F2747", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div style={{ background: "#fff", borderRadius: 16, padding: "40px 36px", width: 360, textAlign: "center" }}>
-        <div style={{ fontSize: 28, marginBottom: 8 }}>🔐</div>
-        <h2 style={{ fontFamily: "'Sora', sans-serif", fontSize: 20, color: "#0F2747", marginBottom: 6 }}>Admin Access</h2>
-        <p style={{ fontSize: 13, color: "#64748B", marginBottom: 24 }}>Vantiq CUET Platform</p>
-        <input
-          type="password"
-          placeholder="Enter admin password"
-          value={pass}
-          onChange={e => setPass(e.target.value)}
-          onKeyDown={e => e.key === "Enter" && check()}
-          style={{ width: "100%", padding: "12px 16px", border: "1px solid #E2E8F0", borderRadius: 8, fontFamily: "'Sora', sans-serif", fontSize: 14, marginBottom: 12, boxSizing: "border-box" }}
-          autoFocus
-        />
-        {err && <p style={{ color: "#DC2626", fontSize: 12, marginBottom: 8 }}>{err}</p>}
-        <button onClick={check} style={{ ...S.btn, ...S.btnPrimary, width: "100%" }}>
-          Enter Dashboard
-        </button>
-      </div>
-    </div>
+    <span style={pillStyle}>
+      <span
+        style={{
+          ...S.pillDot(dotColor),
+          ...(warning || critical
+            ? { animation: "pulse 1.2s infinite" }
+            : {}),
+        }}
+      />
+      {label}:{" "}
+      <span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{value}</span>
+    </span>
   );
 }
 
-// ── Cache Status Card ─────────────────────────────────────────────────────────
-function CacheCard({ mode, data, onFill, filling }) {
-  const modeSize  = CACHE_CONFIG[mode]?.size || CACHE_SIZE;
-  const threshold = CACHE_CONFIG[mode]?.threshold || 100;
-  const pct       = Math.round((data.current / modeSize) * 100);
-  // Color based on threshold proximity — not just raw percentage
-  const aboveThreshold = data.current >= threshold;
-  const color = aboveThreshold ? "#059669" : pct > 20 ? "#D97706" : "#DC2626";
-  const label = aboveThreshold ? "green" : pct > 20 ? "amber" : "red";
-
+function KpiTile({ value, label, sub, accent = "#4338CA", loading }) {
   return (
-    <div style={S.card}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 600, color: "#0F2747", marginBottom: 2 }}>{mode}</div>
-          <div style={S.statSub}>{data.current} / {modeSize} sets · auto-fill at {threshold}</div>
-        </div>
-        <span style={S.pill(label)}>{pct}%</span>
-      </div>
-      <div style={S.progressBar}>
-        <div style={S.progressFill(pct, color)} />
-      </div>
-      <button
-        onClick={() => onFill(mode)}
-        disabled={filling === mode}
-        style={{ ...S.btn, ...(filling === mode ? S.btnMuted : S.btnSuccess), marginTop: 14, width: "100%", fontSize: 12 }}
-      >
-        {filling === mode ? "Filling..." : `Fill ${mode} Cache`}
-      </button>
-    </div>
-  );
-}
-
-// ── User Manager Component ────────────────────────────────────────────────────
-function UserManager({ addLog }) {
-  const [email,   setEmail]   = useState("");
-  const [profile, setProfile] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [msg,     setMsg]     = useState(null);
-
-  async function lookupUser() {
-    if (!email.trim()) return;
-    setLoading(true); setProfile(null); setMsg(null);
-    try {
-      const emailLower = email.trim().toLowerCase();
-      // Try exact match first, then case-insensitive variants
-      let snap = await getDocs(query(collection(db, "users"), where("email", "==", emailLower)));
-      if (snap.empty) snap = await getDocs(query(collection(db, "users"), where("email", "==", email.trim())));
-      if (snap.empty) {
-        // Also search by displayName or check if current user
-        const currentUser = auth.currentUser;
-        if (currentUser && currentUser.email?.toLowerCase() === emailLower) {
-          // Use current user's UID directly
-          const { getDoc, doc: docRef } = await import("firebase/firestore");
-          const userDoc = await getDoc(docRef(db, "users", currentUser.uid));
-          if (userDoc.exists()) {
-            snap = { docs: [{ id: currentUser.uid, data: () => userDoc.data() }], empty: false };
-          }
-        }
-      }
-      if (snap.empty) { setMsg({ text: `No account found for "${email}". The student must sign in to the platform at least once before their profile appears here. Check spelling, or ask them to sign in first.`, type: "error" }); setLoading(false); return; }
-      const d = snap.docs[0];
-      // Get test count
-      const testsQ = query(collection(db, "tests"), where("uid", "==", d.id), orderBy("completedAt", "desc"), limit(5));
-      const testsSnap = await getDocs(testsQ);
-      setProfile({ id: d.id, ...d.data(), recentTests: testsSnap.docs.map(t => t.data()) });
-      addLog(`Looked up user: ${email}`, "info");
-    } catch(e) { setMsg({ text: `Error: ${e.message}`, type: "error" }); }
-    setLoading(false);
-  }
-
-  async function grantAccess() {
-    if (!profile) return;
-    setLoading(true);
-    try {
-      const { updateDoc, doc } = await import("firebase/firestore");
-      await updateDoc(doc(db, "users", profile.id), { unlocked: true, unlockedAt: new Date(), unlockedBy: "admin" });
-      setProfile(p => ({ ...p, unlocked: true }));
-      addLog(`Granted pro access to ${email}`, "success");
-      setMsg({ text: `✅ Pro access granted to ${email}`, type: "success" });
-    } catch(e) { setMsg({ text: `Error: ${e.message}`, type: "error" }); }
-    setLoading(false);
-  }
-
-  async function revokeAccess() {
-    if (!profile) return;
-    setLoading(true);
-    try {
-      const { updateDoc, doc } = await import("firebase/firestore");
-      await updateDoc(doc(db, "users", profile.id), { unlocked: false });
-      setProfile(p => ({ ...p, unlocked: false }));
-      addLog(`Revoked pro access from ${email}`, "info");
-      setMsg({ text: `Access revoked for ${email}`, type: "success" });
-    } catch(e) { setMsg({ text: `Error: ${e.message}`, type: "error" }); }
-    setLoading(false);
-  }
-
-  const fmtDate = ts => {
-    if (!ts) return "—";
-    try { return (ts.toDate ? ts.toDate() : new Date(ts)).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }); }
-    catch { return "—"; }
-  };
-
-  const inputStyle = {
-    flex: 1, padding: "10px 14px", border: "1px solid #E2E8F0",
-    borderRadius: 8, fontFamily: "'Sora', sans-serif", fontSize: 13, outline: "none",
-  };
-
-  return (
-    <div style={{ ...S.card, maxWidth: 600 }}>
-      <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
-        <input type="email" placeholder="student@example.com" value={email}
-          onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && lookupUser()}
-          style={inputStyle} />
-        <button onClick={lookupUser} disabled={loading} style={{ ...S.btn, ...S.btnPrimary }}>
-          {loading ? "..." : "Look Up"}
-        </button>
-      </div>
-
-      {msg && <p style={{ fontSize: 12, marginBottom: 12, fontWeight: 600, color: msg.type === "error" ? "#DC2626" : "#059669" }}>{msg.text}</p>}
-
-      {profile && (
-        <div style={{ background: "#F8FAFC", borderRadius: 8, padding: "16px", border: "1px solid #E2E8F0" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
-            {[
-              { label: "Name",         val: profile.displayName || "—" },
-              { label: "Email",        val: profile.email || "—" },
-              { label: "Tests Used",   val: profile.testsUsed || 0 },
-              { label: "Access",       val: profile.unlocked ? "Pro ✅" : "Free" },
-              { label: "Registered",   val: fmtDate(profile.createdAt) },
-              { label: "Last Test",    val: fmtDate(profile.lastTestAt) },
-            ].map(row => (
-              <div key={row.label}>
-                <div style={{ fontSize: 10, fontWeight: 600, color: "#94A3B8", textTransform: "uppercase", letterSpacing: ".05em" }}>{row.label}</div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: "#1E293B", marginTop: 2 }}>{String(row.val)}</div>
-              </div>
-            ))}
-          </div>
-
-          {profile.recentTests?.length > 0 && (
-            <div style={{ marginBottom: 14 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: "#94A3B8", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 6 }}>Recent Tests</div>
-              {profile.recentTests.map((t, i) => (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "4px 0", borderBottom: "1px solid #F1F5F9" }}>
-                  <span>{t.mode || "Mock"}</span>
-                  <span style={{ fontFamily: "monospace" }}>{t.totalScore ?? "—"} pts · {t.accuracy ?? 0}%</span>
-                  <span style={{ color: "#94A3B8" }}>{fmtDate(t.completedAt)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div style={{ display: "flex", gap: 8 }}>
-            {!profile.unlocked
-              ? <button onClick={grantAccess} disabled={loading} style={{ ...S.btn, ...S.btnSuccess, fontSize: 12 }}>Grant Pro Access</button>
-              : <button onClick={revokeAccess} disabled={loading} style={{ ...S.btn, ...S.btnDanger, fontSize: 12 }}>Revoke Access</button>
-            }
-          </div>
-        </div>
+    <div style={S.kpiTile(accent)}>
+      {loading ? (
+        <div style={{ height: 26, background: "#F1F5F9", borderRadius: 4, animation: "shimmer 1.2s infinite" }} />
+      ) : (
+        <div style={S.kpiVal}>{value ?? "—"}</div>
       )}
+      <div style={S.kpiLabel}>{label}</div>
+      {sub && <div style={S.kpiSub}>{sub}</div>}
     </div>
   );
 }
 
-// ── Reset User Free Limit Component ──────────────────────────────────────────
-function ResetUserLimit({ addLog }) {
-  const [email,   setEmail]   = useState("");
-  const [result,  setResult]  = useState(null);
-  const [loading, setLoading] = useState(false);
-
-  async function handleReset() {
-    if (!email.trim()) { setResult({ text: "Enter a user email address.", type: "error" }); return; }
-    setLoading(true);
-    setResult(null);
-    try {
-      const emailLower = email.trim().toLowerCase();
-      let snap = await getDocs(query(collection(db, "users"), where("email", "==", emailLower)));
-      if (snap.empty) snap = await getDocs(query(collection(db, "users"), where("email", "==", email.trim())));
-      // Fallback: if email matches currently signed-in user, use their UID directly
-      if (snap.empty && auth.currentUser?.email?.toLowerCase() === emailLower) {
-        const { getDoc, doc: docRef2 } = await import("firebase/firestore");
-        const ud = await getDoc(docRef2(db, "users", auth.currentUser.uid));
-        if (ud.exists()) snap = { docs: [{ id: auth.currentUser.uid, data: () => ud.data() }], empty: false };
-      }
-      // Last resort: create a fresh user doc for this email using CF lookup
-      if (!snap.docs?.length) {
-        // If signed in as admin (different account), can't auto-lookup by UID
-        // Ask student to sign out + in once to create their doc, then retry
-        setResult({ text: `Account not found for ${email}. Ask the student to sign out and sign back in once — their account will be created automatically. Then try Reset Limit again.`, type: "error" });
-        setLoading(false); return;
-      }
-      const userDoc = snap.docs[0];
-      const { setDoc, doc } = await import("firebase/firestore");
-      // Use setDoc with merge:true — works even if user doc doesn't exist yet
-      await setDoc(doc(db, "users", userDoc.id), {
-        testsUsed: 0,
-        unlocked: false,
-        dailyTests: {},
-      }, { merge: true });
-      addLog(`Reset free limit for ${email} — testsUsed set to 0`, "success");
-      setResult({ text: `✅ Free limit reset for ${email}. They now have 4 free Mock Exams again.`, type: "success" });
-      setEmail("");
-    } catch (e) {
-      addLog(`Reset failed for ${email}: ${e.message}`, "error");
-      setResult({ text: `Error: ${e.message}`, type: "error" });
-    }
-    setLoading(false);
-  }
-
+function CacheBar({ mode, config, current }) {
+  const pct = Math.min(100, Math.round((current / config.size) * 100));
+  const isWarning = current < config.threshold;
+  const isCritical = current < config.threshold * 0.5;
+  const color = isCritical ? "#DC2626" : isWarning ? "#D97706" : "#059669";
   return (
-    <div style={{ ...S.card, maxWidth: 480 }}>
-      <p style={{ fontSize: 13, color: "#64748B", marginBottom: 16 }}>
-        Resets a student's Mock Exam count to 0. Use for support requests or when a test was consumed due to a technical error.
-      </p>
-      <div style={{ display: "flex", gap: 10 }}>
-        <input
-          type="email"
-          placeholder="student@example.com"
-          value={email}
-          onChange={e => setEmail(e.target.value)}
-          onKeyDown={e => e.key === "Enter" && handleReset()}
+    <div style={{ padding: "10px 14px", borderBottom: "1px solid #F1F5F9" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+        <span style={{ fontSize: 12, fontWeight: 600 }}>{config.label}</span>
+        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color }}>
+          {current}/{config.size}
+        </span>
+      </div>
+      <div style={{ background: "#F1F5F9", borderRadius: 4, height: 6, overflow: "hidden", position: "relative" }}>
+        <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 4, transition: "width 0.5s" }} />
+        <div
           style={{
-            flex: 1, padding: "10px 14px", border: "1px solid #E2E8F0",
-            borderRadius: 8, fontFamily: "'Sora', sans-serif", fontSize: 13, outline: "none",
+            position: "absolute",
+            top: 0,
+            left: `${(config.threshold / config.size) * 100}%`,
+            width: 2,
+            height: "100%",
+            background: "#D97706",
           }}
         />
-        <button
-          onClick={handleReset}
-          disabled={loading}
-          style={{ ...S.btn, ...(loading ? S.btnMuted : S.btnDanger), whiteSpace: "nowrap" }}
-        >
-          {loading ? "Resetting..." : "Reset Limit"}
-        </button>
       </div>
-      {result && (
-        <p style={{ fontSize: 12, marginTop: 10, fontWeight: 600, color: result.type === "error" ? "#DC2626" : "#059669" }}>
-          {result.text}
-        </p>
-      )}
+      <div style={{ fontSize: 10, color: "#94A3B8", marginTop: 3 }}>
+        threshold {config.threshold} · {isWarning ? `${config.threshold - current} below threshold` : "healthy"}
+      </div>
     </div>
   );
 }
 
-// ── Change Password Component ─────────────────────────────────────────────────
-function ChangePassword() {
-  const [current,  setCurrent]  = useState("");
-  const [newPass,  setNewPass]  = useState("");
-  const [confirm,  setConfirm]  = useState("");
-  const [msg,      setMsg]      = useState(null);
+// ─── Main component ───────────────────────────────────────────────────────────
 
-  function handleChange() {
-    setMsg(null);
-    const activePass = localStorage.getItem("vantiq_admin_pw") || DEFAULT_PASS;
-    if (current !== activePass)    { setMsg({ text: "Current password is incorrect.", type: "error" }); return; }
-    if (newPass.length < 8)        { setMsg({ text: "New password must be at least 8 characters.", type: "error" }); return; }
-    if (newPass !== confirm)       { setMsg({ text: "New passwords do not match.", type: "error" }); return; }
-    localStorage.setItem("vantiq_admin_pw", newPass);
-    setMsg({ text: "Password updated. Takes effect on next login.", type: "success" });
-    setCurrent(""); setNewPass(""); setConfirm("");
-  }
-
-  const inputStyle = {
-    width: "100%", padding: "10px 14px", border: "1px solid #E2E8F0",
-    borderRadius: 8, fontFamily: "'Sora', sans-serif", fontSize: 13,
-    marginBottom: 10, boxSizing: "border-box", outline: "none",
-  };
-
-  return (
-    <div style={{ ...S.card, maxWidth: 420 }}>
-      <p style={{ fontSize: 13, color: "#64748B", marginBottom: 16 }}>
-        Password change is stored in <strong>this browser only</strong>. On any other device or browser, the original
-        <code style={{ background: "#F1F5F9", padding: "1px 5px", borderRadius: 4, fontSize: 12 }}>VITE_ADMIN_PASSWORD</code>
-        Netlify env var is still used. To change it everywhere, update that env var and redeploy.
-      </p>
-      <input type="password" placeholder="Current password"     value={current}  onChange={e => setCurrent(e.target.value)}  style={inputStyle} />
-      <input type="password" placeholder="New password (min 8)" value={newPass}  onChange={e => setNewPass(e.target.value)}  style={inputStyle} />
-      <input type="password" placeholder="Confirm new password" value={confirm}  onChange={e => setConfirm(e.target.value)}  style={inputStyle}
-        onKeyDown={e => e.key === "Enter" && handleChange()} />
-      {msg && (
-        <p style={{ fontSize: 12, marginBottom: 10, color: msg.type === "error" ? "#DC2626" : "#059669", fontWeight: 600 }}>
-          {msg.type === "success" ? "✅" : "❌"} {msg.text}
-        </p>
-      )}
-      <button onClick={handleChange} style={{ ...S.btn, ...S.btnPrimary, width: "100%" }}>
-        Update Password
-      </button>
-    </div>
-  );
-}
-
-// ── Main Admin Dashboard ──────────────────────────────────────────────────────
 export default function AdminDashboard() {
-  const [unlocked,    setUnlocked]    = useState(false);
-  const [fbUser,      setFbUser]      = useState(null);
-  const [fbLoading,   setFbLoading]   = useState(false);
-  const [loading,     setLoading]     = useState(true);
-  const [stats,       setStats]       = useState(null);
-  const [cache,       setCache]       = useState({});
-  const [recentTests, setRecentTests] = useState([]);
-  const [recentPay,   setRecentPay]   = useState([]);
-  const [feedback,    setFeedback]    = useState([]);
-  const [ratings,     setRatings]     = useState([]);
-  const [insights,    setInsights]    = useState(null);
-  const [insightLoad, setInsightLoad] = useState(false);
-  const [liveUsers,   setLiveUsers]   = useState([]);
-  const [userBreakdown, setUserBreakdown] = useState([]); // per-user test stats
-  const [liveStats,   setLiveStats]   = useState(null);
-  const [logs,        setLogs]        = useState([]);
-  const [filling,     setFilling]     = useState(null);
-  const [fillProgress, setFillProgress] = useState(null);
-  // fillProgress shape: { active, mode, startedAt, count, initialCount, stalePolls }
-  const fillPollRef = useRef(null); // interval ID for getCacheStatus polling
-  const [tick,       setTick]        = useState(0); // increments every second when active — drives live elapsed timer
-  const [lastRefresh,  setLastRefresh]  = useState(null);
-  const [healthData,   setHealthData]   = useState(null);   // last health check result
-  const [healthLoad,   setHealthLoad]   = useState(false);  // running a check right now
-  const [intel,        setIntel]        = useState(null);   // last intelligence refresh result
-  const [intelLoad,    setIntelLoad]    = useState(false);  // refreshing intelligence
+  // ── Auth state ──────────────────────────────────────────────────────────────
+  const [password, setPassword] = useState("");
+  const [authed, setAuthed] = useState(false);
+  const [pwError, setPwError] = useState("");
+  const [fbUser, setFbUser] = useState(null);
+  const [fbLoading, setFbLoading] = useState(true);
 
-  // Sign in with Firebase Google auth after password gate
-  // Required for Firestore rules (isAdmin checks email)
+  // ── Data state ──────────────────────────────────────────────────────────────
+  const [stats, setStats] = useState(null);
+  const [recentTests, setRecentTests] = useState([]);
+  const [recentPay, setRecentPay] = useState([]);
+  const [feedback, setFeedback] = useState([]);
+  const [ratings, setRatings] = useState([]);
+  const [userBreakdown, setUserBreakdown] = useState([]);
+  const [liveUsers, setLiveUsers] = useState(0);
+  const [insights, setInsights] = useState(null);
+  const [intel, setIntel] = useState(null);
+  const [intelLoad, setIntelLoad] = useState(false);
+  const [gatCALoad,   setGatCALoad]   = useState(false);  // refreshing GAT CA context
+  const [gatCAResult, setGatCAResult] = useState(null);   // last GAT CA refresh result
+  const [intelGenLoad, setIntelGenLoad] = useState(false);
+
+  // ── Cache state ─────────────────────────────────────────────────────────────
+  const [cacheStatus, setCacheStatus] = useState(null);
+  const [filling, setFilling] = useState(false);
+  const [fillProgress, setFillProgress] = useState(null);
+  const fillPollRef = useRef(null);
+  const fillStartRef = useRef(null);
+  const stalePollsRef = useRef(0);
+
+  // ── Health state ────────────────────────────────────────────────────────────
+  const [healthData, setHealthData] = useState(null);
+  const [healthLoad, setHealthLoad] = useState(false);
+
+  // ── UI state ────────────────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState("students");
+  const [loading, setLoading] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState(null);
+  const [logs, setLogs] = useState([]);
+
+  // ── User management state ───────────────────────────────────────────────────
+  const [lookupEmail, setLookupEmail] = useState("");
+  const [lookupResult, setLookupResult] = useState(null);
+  const [lookupLoad, setLookupLoad] = useState(false);
+
+  // ── Change password state ───────────────────────────────────────────────────
+  const [newPw, setNewPw] = useState("");
+  const [pwMsg, setPwMsg] = useState("");
+
+  // ── Refs ────────────────────────────────────────────────────────────────────
+  const statusPollRef = useRef(null);
+
+  // ── Logging ─────────────────────────────────────────────────────────────────
+  const addLog = useCallback((msg, type = "info") => {
+    const ts = new Date().toLocaleTimeString("en-IN");
+    setLogs((prev) => [`[${ts}] ${msg}`, ...prev].slice(0, 40).map((l, i) =>
+      i === 0 ? { text: `[${ts}] ${msg}`, type } : typeof l === "string" ? { text: l, type: "info" } : l
+    ));
+  }, []);
+
+  // ── Firebase auth listener ──────────────────────────────────────────────────
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, u => {
-      setFbUser(u);
-      if (unlocked && u) { loadData(); loadHealthData(); }
+    const unsub = onAuthStateChanged(auth, (user) => {
+      setFbUser(user);
+      setFbLoading(false);
     });
     return unsub;
-  }, [unlocked]);
+  }, []);
 
-  async function handleFirebaseSignIn() {
-    setFbLoading(true);
-    try {
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: "select_account" });
-      const result = await signInWithPopup(auth, provider);
-      setFbUser(result.user);
-      addLog(`Signed in as ${result.user.email}`, "success");
-    } catch(e) {
-      addLog("Google sign-in failed: " + e.message, "error");
+  // ── Password gate ───────────────────────────────────────────────────────────
+  const handlePassword = () => {
+    if (password === ADMIN_PASSWORD) {
+      setAuthed(true);
+      setPwError("");
+    } else {
+      setPwError("Incorrect password.");
     }
-    setFbLoading(false);
-  }
-
-  async function handleSwitchAccount() {
-    setFbLoading(true);
-    try {
-      const { signOut } = await import("firebase/auth");
-      await signOut(auth);
-      setFbUser(null);
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: "select_account" });
-      const result = await signInWithPopup(auth, provider);
-      setFbUser(result.user);
-      addLog(`Switched to ${result.user.email}`, "success");
-      loadData();
-    } catch(e) {
-      addLog("Switch failed: " + e.message, "error");
-    }
-    setFbLoading(false);
-  }
-
-  const addLog = (msg, type = "info") => {
-    const ts = new Date().toLocaleTimeString("en-IN");
-    setLogs(l => [`[${ts}] ${type === "error" ? "❌" : type === "success" ? "✅" : "ℹ️"} ${msg}`, ...l].slice(0, 50));
   };
 
-  const todayIST = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
-
+  // ── Load Firestore data ─────────────────────────────────────────────────────
   const loadData = useCallback(async () => {
+    if (!fbUser) return;
     setLoading(true);
     addLog("Loading dashboard data...");
-    const user = auth.currentUser;
-    if (!user) {
-      addLog("Not signed in with Google — click 'Sign in with Google' below to load stats", "error");
+
+    try {
+      // Users
+      const usersSnap = await getDocs(collection(db, "users"));
+      const users = usersSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const total = users.length;
+      const paid = users.filter((u) => u.unlocked).length;
+      const revenue = paid * 199;
+      const convPct = total > 0 ? ((paid / total) * 100).toFixed(1) : "0.0";
+
+      // Recent tests (today)
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const testsQ = query(collection(db, "tests"), orderBy("completedAt", "desc"), limit(50));
+      const testsSnap = await getDocs(testsQ);
+      const allTests = testsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const todayTests = allTests.filter((t) => {
+        const d = t.completedAt?.toDate ? t.completedAt.toDate() : new Date(t.completedAt || 0);
+        return d >= today;
+      });
+
+      // Build user breakdown
+      const userMap = {};
+      users.forEach((u) => {
+        userMap[u.id] = {
+          email: u.email || u.displayName || u.id,
+          mock: 0,
+          qp: 0,
+          unlocked: u.unlocked,
+          lastTest: u.lastTestAt,
+          testsUsed: u.testsUsed || 0,
+        };
+      });
+      allTests.forEach((t) => {
+        if (userMap[t.uid]) {
+          if (t.mode === "Mock") userMap[t.uid].mock++;
+          else userMap[t.uid].qp++;
+        }
+      });
+      const breakdown = Object.values(userMap)
+        .sort((a, b) => b.mock - a.mock)
+        .slice(0, 50);
+
+      setUserBreakdown(breakdown);
+      setRecentTests(allTests.slice(0, 30));
+
+      // Recent activity feed (last 8 events across tests)
+      setStats({ total, paid, revenue, convPct, testsToday: todayTests.length });
+
+      // Payments
+      try {
+        const payQ = query(collection(db, "payments"), orderBy("createdAt", "desc"), limit(20));
+        const paySnap = await getDocs(payQ);
+        setRecentPay(paySnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      } catch (e) {
+        addLog("Payments load: " + e.message, "warn");
+      }
+
+      // Feedback
+      try {
+        const fbQ = query(collection(db, "feedback"), orderBy("createdAt", "desc"), limit(30));
+        const fbSnap = await getDocs(fbQ);
+        setFeedback(fbSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      } catch (e) {
+        addLog("Feedback load: " + e.message, "warn");
+      }
+
+      // Ratings
+      try {
+        const rQ = query(collection(db, "ratings"), orderBy("createdAt", "desc"), limit(100));
+        const rSnap = await getDocs(rQ);
+        setRatings(rSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      } catch (e) {
+        addLog("Ratings load: " + e.message, "warn");
+      }
+
+      // Presence (live users)
+      try {
+        const pQ = query(collection(db, "presence"));
+        const pSnap = await getDocs(pQ);
+        const fiveMinsAgo = new Date(Date.now() - 5 * 60 * 1000);
+        const live = pSnap.docs.filter((d) => {
+          const ls = d.data().lastSeen?.toDate ? d.data().lastSeen.toDate() : null;
+          return ls && ls > fiveMinsAgo;
+        });
+        setLiveUsers(live.length);
+      } catch (e) {
+        setLiveUsers(0);
+      }
+
+      // Intelligence
+      try {
+        const iQ = query(collection(db, "cuetIntelligence"), limit(5));
+        const iSnap = await getDocs(iQ);
+        setIntel(iSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      } catch (e) {
+        addLog("Intelligence load: " + e.message, "warn");
+      }
+
+      setLastRefresh(new Date());
+      addLog(`Loaded: ${total} users, ${allTests.length} tests, ${paid} paid`, "success");
+    } catch (e) {
+      addLog("Data load error: " + e.message, "error");
+    } finally {
       setLoading(false);
+    }
+  }, [fbUser, addLog]);
+
+  // ── Load cache status ────────────────────────────────────────────────────────
+  const loadCacheStatus = useCallback(async (silent = false) => {
+    try {
+      const data = await cfFetch("getCacheStatus");
+      setCacheStatus(data?.status || null);
+      return data?.status || null;
+    } catch (e) {
+      // Only log config errors (missing env vars) — transient fetch errors are silent during polling
+      if (!silent && (e.message.includes("not set") || e.message.includes("HTTP 403"))) {
+        addLog("Cache status error: " + e.message, "warn");
+      }
+      return null;
+    }
+  }, [addLog]);
+
+  // ── Fill all cache ───────────────────────────────────────────────────────────
+  const fillAllCache = useCallback(async () => {
+    if (filling) {
+      addLog("Fill already in progress — wait for it to complete", "warn");
       return;
     }
+    setFilling(true);
+    fillStartRef.current = Date.now();
+    stalePollsRef.current = 0;
+    addLog("Starting cache fill...");
+
     try {
-      // ── User stats ───────────────────────────────────────────────────────
-      // getDocs instead of getCountFromServer — works reliably with Firestore security rules
-      const usersSnap   = await getDocs(collection(db, "users"));
-      const totalUsers  = usersSnap.size;
-      const totalPaid   = usersSnap.docs.filter(d => d.data().unlocked === true).length;
-
-      // Today's tests
-      const today      = todayIST();
-      const usersToday = await getDocs(query(collection(db, "users"), orderBy("lastTestAt", "desc"), limit(100)));
-      let testsToday   = 0;
-      usersToday.docs.forEach(d => {
-        const dt = d.data().dailyTests || {};
-        testsToday += dt[today] || 0;
-      });
-
-      // ── Cache status ─────────────────────────────────────────────────────
-      const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-      const cacheData = {};
-      for (const mode of ["Mock", "QuickPractice"]) {
-        const snap  = await getDocs(query(collection(db, "questionCache"), where("mode", "==", mode)));
-        const fresh = snap.docs.filter(d => d.data().createdAt?.toDate() > cutoff);
-        cacheData[mode] = { current: fresh.length, total: CACHE_CONFIG[mode]?.size || CACHE_SIZE, needed: Math.max(0, (CACHE_CONFIG[mode]?.size || CACHE_SIZE) - fresh.length) };
-      }
-      setCache(cacheData);
-
-      // ── Auto-trigger cache fill if any mode is below target ───────────────
-      // Runs every time the dashboard loads — no manual button click needed
-      const anyNeeded = Object.values(cacheData).some(m => m.needed > 0);
-      if (anyNeeded && !filling) {
-        const modesBelow = Object.entries(cacheData)
-          .filter(([, m]) => m.needed > 0)
-          .map(([mode, m]) => `${mode}: ${m.current}/${m.total}`)
-          .join(", ");
-        addLog(`Cache below target (${modesBelow}) — auto-fill starting...`, "info");
-        // Small delay so dashboard renders first before fill starts
-        setTimeout(() => fillAllCache(), 1500);
-      }
-
-      // ── Recent tests ─────────────────────────────────────────────────────
-      const testsSnap = await getDocs(query(collection(db, "tests"), orderBy("completedAt", "desc"), limit(10)));
-      setRecentTests(testsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-
-      // ── Recent payments ──────────────────────────────────────────────────
-      const paySnap = await getDocs(query(collection(db, "payments"), orderBy("createdAt", "desc"), limit(10)));
-      setRecentPay(paySnap.docs.map(d => ({ id: d.id, ...d.data() })));
-
-      // ── Feedback ─────────────────────────────────────────────────────────
-      try {
-        const fbSnap = await getDocs(query(collection(db, "feedback"), orderBy("createdAt", "desc"), limit(50)));
-        setFeedback(fbSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-      } catch(e) { /* feedback collection may not exist yet */ }
-
-      // ── Ratings ──────────────────────────────────────────────────────────
-      try {
-        const ratSnap = await getDocs(query(collection(db, "ratings"), orderBy("createdAt", "desc"), limit(100)));
-        setRatings(ratSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-      } catch(e) { /* ratings collection may not exist yet */ }
-
-      // ── Live presence + activity ──────────────────────────────────────────
-      try {
-        const now          = new Date();
-        const fiveMinsAgo  = new Date(now - 5 * 60 * 1000);
-        const oneDayAgo    = new Date(now - 24 * 60 * 60 * 1000);
-        const sevenDaysAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
-
-        // Online now (presence heartbeat < 5 min ago)
-        const presSnap = await getDocs(collection(db, "presence"));
-        const onlineNow = presSnap.docs
-          .filter(d => d.data().lastSeen?.toDate?.() > fiveMinsAgo)
-          .map(d => ({ id: d.id, ...d.data() }));
-        setLiveUsers(onlineNow);
-
-        // All users for segmentation
-        const allUsersSnap = await getDocs(collection(db, "users"));
-        const allUsers = allUsersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-        const newToday      = allUsers.filter(u => u.createdAt?.toDate?.() > oneDayAgo).length;
-        const activeToday   = allUsers.filter(u => u.lastTestAt?.toDate?.() > oneDayAgo).length;
-        const active7d      = allUsers.filter(u => u.lastTestAt?.toDate?.() > sevenDaysAgo).length;
-        const dormant       = allUsers.filter(u => !u.lastTestAt && !u.testsUsed).length;
-        const paid          = allUsers.filter(u => u.unlocked).length;
-        const freeActive    = allUsers.filter(u => !u.unlocked && u.testsUsed > 0).length;
-
-        // Tests today
-        const todayStart = new Date(); todayStart.setHours(0,0,0,0);
-        const testsSnap2 = await getDocs(query(collection(db, "tests"), orderBy("completedAt", "desc"), limit(50)));
-        const testsToday2 = testsSnap2.docs.filter(d => d.data().completedAt?.toDate?.() > todayStart).length;
-
-        // Build uid → email lookup from users collection
-        const uidToEmail = {};
-        const uidToName  = {};
-        allUsers.forEach(u => { uidToEmail[u.id] = u.email || u.displayName || u.id.substring(0,8); uidToName[u.id] = u.displayName || u.email || u.id.substring(0,8); });
-
-        // Recent activity feed — now shows real email from user lookup
-        const recentActivity = [
-          ...allUsers
-            .filter(u => u.createdAt?.toDate?.())
-            .map(u => ({ type: "signup", email: u.email, time: u.createdAt.toDate(), label: "New signup" })),
-          ...testsSnap2.docs
-            .filter(d => d.data().completedAt?.toDate?.())
-            .slice(0, 20)
-            .map(d => {
-              const uid   = d.data().uid;
-              const email = d.data().email || uidToEmail[uid] || uid?.substring(0,8) || "unknown";
-              const name  = d.data().displayName || email;
-              return { type: "test", email: name, time: d.data().completedAt.toDate(), label: `${d.data().mode || "Mock"} · ${d.data().totalScore ?? d.data().score ?? 0} marks` };
-            }),
-        ].sort((a, b) => b.time - a.time).slice(0, 10);
-
-        // Build uid → unlocked map from allUsers
-        const uidToUnlocked = {};
-        const uidToTestsUsed = {};
-        allUsers.forEach(u => { uidToUnlocked[u.id] = !!u.unlocked; uidToTestsUsed[u.id] = u.testsUsed || 0; });
-
-        // Per-user breakdown: aggregate all tests by uid, join with user email + access status
-        const userMap = {};
-        testsSnap2.docs.forEach(d => {
-          const t = d.data();
-          if (!t.uid) return;
-          if (!userMap[t.uid]) {
-            userMap[t.uid] = {
-              uid: t.uid,
-              email: t.email || uidToEmail[t.uid] || t.uid.substring(0,8),
-              name: t.displayName || uidToName[t.uid] || "—",
-              unlocked: uidToUnlocked[t.uid] || false,
-              testsUsed: uidToTestsUsed[t.uid] || 0,
-              tests: 0, mockTests: 0, qpTests: 0,
-              totalScore: 0, avgScore: 0, bestScore: 0,
-              lastTestAt: null,
-            };
-          }
-          const u = userMap[t.uid];
-          u.tests++;
-          if (t.mode === "Mock") u.mockTests++; else u.qpTests++;
-          const sc = t.totalScore ?? t.score ?? 0;
-          u.totalScore += sc;
-          if (sc > u.bestScore) u.bestScore = sc;
-          const ts = t.completedAt?.toDate?.();
-          if (ts && (!u.lastTestAt || ts > u.lastTestAt)) u.lastTestAt = ts;
+      const res = await cfFetch("triggerCacheWarm", {});
+      if (res?.locked) {
+        addLog(`Fill already running (locked since ${res.lockedSince ? new Date(res.lockedSince).toLocaleTimeString("en-IN") : "recently"}) — watching progress...`, "info");
+        // Still show progress strip using last known counts from getCacheStatus
+        const s = res.status || {};
+        setFillProgress({
+          locked: true,
+          mock: s.Mock?.current ?? 0,
+          qp: s.QuickPractice?.current ?? 0,
+          mockTarget: CACHE_CONFIG.Mock.size,
+          qpTarget: CACHE_CONFIG.QuickPractice.size,
+          elapsed: 0,
         });
-        const breakdown = Object.values(userMap)
-          .map(u => ({ ...u, avgScore: u.tests > 0 ? Math.round(u.totalScore / u.mockTests || 0) : 0 }))
-          .sort((a, b) => b.tests - a.tests);
-        setUserBreakdown(breakdown);
-
-        setLiveStats({ newToday, activeToday, active7d, dormant, paid, freeActive, testsToday: testsToday2, total: allUsers.length, recentActivity });
-      } catch(e) {
-        console.warn("Live stats error:", e.message);
-        // Set safe empty state so UI shows 0s instead of "Loading live data..." forever
-        // This happens when Firestore indexes are still building (takes ~5 min after first deploy)
-        setLiveStats({ newToday: 0, activeToday: 0, active7d: 0, dormant: 0, paid: 0, freeActive: 0, testsToday: 0, total: 0, recentActivity: [], error: e.message });
-      }
-
-      // ── Revenue ──────────────────────────────────────────────────────────
-      const allPay    = await getDocs(collection(db, "payments"));
-      const totalRev  = allPay.size * 199;
-
-      setStats({ totalUsers, totalPaid, testsToday, totalRev, convRate: totalUsers > 0 ? Math.round((totalPaid / totalUsers) * 100) : 0 });
-      setLastRefresh(new Date().toLocaleTimeString("en-IN"));
-      addLog(`Data loaded — ${totalUsers} users, ${totalPaid} paid, ₹${totalRev} revenue`, "success");
-    } catch (e) {
-      addLog(`Load error: ${e.message}`, "error");
-    }
-    setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    if (unlocked) loadData();
-  }, [unlocked, loadData]);
-
-  // Load last health check from Firestore on dashboard open
-  // Auto-triggers a fresh check if last one is > 6 hours old
-  const loadHealthData = useCallback(async () => {
-    try {
-      const { query: q2, orderBy: ob, limit: lim } = await import("firebase/firestore");
-      const snap = await getDocs(q2(collection(db, "healthChecks"), ob("createdAt", "desc"), lim(1)));
-      if (!snap.empty) {
-        const d = snap.docs[0].data();
-        setHealthData(d);
-        // Auto-trigger if last check was > 6 hours ago
-        const lastRun  = d.createdAt?.toDate?.() || new Date(d.startedAt);
-        const sixHours = 6 * 60 * 60 * 1000;
-        if (Date.now() - lastRun.getTime() > sixHours) {
-          addLog("Last health check > 6h ago — running fresh check automatically...");
-          runHealthCheck(true); // silent = true, no log spam
-        }
       } else {
-        // No check ever run — trigger one now
-        runHealthCheck(true);
+        addLog("Cache fill started: " + (res?.message || ""), "success");
+        setFillProgress({ started: true });
       }
-    } catch(e) { /* healthChecks collection doesn't exist yet — first run */ }
-  }, []);
-
-  async function runIntelligenceUpdate(subject = "English_101") {
-    if (intelLoad) return;
-    setIntelLoad(true);
-    addLog("Refreshing CUET intelligence for " + subject + "...");
-    try {
-      const r = await fetch(`${CF_BASE}/updateCuetIntelligence`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ adminKey: ADMIN_KEY, subject }),
-      });
-      const d = await r.json();
-      if (d.error) throw new Error(d.error);
-      setIntel(d);
-      addLog("Intelligence updated — " + (d.preview?.keyTrends?.length || 0) + " key trends captured", "success");
-    } catch(e) {
-      addLog("Intelligence update failed: " + e.message, "error");
+    } catch (e) {
+      addLog("triggerCacheWarm error: " + e.message, "error");
+      setFilling(false);
+      return;
     }
-    setIntelLoad(false);
-  }
 
-    async function runHealthCheck(silent = false) {
-    if (healthLoad) return;
-    setHealthLoad(true);
-    if (!silent) addLog("Running platform health check...");
-    try {
-      const r = await fetch(`${CF_BASE}/platformHealthCheck`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ adminKey: ADMIN_KEY }),
-      });
-      const d = await r.json();
-      if (d.error) throw new Error(d.error);
-      setHealthData(d);
-      const status = d.overallStatus;
-      addLog(
-        `Health check complete — ${status.toUpperCase()} · ${d.warnings?.length ?? 0} warnings · ${d.autoFixed?.length ?? 0} auto-fixed`,
-        status === "healthy" ? "success" : status === "warning" ? "info" : "error"
-      );
-      if (d.autoFixed?.length) d.autoFixed.forEach(f => addLog("Auto-fixed: " + f, "success"));
-      if (d.warnings?.length)  d.warnings.forEach(w => addLog("Warning: " + w, "error"));
-    } catch(e) {
-      addLog("Health check failed: " + e.message, "error");
-    }
-    setHealthLoad(false);
-  }
-
-  async function generateInsights() {
-    setInsightLoad(true);
-    addLog("Generating feedback insights...");
-    try {
-      const r = await fetch(`${CF_BASE}/generateFeedbackInsights`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ adminKey: ADMIN_KEY }),
-      });
-      const d = await r.json();
-      if (d.error) throw new Error(d.error);
-      setInsights(d);
-      addLog(`Insights generated from ${feedback.length} feedback submissions`, "success");
-    } catch(e) {
-      addLog(`Insights error: ${e.message}`, "error");
-    }
-    setInsightLoad(false);
-  }
-
-  // Live elapsed timer — increments every second while a fill run is active
-  useEffect(() => {
-    if (!fillProgress?.active) return;
-    const id = setInterval(() => setTick(t => t + 1), 1000);
-    return () => clearInterval(id);
-  }, [fillProgress?.active]);
-
-  // Cleanup interval on unmount
-  useEffect(() => () => { if (fillPollRef.current) clearInterval(fillPollRef.current); }, []);
-
-  function startFillPolling(mode, initialCount) {
-    if (fillPollRef.current) clearInterval(fillPollRef.current);
-    const startedAt = Date.now();
-    setFillProgress({ active: true, mode, startedAt, count: initialCount, initialCount, stalePolls: 0 });
-
+    // Poll every 15 seconds
     fillPollRef.current = setInterval(async () => {
-      // Auto-stop after 10 minutes (one full generation budget)
-      if (Date.now() - startedAt > 10 * 60 * 1000) {
-        clearInterval(fillPollRef.current);
-        setFillProgress(p => p ? { ...p, active: false } : null);
-        return;
+      const elapsed = Math.round((Date.now() - fillStartRef.current) / 1000);
+      const status = await loadCacheStatus(true); // silent=true — no log spam during polling
+      if (status) {
+        const mCurrent = status.Mock?.current ?? 0;
+        const qCurrent = status.QuickPractice?.current ?? 0;
+        const mFull = mCurrent >= CACHE_CONFIG.Mock.size;
+        const qFull = qCurrent >= CACHE_CONFIG.QuickPractice.size;
+
+        setFillProgress({
+          mock: mCurrent,
+          qp: qCurrent,
+          mockTarget: CACHE_CONFIG.Mock.size,
+          qpTarget: CACHE_CONFIG.QuickPractice.size,
+          elapsed,
+          locked: status.locked,
+        });
+
+        const prevMock = fillProgress?.mock;
+        const prevQp = fillProgress?.qp;
+        if (mCurrent === prevMock && qCurrent === prevQp) {
+          stalePollsRef.current++;
+        } else {
+          stalePollsRef.current = 0;
+        }
+
+        if ((mFull && qFull) || stalePollsRef.current >= 8 || elapsed > 570) {
+          clearInterval(fillPollRef.current);
+          setFilling(false);
+          setFillProgress(null);
+          if (mFull && qFull) addLog("Cache full — all modes at target", "success");
+          else addLog("Fill cycle ended — check status", "warn");
+        }
       }
-      try {
-        const r = await fetch(`${CF_BASE}/getCacheStatus`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ adminKey: ADMIN_KEY }),
-        });
-        const d = await r.json();
-        const current = d.status?.[mode]?.current ?? 0;
+    }, 15000);
+  }, [filling, loadCacheStatus, fillProgress, addLog]);
 
-        setFillProgress(prev => {
-          if (!prev || !prev.active) return prev;
-          const stale = current === prev.count ? prev.stalePolls + 1 : 0;
-          // 8 consecutive polls with same count (2 min) → generation is done
-          // Do NOT stop at 3 polls (45s) — a single set takes 8 min to generate
-          const elapsed = Date.now() - prev.startedAt;
-          if (stale >= 8 || elapsed > 9.5 * 60 * 1000) {
-            clearInterval(fillPollRef.current);
-            // Self-loop: after fill run completes, re-check status and auto-trigger again if still below target
-            // This mirrors the nightly cron loop — keeps running until both modes are full
-            setTimeout(async () => {
-              try {
-                const r = await fetch(`${CF_BASE}/getCacheStatus`, {
-                  method: "POST", headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ adminKey: ADMIN_KEY }),
-                });
-                const d = await r.json();
-                const stillNeeded = Object.values(d.status || {}).some(m => m.needed > 0);
-                if (stillNeeded) {
-                  // Update cache display with latest counts
-                  setCache(prev2 => {
-                    const u = { ...prev2 };
-                    Object.entries(d.status || {}).forEach(([m, s]) => { u[m] = { ...u[m], current: s.current, needed: s.needed }; });
-                    return u;
-                  });
-                  // Re-trigger — will loop again until full
-                  setTimeout(() => fillAllCache(), 2000);
-                }
-              } catch(_) {}
-            }, 5000);
-            return { ...prev, active: false, count: current, stalePolls: stale };
-          }
-          return { ...prev, count: current, stalePolls: stale };
-        });
-        // Also update the live cache count display
-        setCache(prev => ({ ...prev, [mode]: { ...prev[mode], current } }));
-      } catch(_) { /* silent — don't break polling on network error */ }
-    }, 15000); // poll getCacheStatus every 15s
-  }
+  // ── Auto-fill check on load ──────────────────────────────────────────────────
+  const checkAndFill = useCallback(async () => {
+    const status = await loadCacheStatus(true); // silent on auto-check
+    if (!status) return;
+    const needsFill =
+      (status.Mock?.current ?? 0) < CACHE_CONFIG.Mock.threshold ||
+      (status.QuickPractice?.current ?? 0) < CACHE_CONFIG.QuickPractice.threshold ||
+      (status.GAT_Mock?.current ?? 0) < CACHE_CONFIG.GAT_Mock.threshold ||
+      (status.GAT_QP?.current ?? 0) < CACHE_CONFIG.GAT_QP.threshold;
+    if (needsFill) {
+      addLog("Cache below threshold — auto-fill starting in 1.5s", "warn");
+      setTimeout(fillAllCache, 1500);
+    }
+  }, [loadCacheStatus, fillAllCache, addLog]);
 
-  async function fillCache(mode) {
-    setFilling(mode);
-    addLog(`Starting ${mode} cache fill...`);
+  // ── Initial load ─────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (authed && fbUser) {
+      loadData();
+      checkAndFill();
+    } else if (authed && !fbUser && !fbLoading) {
+      loadCacheStatus();
+    }
+  }, [authed, fbUser, fbLoading]);
+
+  // ── Auto-refresh status bar every 60s ───────────────────────────────────────
+  useEffect(() => {
+    if (!authed) return;
+    statusPollRef.current = setInterval(() => {
+      loadCacheStatus();
+    }, 60000);
+    return () => clearInterval(statusPollRef.current);
+  }, [authed, loadCacheStatus]);
+
+  // ── Cleanup on unmount ───────────────────────────────────────────────────────
+  useEffect(() => {
+    return () => {
+      clearInterval(fillPollRef.current);
+      clearInterval(statusPollRef.current);
+    };
+  }, []);
+
+  // ── Health check ─────────────────────────────────────────────────────────────
+  const runHealthCheck = async () => {
+    setHealthLoad(true);
+    addLog("Running health check...");
     try {
-      const res = await fetch(`${CF_BASE}/triggerCacheWarm`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode, adminKey: ADMIN_KEY }),
-      });
-      const d = await res.json();
-      if (d.message) {
-        const currentCount = d.status?.[mode]?.current ?? (cache[mode]?.current || 0);
-        const modeTarget = CACHE_CONFIG[mode]?.size || CACHE_SIZE;
-        addLog(`${mode} fill started — ${currentCount}/${modeTarget} sets. Generating in background...`, "success");
-        // Start polling getCacheStatus every 15s to show live progress
-        startFillPolling(mode, currentCount);
-      } else {
-        addLog(`${mode} fill error: ${d.error}`, "error");
-      }
+      const data = await cfFetch("platformHealthCheck");
+      setHealthData(data);
+      addLog(
+        `Health: ${data.overallStatus} · ${data.autoFixed?.length || 0} auto-fixed`,
+        data.overallStatus === "healthy" ? "success" : "warn"
+      );
     } catch (e) {
-      addLog(`${mode} fill failed: ${e.message}`, "error");
+      addLog("Health check error: " + e.message, "error");
+    } finally {
+      setHealthLoad(false);
     }
-    setFilling(null);
-  }
-
-  async function fillAllCache() {
-    // Trigger a single fill run with no mode param — fills both Mock and QuickPractice
-    // Do NOT call fillCache() twice — the second call hits the fill lock from the first
-    addLog("Starting full cache fill (Mock + QuickPractice)...");
-    try {
-      const res = await fetch(`${CF_BASE}/triggerCacheWarm`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ adminKey: ADMIN_KEY }), // no mode = fills all modes
-      });
-      const d = await res.json();
-      if (d.locked) {
-        addLog("A fill run is already in progress — check progress strip below.", "info");
-        return;
-      }
-      if (d.message) {
-        const mockCount = d.status?.Mock?.current ?? 0;
-        addLog(`Full cache fill started — Mock: ${mockCount}/120, QP: ${d.status?.QuickPractice?.current ?? 0}/200. Running in background...`, "success");
-        // Poll Mock progress (primary mode)
-        startFillPolling("Mock", mockCount);
-      } else {
-        addLog(`Fill error: ${d.error || "unknown"}`, "error");
-      }
-    } catch(e) {
-      addLog(`Fill failed: ${e.message}`, "error");
-    }
-  }
-
-  const fmtDate = (ts) => {
-    if (!ts) return "—";
-    try {
-      const d = ts.toDate ? ts.toDate() : new Date(ts);
-      return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
-    } catch { return "—"; }
   };
 
-  if (!unlocked) return <PasswordGate onUnlock={() => setUnlocked(true)} />;
+  // ── Feedback insights ─────────────────────────────────────────────────────────
+  const genInsights = async () => {
+    addLog("Generating feedback insights...");
+    try {
+      const data = await cfFetch("generateFeedbackInsights");
+      setInsights(data);
+      addLog("Insights generated", "success");
+    } catch (e) {
+      addLog("Insights error: " + e.message, "error");
+    }
+  };
 
+  // ── Update intelligence ───────────────────────────────────────────────────────
+  const updateIntelligence = async (subject) => {
+    setIntelGenLoad(true);
+    addLog(`Updating intelligence: ${subject}...`);
+    try {
+      const data = await cfFetch("updateCuetIntelligence", { subject });
+      addLog(`Intelligence updated: ${subject}`, "success");
+      await loadData();
+    } catch (e) {
+      addLog("Intelligence error: " + e.message, "error");
+    } finally {
+      setIntelGenLoad(false);
+    }
+  };
+
+  // ── Refresh GAT Current Affairs (autonomous — triggers web search CF) ────────
+  const runGATCARefresh = async () => {
+    if (gatCALoad) return;
+    setGatCALoad(true);
+    addLog("Refreshing GAT current affairs — fetching latest events from web...");
+    try {
+      const data = await cfFetch("refreshGATCurrentAffairs", {});
+      setGatCAResult(data);
+      addLog(`GAT CA refreshed — v${data.refreshVersion}, ${data.cacheInvalidated} cache sets cleared for regeneration`, "success");
+    } catch (e) {
+      addLog("GAT CA refresh failed: " + e.message, "error");
+    } finally {
+      setGatCALoad(false);
+    }
+  };
+
+  // ── User management ───────────────────────────────────────────────────────────
+  const lookupUser = async () => {
+    if (!lookupEmail.trim()) return;
+    setLookupLoad(true);
+    setLookupResult(null);
+    try {
+      const q = query(collection(db, "users"), where("email", "==", lookupEmail.trim().toLowerCase()), limit(1));
+      const snap = await getDocs(q);
+      if (snap.empty) {
+        setLookupResult({ notFound: true });
+      } else {
+        setLookupResult({ id: snap.docs[0].id, ...snap.docs[0].data() });
+      }
+    } catch (e) {
+      addLog("User lookup error: " + e.message, "error");
+    } finally {
+      setLookupLoad(false);
+    }
+  };
+
+  const grantAccess = async (uid) => {
+    try {
+      await setDoc(doc(db, "users", uid), { unlocked: true, unlockedAt: new Date() }, { merge: true });
+      addLog(`Granted access to ${uid}`, "success");
+      setLookupResult((p) => ({ ...p, unlocked: true }));
+    } catch (e) {
+      addLog("grantAccess error: " + e.message, "error");
+    }
+  };
+
+  const revokeAccess = async (uid) => {
+    try {
+      await setDoc(doc(db, "users", uid), { unlocked: false }, { merge: true });
+      addLog(`Revoked access from ${uid}`, "warn");
+      setLookupResult((p) => ({ ...p, unlocked: false }));
+    } catch (e) {
+      addLog("revokeAccess error: " + e.message, "error");
+    }
+  };
+
+  const resetFreeLimit = async (uid) => {
+    try {
+      await setDoc(doc(db, "users", uid), { testsUsed: 0 }, { merge: true });
+      addLog(`Reset free limit for ${uid}`, "success");
+      setLookupResult((p) => ({ ...p, testsUsed: 0 }));
+    } catch (e) {
+      addLog("resetFreeLimit error: " + e.message, "error");
+    }
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Derived values
+  // ─────────────────────────────────────────────────────────────────────────────
+  const avgRating =
+    ratings.length > 0
+      ? (ratings.reduce((a, r) => a + (r.stars || 0), 0) / ratings.length).toFixed(1)
+      : "—";
+
+  const recentActivity = recentTests.slice(0, 8).map((t) => ({
+    email: t.email || t.displayName || t.uid?.slice(0, 10),
+    action: `${t.mode} · ${t.totalScore ?? 0} pts`,
+    time: fmt(t.completedAt),
+    icon: t.mode === "Mock" ? "📝" : "⚡",
+  }));
+
+  // Cache status values
+  const mockCurrent   = cacheStatus?.Mock?.current ?? "—";
+  const qpCurrent     = cacheStatus?.QuickPractice?.current ?? "—";
+  const gatMockCurrent = cacheStatus?.GAT_Mock?.current ?? "—";
+  const gatQPCurrent   = cacheStatus?.GAT_QP?.current ?? "—";
+  const cacheHealthy =
+    cacheStatus &&
+    mockCurrent >= CACHE_CONFIG.Mock.threshold &&
+    qpCurrent >= CACHE_CONFIG.QuickPractice.threshold &&
+    (gatMockCurrent === "—" || gatMockCurrent >= CACHE_CONFIG.GAT_Mock.threshold) &&
+    (gatQPCurrent === "—" || gatQPCurrent >= CACHE_CONFIG.GAT_QP.threshold);
+  const cacheWarning =
+    cacheStatus &&
+    !cacheHealthy &&
+    (mockCurrent >= CACHE_CONFIG.Mock.threshold * 0.5 || qpCurrent >= CACHE_CONFIG.QuickPractice.threshold * 0.5);
+  const cacheCritical = cacheStatus && !cacheHealthy && !cacheWarning;
+
+  // Platform overall
+  const platformStatus = healthData?.overallStatus ?? "unknown";
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // PASSWORD GATE
+  // ─────────────────────────────────────────────────────────────────────────────
+  if (!authed) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          background: "linear-gradient(135deg, #080F1E, #0D1B3E)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontFamily: "'Sora', sans-serif",
+        }}
+      >
+        <style>{`
+          @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap');
+          @keyframes spin { to { transform: rotate(360deg); } }
+          @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+          @keyframes shimmer { 0% { opacity:0.6; } 50% { opacity:1; } 100% { opacity:0.6; } }
+        `}</style>
+        <div
+          style={{
+            background: "rgba(255,255,255,0.04)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            borderRadius: 16,
+            padding: 40,
+            width: 360,
+            backdropFilter: "blur(12px)",
+          }}
+        >
+          <div style={{ color: "#fff", fontWeight: 800, fontSize: 18, marginBottom: 4 }}>
+            Vantiq CUET · Admin
+          </div>
+          <div style={{ color: "#64748B", fontSize: 12, marginBottom: 28 }}>
+            Control centre — authorised access only
+          </div>
+          <input
+            type="password"
+            placeholder="Admin password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handlePassword()}
+            style={{
+              ...S.input,
+              background: "rgba(255,255,255,0.06)",
+              border: "1px solid rgba(255,255,255,0.1)",
+              color: "#fff",
+              marginBottom: 12,
+            }}
+          />
+          {pwError && (
+            <div style={{ color: "#F87171", fontSize: 12, marginBottom: 10 }}>{pwError}</div>
+          )}
+          <button
+            onClick={handlePassword}
+            style={{
+              width: "100%",
+              height: 40,
+              background: "#4338CA",
+              color: "#fff",
+              border: "none",
+              borderRadius: 8,
+              fontWeight: 700,
+              fontSize: 13,
+              cursor: "pointer",
+              fontFamily: "'Sora', sans-serif",
+            }}
+          >
+            Enter Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // MAIN DASHBOARD
+  // ─────────────────────────────────────────────────────────────────────────────
   return (
     <div style={S.page}>
-      {/* Header */}
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap');
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+        @keyframes shimmer { 0%,100% { opacity:0.6; } 50% { opacity:1; } }
+        * { box-sizing: border-box; }
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: #F1F5F9; }
+        ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 4px; }
+        button:hover { opacity: 0.88; }
+        @media (max-width: 900px) {
+          .kpi-grid { grid-template-columns: repeat(3,1fr) !important; }
+          .live-section { grid-template-columns: 1fr !important; }
+        }
+        @media (max-width: 600px) {
+          .kpi-grid { grid-template-columns: repeat(2,1fr) !important; }
+        }
+      `}</style>
+
+      {/* ── HEADER ── */}
       <div style={S.header}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={S.headerTitle}>Vantiq CUET — Admin</span>
-          <span style={S.headerBadge}>English (101)</span>
+        <div style={S.headerLeft}>
+          <div style={S.headerTitle}>Vantiq CUET · Admin</div>
+          <span style={S.envBadge}>LIVE</span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          {lastRefresh && <span style={{ color: "rgba(255,255,255,.5)", fontSize: 11 }}>Updated {lastRefresh}</span>}
-          <button onClick={loadData} disabled={loading} style={{ ...S.btn, ...S.btnMuted, fontSize: 12, padding: "6px 14px" }}>
-            {loading ? "Loading..." : "↻ Refresh"}
+        <div style={S.headerRight}>
+          {fbUser ? (
+            <>
+              <span style={S.emailChip}>{fbUser.email}</span>
+              <button
+                onClick={() => signOut(auth)}
+                style={{ ...S.btnSmall(), background: "rgba(255,255,255,0.08)", color: "#cbd5e1", border: "1px solid rgba(255,255,255,0.1)" }}
+              >
+                Sign out
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => signInWithPopup(auth, new GoogleAuthProvider())}
+              style={{ ...S.btnSmall(), background: "#fff", color: "#0F2747" }}
+            >
+              Sign in with Google
+            </button>
+          )}
+          <button
+            onClick={() => { loadData(); loadCacheStatus(); }}
+            style={{ ...S.btnSmall("primary"), marginLeft: 4 }}
+          >
+            {loading ? "↻" : "Refresh"}
           </button>
         </div>
       </div>
 
-      <div style={S.body}>
-        {/* Firebase auth banner */}
-        {!fbUser && (
-          <div style={{ background: "#FEF3C7", border: "1px solid #FCD34D", borderRadius: 10, padding: "12px 20px", marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span style={{ fontSize: 13, color: "#92400E", fontWeight: 500 }}>
-              ⚠️ Sign in with Google to load student stats and use cache controls.
-            </span>
-            <button onClick={handleFirebaseSignIn} disabled={fbLoading}
-              style={{ ...S.btn, background: "#fff", color: "#0F2747", border: "1px solid #D97706", fontSize: 12, padding: "7px 16px" }}>
-              {fbLoading ? "Signing in..." : "Sign in with Google"}
-            </button>
-          </div>
-        )}
-        {fbUser && (
-          <div style={{ background: "#DCFCE7", border: "1px solid #86EFAC", borderRadius: 10, padding: "10px 20px", marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span style={{ fontSize: 12, color: "#166534" }}>✅ Signed in as {fbUser.email}</span>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={handleSwitchAccount} disabled={fbLoading} style={{ ...S.btn, background: "#fff", color: "#0F2747", border: "1px solid #86EFAC", fontSize: 11, padding: "4px 12px" }}>
-                {fbLoading ? "..." : "Switch Account"}
-              </button>
-              <button onClick={loadData} disabled={loading} style={{ ...S.btn, ...S.btnMuted, fontSize: 11, padding: "4px 12px" }}>
-                Reload Data
-              </button>
-            </div>
-          </div>
-        )}
-        {/* KPI Strip */}
-        <div style={S.sectionTitle}>Overview</div>
-        <div style={S.grid}>
-          {[
-            { label: "Total Students", val: stats?.totalUsers ?? "—", sub: "registered users" },
-            { label: "Paid Access",    val: stats?.totalPaid  ?? "—", sub: `₹${stats?.totalRev ?? 0} revenue` },
-            { label: "Conversion",     val: stats?.convRate   != null ? `${stats.convRate}%` : "—", sub: "free → paid" },
-            { label: "Tests Today",    val: stats?.testsToday ?? "—", sub: todayIST() },
-          ].map(s => (
-            <div key={s.label} style={{ ...S.card, borderLeft: "4px solid #4338CA" }}>
-              <div style={S.statVal}>{s.val}</div>
-              <div style={S.statLabel}>{s.label}</div>
-              <div style={S.statSub}>{s.sub}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* ── Platform Health ──────────────────────────────────────────────── */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
-          <div style={S.sectionTitle}>Platform Health</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            {healthData?.completedAt && (
-              <span style={{ fontSize: 11, color: "#94A3B8" }}>
-                Last check: {new Date(healthData.completedAt).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
-              </span>
-            )}
-            <button
-              onClick={() => runHealthCheck(false)}
-              disabled={healthLoad}
-              style={{ ...S.btn, ...(healthLoad ? S.btnMuted : S.btnPrimary), fontSize: 12, padding: "7px 14px" }}
-            >
-              {healthLoad ? "Checking..." : "▶ Run Health Check"}
-            </button>
-          </div>
-        </div>
-
-        {healthData ? (() => {
-          const STATUS_COLOR = { healthy: "#059669", warning: "#D97706", critical: "#DC2626", error: "#DC2626" };
-          const STATUS_BG    = { healthy: "#DCFCE7", warning: "#FEF3C7", critical: "#FEE2E2", error: "#FEE2E2" };
-          const STATUS_ICON  = { healthy: "✅", warning: "⚠️", critical: "🔴", error: "🔴" };
-          const overall      = healthData.overallStatus || "unknown";
-
-          // Group checks by category
-          const cacheChecks   = Object.entries(healthData.checks || {}).filter(([k]) => k.startsWith("cache_"));
-          const fsChecks      = Object.entries(healthData.checks || {}).filter(([k]) => k.startsWith("firestore_"));
-          const otherChecks   = Object.entries(healthData.checks || {}).filter(([k]) => !k.startsWith("cache_") && !k.startsWith("firestore_"));
-
-          return (
-            <div style={{ marginBottom: 24 }}>
-              {/* Overall status banner */}
-              <div style={{
-                background: STATUS_BG[overall] || "#F1F5F9",
-                border: `1px solid ${STATUS_COLOR[overall] || "#94A3B8"}`,
-                borderRadius: 10, padding: "12px 18px", marginBottom: 14,
-                display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10,
-              }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={{ fontSize: 18 }}>{STATUS_ICON[overall]}</span>
-                  <div>
-                    <span style={{ fontSize: 14, fontWeight: 700, color: STATUS_COLOR[overall] }}>
-                      Platform {overall.toUpperCase()}
-                    </span>
-                    {healthData.warnings?.length > 0 && (
-                      <span style={{ fontSize: 12, color: "#92400E", marginLeft: 12 }}>
-                        {healthData.warnings.length} warning{healthData.warnings.length !== 1 ? "s" : ""}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                {healthData.autoFixed?.length > 0 && (
-                  <span style={{ fontSize: 11, color: "#059669", background: "#DCFCE7", borderRadius: 20, padding: "3px 10px", fontWeight: 600 }}>
-                    ⚡ {healthData.autoFixed.length} auto-fixed
-                  </span>
-                )}
-              </div>
-
-              {/* Auto-fixed items */}
-              {healthData.autoFixed?.length > 0 && (
-                <div style={{ background: "#ECFDF5", border: "1px solid #A7F3D0", borderRadius: 8, padding: "10px 14px", marginBottom: 12 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "#059669", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 6 }}>Auto-Fixed</div>
-                  {healthData.autoFixed.map((f, i) => (
-                    <div key={i} style={{ fontSize: 12, color: "#065F46", marginBottom: 2 }}>⚡ {f}</div>
-                  ))}
-                </div>
-              )}
-
-              {/* Warnings */}
-              {healthData.warnings?.length > 0 && (
-                <div style={{ background: "#FEF3C7", border: "1px solid #FCD34D", borderRadius: 8, padding: "10px 14px", marginBottom: 12 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "#92400E", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 6 }}>Warnings — Review Required</div>
-                  {healthData.warnings.map((w, i) => (
-                    <div key={i} style={{ fontSize: 12, color: "#78350F", marginBottom: 2 }}>⚠ {w}</div>
-                  ))}
-                </div>
-              )}
-
-              {/* Check grid — Cache + Config + Users + Cron */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 10 }}>
-                {/* Cache checks */}
-                {cacheChecks.map(([key, chk]) => (
-                  <div key={key} style={{ background: "#fff", border: `1px solid ${STATUS_COLOR[chk.status] || "#E2E8F0"}`, borderRadius: 8, padding: "12px 14px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: "#0F2747" }}>Cache · {key.replace("cache_", "")}</span>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: STATUS_COLOR[chk.status], background: STATUS_BG[chk.status], padding: "2px 8px", borderRadius: 10 }}>
-                        {chk.status.toUpperCase()}
-                      </span>
-                    </div>
-                    <div style={{ fontSize: 12, color: "#64748B", lineHeight: 1.5 }}>{chk.message}</div>
-                    {chk.substandard > 0 && (
-                      <div style={{ fontSize: 11, color: "#D97706", marginTop: 4 }}>
-                        ⚠ {chk.substandard} sets flagged — not deleted, awaiting your review
-                      </div>
-                    )}
-                  </div>
-                ))}
-
-                {/* Other checks (config, users, nightly_cron) */}
-                {otherChecks.map(([key, chk]) => (
-                  <div key={key} style={{ background: "#fff", border: `1px solid ${STATUS_COLOR[chk.status] || "#E2E8F0"}`, borderRadius: 8, padding: "12px 14px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: "#0F2747", textTransform: "capitalize" }}>{key.replace(/_/g, " ")}</span>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: STATUS_COLOR[chk.status], background: STATUS_BG[chk.status], padding: "2px 8px", borderRadius: 10 }}>
-                        {chk.status.toUpperCase()}
-                      </span>
-                    </div>
-                    <div style={{ fontSize: 12, color: "#64748B", lineHeight: 1.5 }}>{chk.message}</div>
-                  </div>
-                ))}
-
-                {/* Firestore summary — collapsed into one card */}
-                <div style={{ background: "#fff", border: `1px solid ${fsChecks.every(([,c]) => c.status === "healthy") ? "#E2E8F0" : "#DC2626"}`, borderRadius: 8, padding: "12px 14px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: "#0F2747" }}>Firestore Collections</span>
-                    <span style={{ fontSize: 10, fontWeight: 700,
-                      color:  fsChecks.every(([,c]) => c.status === "healthy") ? "#059669" : "#DC2626",
-                      background: fsChecks.every(([,c]) => c.status === "healthy") ? "#DCFCE7" : "#FEE2E2",
-                      padding: "2px 8px", borderRadius: 10 }}>
-                      {fsChecks.every(([,c]) => c.status === "healthy") ? "ALL HEALTHY" : "ISSUES"}
-                    </span>
-                  </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                    {fsChecks.map(([key, chk]) => (
-                      <span key={key} style={{
-                        fontSize: 10, padding: "2px 8px", borderRadius: 10,
-                        background: chk.status === "healthy" ? "#DCFCE7" : "#FEE2E2",
-                        color:      chk.status === "healthy" ? "#059669"  : "#DC2626",
-                      }}>
-                        {key.replace("firestore_", "")}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          );
-        })() : (
-          <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 10, padding: "20px", textAlign: "center", color: "#94A3B8", fontSize: 13, marginBottom: 24 }}>
-            {healthLoad ? "Running health check..." : "No health check data yet — click Run Health Check above."}
-          </div>
-        )}
-
-                {/* ── Live Activity ─────────────────────────────────────────────── */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, ...S.sectionTitle }}>
-          Live Activity
-          {liveUsers.length > 0 && (
-            <span style={{ background: "#059669", color: "#fff", borderRadius: 12, padding: "2px 10px", fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}>
-              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#fff", display: "inline-block" }} />
-              {liveUsers.length} online
-            </span>
-          )}
-        </div>
-
-        {liveStats ? (
-          <>
-            {/* Index-building notice — shown when Firestore indexes are still initialising */}
-            {liveStats.error && (
-              <div style={{ background: "#FEF3C7", border: "1px solid #FDE68A", borderRadius: 8, padding: "10px 14px", marginBottom: 10, fontSize: 12, color: "#92400E" }}>
-                ⏳ Live stats are initialising — Firestore indexes may still be building (takes ~5 min after first deploy). Refresh in a moment.
-                <span style={{ display: "block", fontSize: 10, color: "#B45309", marginTop: 3, fontFamily: "monospace" }}>{liveStats.error}</span>
-              </div>
-            )}
-            {/* 4-metric KPI strip */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 10 }}>
-              {[
-                { label: "Online Now",   value: liveUsers.length,       color: "#059669", bg: "#ECFDF5" },
-                { label: "Active Today", value: liveStats.activeToday,  color: "#4338CA", bg: "#EEF2FF" },
-                { label: "New Today",    value: liveStats.newToday,     color: "#D97706", bg: "#FEF3C7" },
-                { label: "Tests Today",  value: liveStats.testsToday,   color: "#0F2747", bg: "#F8FAFC" },
-              ].map(k => (
-                <div key={k.label} style={{ background: k.bg, borderRadius: 10, padding: "12px 14px", textAlign: "center" }}>
-                  <div style={{ fontSize: 24, fontWeight: 800, color: k.color, fontFamily: "var(--font-mono)", lineHeight: 1 }}>{k.value}</div>
-                  <div style={{ fontSize: 10, color: "#64748B", marginTop: 4, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".04em" }}>{k.label}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Segments + Activity feed — side by side */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: liveUsers.length > 0 ? 10 : 16 }}>
-              <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 10, padding: "14px 16px" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 10 }}>User Segments</div>
-                {[
-                  { label: "Paid — Unlocked",     value: liveStats.paid,       color: "#059669" },
-                  { label: "Free — Active",        value: liveStats.freeActive, color: "#4338CA" },
-                  { label: "Active last 7 days",   value: liveStats.active7d,   color: "#D97706" },
-                  { label: "Dormant (no tests)",   value: liveStats.dormant,    color: "#94A3B8" },
-                  { label: "Total Registered",     value: liveStats.total,      color: "#0F2747" },
-                ].map(s => (
-                  <div key={s.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 7 }}>
-                    <span style={{ fontSize: 12, color: "#334155" }}>{s.label}</span>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: s.color, fontFamily: "var(--font-mono)" }}>{s.value}</span>
-                  </div>
-                ))}
-              </div>
-
-              <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 10, padding: "14px 16px", overflow: "hidden" }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 10 }}>Recent Activity</div>
-                {(liveStats.recentActivity || []).length === 0 ? (
-                  <div style={{ fontSize: 12, color: "#94A3B8" }}>No activity yet.</div>
-                ) : liveStats.recentActivity.map((a, i) => (
-                  <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 8 }}>
-                    <span style={{ fontSize: 13, flexShrink: 0 }}>{a.type === "signup" ? "👤" : "📝"}</span>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 11, color: "#0F2747", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {a.email?.length > 26 ? a.email.substring(0, 24) + "…" : (a.email || "unknown")}
-                      </div>
-                      <div style={{ fontSize: 10, color: "#94A3B8" }}>
-                        {a.label} · {a.time.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Online now pills — only shown if anyone online */}
-            {liveUsers.length > 0 && (
-              <div style={{ background: "#ECFDF5", border: "1px solid #A7F3D0", borderRadius: 10, padding: "12px 16px", marginBottom: 16 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#059669", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 8 }}>Currently Online</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                  {liveUsers.map(u => (
-                    <span key={u.id} style={{ background: "#fff", border: "1px solid #A7F3D0", borderRadius: 20, padding: "4px 12px", fontSize: 12, color: "#065F46", display: "inline-flex", alignItems: "center", gap: 5 }}>
-                      <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#059669", display: "inline-block" }} />
-                      {u.email || u.displayName || u.id.substring(0, 8)}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </>
-        ) : (
-          <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 10, padding: 20, textAlign: "center", color: "#94A3B8", fontSize: 13, marginBottom: 16 }}>
-            Loading live data...
-          </div>
-        )}
-
-        {/* Cache Control */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={S.sectionTitle}>Cache Health</div>
-          <button onClick={fillAllCache} disabled={!!filling} style={{ ...S.btn, ...S.btnPrimary, fontSize: 12, padding: "8px 16px" }}>
-            {filling ? `Filling ${filling}...` : "⚡ Fill All Cache"}
+      {/* ── FIREBASE SIGN-IN BANNER ── */}
+      {!fbUser && !fbLoading && (
+        <div style={{ background: "#FEF3C7", borderBottom: "1px solid #FDE68A", padding: "8px 20px", fontSize: 12, color: "#D97706", display: "flex", alignItems: "center", gap: 8 }}>
+          <span>⚠</span>
+          Sign in with Google to load Firestore data. Cache status visible without sign-in.
+          <button
+            onClick={() => signInWithPopup(auth, new GoogleAuthProvider())}
+            style={{ ...S.btnSmall(), background: "#D97706", color: "#fff", border: "none", marginLeft: 8 }}
+          >
+            Sign in
           </button>
         </div>
-        <div style={S.grid}>
-          {Object.entries(cache).map(([mode, data]) => (
-            <CacheCard key={mode} mode={mode} data={data} onFill={fillCache} filling={filling} />
-          ))}
-        </div>
+      )}
 
-        {/* Compact cache fill progress strip — single line, no bulk */}
-        {fillProgress && (() => {
-          const elapsed  = Math.floor((Date.now() - fillProgress.startedAt) / 1000);
-          const mins     = Math.floor(elapsed / 60);
-          const secs     = elapsed % 60;
-          const added    = fillProgress.count - fillProgress.initialCount;
-          const isActive = fillProgress.active;
-          const modeTgt  = (CACHE_CONFIG[fillProgress.mode]?.size || CACHE_SIZE);
-          const needed   = Math.max(0, modeTgt - fillProgress.count);
-          return (
-            <div style={{
-              display: "flex", alignItems: "center", gap: 10,
-              background: isActive ? "#ECFDF5" : "#F0FDF4",
-              border: `1px solid ${isActive ? "#A7F3D0" : "#86EFAC"}`,
-              borderRadius: 8, padding: "7px 14px",
-              marginTop: -12, marginBottom: 20, fontSize: 12,
-            }}>
-              {/* Live pulse or done checkmark */}
-              {isActive ? (
-                <span style={{
-                  width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
-                  background: "#059669", display: "inline-block",
-                  boxShadow: `0 0 0 ${(tick % 2 === 0) ? "3px" : "0px"} rgba(5,150,105,0.3)`,
-                  transition: "box-shadow 0.5s",
-                }} />
-              ) : (
-                <span style={{ fontSize: 13, flexShrink: 0 }}>✓</span>
-              )}
+      {/* ── ZONE 1: STATUS BAR ── */}
+      <div style={S.statusBar}>
+        <StatusPill
+          label="Platform"
+          value={platformStatus === "healthy" ? "HEALTHY" : platformStatus === "unknown" ? "—" : platformStatus.toUpperCase()}
+          color={platformStatus === "healthy" ? "#059669" : "#D97706"}
+          warning={platformStatus !== "healthy" && platformStatus !== "unknown"}
+          critical={platformStatus === "critical"}
+        />
+        <StatusPill
+          label="Mock Cache"
+          value={`${mockCurrent}/${CACHE_CONFIG.Mock.size}`}
+          color={cacheHealthy ? "#059669" : "#D97706"}
+          warning={cacheWarning}
+          critical={cacheCritical}
+        />
+        <StatusPill
+          label="QP Cache"
+          value={`${qpCurrent}/${CACHE_CONFIG.QuickPractice.size}`}
+          color={cacheHealthy ? "#059669" : "#D97706"}
+          warning={cacheWarning}
+          critical={cacheCritical}
+        />
+        <StatusPill
+          label="GAT Mock"
+          value={gatMockCurrent === "—" ? "—" : `${gatMockCurrent}/${CACHE_CONFIG.GAT_Mock.size}`}
+          color={gatMockCurrent === "—" || gatMockCurrent >= CACHE_CONFIG.GAT_Mock.threshold ? "#059669" : "#D97706"}
+        />
+        <StatusPill
+          label="GAT QP"
+          value={gatQPCurrent === "—" ? "—" : `${gatQPCurrent}/${CACHE_CONFIG.GAT_QP.size}`}
+          color={gatQPCurrent === "—" || gatQPCurrent >= CACHE_CONFIG.GAT_QP.threshold ? "#059669" : "#D97706"}
+        />
+        <StatusPill
+          label="Revenue"
+          value={stats ? `₹${stats.revenue.toLocaleString("en-IN")}` : "—"}
+          color="#4338CA"
+        />
+        <StatusPill
+          label="Students"
+          value={liveUsers > 0 ? `${liveUsers} online` : stats?.total ?? "—"}
+          color="#059669"
+        />
+        <span style={{ marginLeft: "auto", ...S.lastRefresh }}>
+          {lastRefresh ? `↻ ${lastRefresh.toLocaleTimeString("en-IN")}` : ""}
+        </span>
+      </div>
 
-              {/* Status text */}
-              <span style={{ flex: 1, color: "#065F46", fontWeight: 500 }}>
-                {isActive ? (
-                  <>
-                    <strong>{fillProgress.mode}</strong> cache generating
-                    &nbsp;·&nbsp;
-                    <span style={{ fontFamily: "var(--font-mono, monospace)" }}>
-                      {fillProgress.count}/{modeTgt}
-                    </span>
-                    &nbsp;sets
-                    &nbsp;·&nbsp;
-                    <span style={{ fontFamily: "var(--font-mono, monospace)" }}>
-                      {mins}:{String(secs).padStart(2,"0")}
-                    </span>
-                    &nbsp;elapsed
-                    {fillProgress.stalePolls > 0 && (
-                      <span style={{ color: "#D97706", marginLeft: 8 }}>
-                        · waiting for next batch...
-                      </span>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <strong>{fillProgress.mode}</strong> run complete
-                    &nbsp;·&nbsp;
-                    <span style={{ fontFamily: "var(--font-mono, monospace)" }}>
-                      {fillProgress.count}/{modeTgt}
-                    </span>
-                    &nbsp;sets
-                    {added > 0 && <span style={{ color: "#059669" }}>&nbsp;(+{added} added)</span>}
-                    {needed > 0
-                      ? <span style={{ color: "#D97706" }}>&nbsp;·&nbsp;Press Fill to continue</span>
-                      : <span style={{ color: "#059669" }}>&nbsp;·&nbsp;Cache full</span>
-                    }
-                  </>
-                )}
-              </span>
-
-              {/* Dismiss — only shown when run is done */}
-              {!isActive && (
-                <button
-                  onClick={() => setFillProgress(null)}
-                  style={{ background: "none", border: "none", cursor: "pointer",
-                    color: "#94A3B8", fontSize: 16, lineHeight: 1, padding: "0 2px", flexShrink: 0 }}
-                  title="Dismiss"
-                >×</button>
-              )}
-            </div>
-          );
-        })()}
-
-                {/* Two column layout for tables */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-          {/* Recent Tests */}
-          <div>
-            <div style={S.sectionTitle}>Recent Tests</div>
-            <div style={{ ...S.card, padding: 0, overflow: "hidden" }}>
-              <table style={S.table}>
-                <thead>
-                  <tr>
-                    {["Student", "Mode", "Score", "Accuracy", "Date"].map(h => (
-                      <th key={h} style={S.th}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {recentTests.length === 0 ? (
-                    <tr><td colSpan={5} style={{ ...S.td, textAlign: "center", color: "#94A3B8" }}>No tests yet</td></tr>
-                  ) : recentTests.map((t, i) => {
-                    const email = t.email || t.displayName || userBreakdown.find(u => u.uid === t.uid)?.email || t.uid?.substring(0,10) || "—";
-                    return (
-                    <tr key={i}>
-                      <td style={{ ...S.td, maxWidth: 160, fontSize: 11 }}>
-                        <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#0F2747", fontWeight: 600 }}>{email}</div>
-                      </td>
-                      <td style={S.td}><span style={S.pill("indigo")}>{t.mode || "Mock"}</span></td>
-                      <td style={{ ...S.td, fontFamily: "monospace" }}>{t.totalScore ?? "—"}</td>
-                      <td style={{ ...S.td, fontWeight: 600, color: (t.accuracy || 0) >= 70 ? "#059669" : (t.accuracy || 0) >= 45 ? "#D97706" : "#DC2626" }}>
-                        {t.accuracy ?? 0}%
-                      </td>
-                      <td style={{ ...S.td, color: "#94A3B8", fontSize: 11 }}>{fmtDate(t.completedAt)}</td>
-                    </tr>
-                  );})}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Recent Payments */}
-          <div>
-            <div style={S.sectionTitle}>Recent Payments</div>
-            <div style={{ ...S.card, padding: 0, overflow: "hidden" }}>
-              <table style={S.table}>
-                <thead>
-                  <tr>
-                    {["Amount", "Status", "Date"].map(h => (
-                      <th key={h} style={S.th}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {recentPay.length === 0 ? (
-                    <tr><td colSpan={3} style={{ ...S.td, textAlign: "center", color: "#94A3B8" }}>No payments yet</td></tr>
-                  ) : recentPay.map((p, i) => (
-                    <tr key={i}>
-                      <td style={{ ...S.td, fontFamily: "monospace", fontWeight: 600 }}>₹{(p.amount || 0) / 100}</td>
-                      <td style={S.td}><span style={S.pill(p.status === "verified" ? "green" : "red")}>{p.status}</span></td>
-                      <td style={{ ...S.td, color: "#94A3B8", fontSize: 11 }}>{fmtDate(p.createdAt)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-
-        {/* ── Per-User Test Breakdown ─────────────────────────────────────── */}
-        <div style={S.sectionTitle}>
-          Student Test Breakdown
-          {userBreakdown.length > 0 && (
-            <span style={{ marginLeft: 8, background: "#4338CA", color: "#fff", borderRadius: 12, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>
-              {userBreakdown.length} students
+      {/* ── FILL PROGRESS STRIP ── */}
+      {filling && fillProgress && (
+        <div style={S.fillStrip}>
+          <div style={S.fillDot} />
+          {fillProgress.locked ? (
+            <span>Fill lock active — another run in progress</span>
+          ) : (
+            <span>
+              Filling cache · Mock{" "}
+              <strong style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+                {fillProgress.mock ?? "…"}/{fillProgress.mockTarget}
+              </strong>{" "}
+              · QP{" "}
+              <strong style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+                {fillProgress.qp ?? "…"}/{fillProgress.qpTarget}
+              </strong>{" "}
+              · {fillProgress.elapsed ?? 0}s elapsed
             </span>
           )}
         </div>
-        <div style={{ ...S.card, padding: 0, overflow: "hidden", marginBottom: 24 }}>
-          {userBreakdown.length === 0 ? (
-            <div style={{ padding: "28px 20px", textAlign: "center", color: "#94A3B8", fontSize: 13 }}>No test data yet</div>
+      )}
+
+      {/* ── ZONE 2: COMMAND ROW ── */}
+      <div style={S.commandRow}>
+        <div style={S.commandLeft}>
+          <button onClick={() => { loadData(); loadCacheStatus(); }} style={S.btnSmall()}>
+            {loading ? <span style={S.spinner} /> : "↻ Refresh"}
+          </button>
+          <button onClick={runHealthCheck} style={S.btnSmall()}>
+            {healthLoad ? <span style={S.spinner} /> : "Run Health Check"}
+          </button>
+          <button onClick={fillAllCache} style={S.btnSmall("primary")} disabled={filling}>
+            {filling ? "Filling…" : "Fill Cache"}
+          </button>
+          <a
+            href="https://console.firebase.google.com/project/vantiq-cuet/functions/logs"
+            target="_blank"
+            rel="noreferrer"
+            style={{ ...S.btnSmall(), textDecoration: "none", display: "inline-flex", alignItems: "center" }}
+          >
+            View Logs ↗
+          </a>
+        </div>
+      </div>
+
+      {/* ── ZONE 3: KPI GRID ── */}
+      <div style={{ ...S.kpiGrid }} className="kpi-grid">
+        <KpiTile
+          value={stats?.total}
+          label="Total Students"
+          sub="registered"
+          accent="#4338CA"
+          loading={loading && !stats}
+        />
+        <KpiTile
+          value={stats?.paid}
+          label="Paid Students"
+          sub="unlocked"
+          accent="#059669"
+          loading={loading && !stats}
+        />
+        <KpiTile
+          value={stats ? `${stats.convPct}%` : null}
+          label="Conversion"
+          sub="free → paid"
+          accent="#D97706"
+          loading={loading && !stats}
+        />
+        <KpiTile
+          value={stats?.testsToday}
+          label="Tests Today"
+          sub="completed"
+          accent="#0F2747"
+          loading={loading && !stats}
+        />
+        <KpiTile
+          value={stats ? `₹${stats.revenue.toLocaleString("en-IN")}` : null}
+          label="Revenue"
+          sub="total · ₹199/unlock"
+          accent="#D97706"
+          loading={loading && !stats}
+        />
+        <KpiTile
+          value={liveUsers || "0"}
+          label="Online Now"
+          sub="last 5 min"
+          accent="#059669"
+          loading={false}
+        />
+      </div>
+
+      {/* ── LIVE SECTION ── */}
+      <div style={{ ...S.liveSection }} className="live-section">
+        {/* Recent Activity */}
+        <div style={S.card}>
+          <div style={S.cardHeader}>
+            <span style={S.cardTitle}>Recent Activity</span>
+            <span style={{ fontSize: 10, color: "#94A3B8" }}>last 8 events</span>
+          </div>
+          {recentActivity.length === 0 ? (
+            <div style={{ padding: "20px 14px", fontSize: 12, color: "#94A3B8" }}>No activity yet</div>
           ) : (
-            <table style={{ ...S.table, width: "100%" }}>
-              <thead>
-                <tr>
-                  {["Student", "Access", "Mock", "QP", "Avg Score", "Best", "Last Test"].map(h => (
-                    <th key={h} style={S.th}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {userBreakdown.map((u, i) => {
-                  const userRecord = liveStats && liveStats.paid !== undefined
-                    ? null : null; // access status from allUsers
-                  return (
-                    <tr key={u.uid} style={{ borderBottom: i < userBreakdown.length - 1 ? "1px solid #F1F5F9" : "none", background: i % 2 === 0 ? "#fff" : "#FAFAFA" }}>
-                      <td style={{ ...S.td, maxWidth: 200 }}>
-                        <div style={{ fontWeight: 600, fontSize: 12, color: "#0F2747", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {u.email}
-                        </div>
-                        <div style={{ fontSize: 10, color: "#94A3B8", marginTop: 2, fontFamily: "monospace" }}>{u.uid.substring(0,12)}…</div>
-                      </td>
-                      <td style={S.td}>
-                        <span style={S.pill(u.unlocked ? "green" : "indigo")}>{u.unlocked ? "Pro" : "Free"}</span>
-                      </td>
-                      <td style={{ ...S.td, fontFamily: "monospace", fontWeight: 700, color: "#0F2747", textAlign: "center" }}>{u.mockTests}</td>
-                      <td style={{ ...S.td, fontFamily: "monospace", color: "#4338CA", textAlign: "center" }}>{u.qpTests}</td>
-                      <td style={{ ...S.td, fontFamily: "monospace", textAlign: "center", color: u.avgScore >= 70 ? "#059669" : u.avgScore >= 45 ? "#D97706" : "#94A3B8" }}>
-                        {u.mockTests > 0 ? u.avgScore : "—"}
-                      </td>
-                      <td style={{ ...S.td, fontFamily: "monospace", fontWeight: 600, textAlign: "center", color: "#059669" }}>{u.bestScore > 0 ? u.bestScore : "—"}</td>
-                      <td style={{ ...S.td, fontSize: 11, color: "#94A3B8", whiteSpace: "nowrap" }}>
-                        {u.lastTestAt ? u.lastTestAt.toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            recentActivity.map((a, i) => (
+              <div
+                key={i}
+                style={{
+                  ...S.tableRow(i % 2),
+                  gridTemplateColumns: "auto 1fr auto",
+                  gap: 6,
+                }}
+              >
+                <span>{a.icon}</span>
+                <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#0F2747" }}>
+                  {trunc(a.email, 24)}
+                </span>
+                <span style={{ color: "#94A3B8", fontFamily: "'JetBrains Mono', monospace", fontSize: 10, whiteSpace: "nowrap" }}>
+                  {a.time}
+                </span>
+              </div>
+            ))
           )}
         </div>
 
-        {/* ── Feedback Insights ──────────────────────────────────────────── */}
-        <div style={S.sectionTitle}>Feedback Insights</div>
-        <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, padding: "16px 20px", marginBottom: 24 }}>
-          {!insights ? (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 600, color: "#0F2747" }}>Synthesized Insights</div>
-                <div style={{ fontSize: 12, color: "#94A3B8", marginTop: 2 }}>
-                  {feedback.length === 0
-                    ? "No feedback yet — insights will appear once users submit feedback."
-                    : `Analyse ${feedback.length} feedback submission${feedback.length !== 1 ? "s" : ""} with Claude to surface top 3 actionable improvements.`}
-                </div>
-              </div>
-              <button
-                onClick={generateInsights}
-                disabled={insightLoad || feedback.length === 0}
+        {/* Student Breakdown */}
+        <div style={S.card}>
+          <div style={S.cardHeader}>
+            <span style={S.cardTitle}>Student Breakdown</span>
+            <span style={{ fontSize: 10, color: "#94A3B8" }}>sorted by Mock count</span>
+          </div>
+          <div
+            style={{
+              ...S.tableHeader,
+              gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr",
+            }}
+          >
+            <span>Email</span>
+            <span style={{ textAlign: "center" }}>Mock</span>
+            <span style={{ textAlign: "center" }}>QP</span>
+            <span style={{ textAlign: "center" }}>Access</span>
+            <span>Last Test</span>
+          </div>
+          {userBreakdown.length === 0 ? (
+            <div style={{ padding: "16px 14px", fontSize: 12, color: "#94A3B8" }}>No students yet</div>
+          ) : (
+            userBreakdown.slice(0, 8).map((u, i) => (
+              <div
+                key={i}
                 style={{
-                  padding: "9px 18px", background: feedback.length === 0 ? "#E2E8F0" : "#4338CA",
-                  color: feedback.length === 0 ? "#94A3B8" : "#fff",
-                  border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600,
-                  cursor: feedback.length === 0 ? "not-allowed" : "pointer", whiteSpace: "nowrap",
+                  ...S.tableRow(i % 2),
+                  gridTemplateColumns: "2fr 1fr 1fr 1fr 1.5fr",
                 }}
               >
-                {insightLoad ? "Analysing..." : "✦ Generate Insights"}
-              </button>
+                <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#0F2747" }}>
+                  {trunc(u.email, 26)}
+                </span>
+                <span style={{ textAlign: "center", fontFamily: "'JetBrains Mono', monospace" }}>{u.mock}</span>
+                <span style={{ textAlign: "center", fontFamily: "'JetBrains Mono', monospace" }}>{u.qp}</span>
+                <span style={{ textAlign: "center" }}>
+                  <span style={S.statusBadge(u.unlocked ? "paid" : "free")}>
+                    {u.unlocked ? "Paid" : "Free"}
+                  </span>
+                </span>
+                <span style={{ color: "#64748B", fontSize: 11 }}>{fmt(u.lastTest)}</span>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* ── TAB BAR ── */}
+      <div style={S.tabBar}>
+        {["students", "platform", "payments", "content", "settings"].map((t) => (
+          <button
+            key={t}
+            onClick={() => setActiveTab(t)}
+            style={S.tabItem(activeTab === t)}
+          >
+            {t.charAt(0).toUpperCase() + t.slice(1)}
+          </button>
+        ))}
+      </div>
+
+      {/* ══════════════════════════════════════════════════════
+          TAB PANELS
+      ══════════════════════════════════════════════════════ */}
+
+      {/* ── STUDENTS TAB ── */}
+      {activeTab === "students" && (
+        <div style={S.tabPanel}>
+          {/* User Management */}
+          <div style={{ ...S.card, marginBottom: 16 }}>
+            <div style={S.cardHeader}>
+              <span style={S.cardTitle}>User Management</span>
             </div>
-          ) : (
-            <div>
-              {/* Overall summary */}
-              {insights.summary && (
-                <div style={{ background: "#F8FAFC", borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#334155", lineHeight: 1.6, borderLeft: "3px solid #4338CA" }}>
-                  {insights.summary}
+            <div style={{ padding: "14px" }}>
+              <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                <input
+                  style={{ ...S.input, maxWidth: 300 }}
+                  placeholder="Search by email address"
+                  value={lookupEmail}
+                  onChange={(e) => setLookupEmail(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && lookupUser()}
+                />
+                <button onClick={lookupUser} style={S.btnSmall("primary")}>
+                  {lookupLoad ? <span style={S.spinner} /> : "Lookup"}
+                </button>
+              </div>
+
+              {lookupResult && (
+                <div
+                  style={{
+                    background: lookupResult.notFound ? "#FEF3C7" : "#F8FAFC",
+                    border: "1px solid #E2E8F0",
+                    borderRadius: 8,
+                    padding: 14,
+                  }}
+                >
+                  {lookupResult.notFound ? (
+                    <div style={{ color: "#D97706", fontSize: 12 }}>No user found with that email.</div>
+                  ) : (
+                    <>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
+                        {[
+                          ["Email", lookupResult.email],
+                          ["UID", lookupResult.id?.slice(0, 16) + "…"],
+                          ["Tests Used", lookupResult.testsUsed ?? 0],
+                          ["Access", lookupResult.unlocked ? "Paid / Unlocked" : "Free"],
+                          ["Last Test", fmt(lookupResult.lastTestAt)],
+                          ["Joined", fmt(lookupResult.createdAt)],
+                        ].map(([k, v]) => (
+                          <div key={k}>
+                            <div style={{ fontSize: 10, textTransform: "uppercase", color: "#94A3B8", letterSpacing: "0.06em", marginBottom: 2 }}>{k}</div>
+                            <div style={{ fontSize: 12, fontWeight: 600, fontFamily: k === "UID" || k === "Tests Used" ? "'JetBrains Mono', monospace" : "inherit" }}>{v}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        {!lookupResult.unlocked ? (
+                          <button onClick={() => grantAccess(lookupResult.id)} style={S.btnSmall("primary")}>
+                            Grant Unlimited Access
+                          </button>
+                        ) : (
+                          <button onClick={() => revokeAccess(lookupResult.id)} style={S.btnSmall("danger")}>
+                            Revoke Access
+                          </button>
+                        )}
+                        <button onClick={() => resetFreeLimit(lookupResult.id)} style={S.btnSmall()}>
+                          Reset Free Limit
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
-              {/* Top 3 insight cards */}
-              {(insights.insights || []).map((ins, i) => (
-                <div key={i} style={{
-                  border: "1px solid #E2E8F0", borderRadius: 10, padding: "14px 16px",
-                  marginBottom: i < 2 ? 10 : 0,
-                  borderLeft: `4px solid ${["#DC2626","#D97706","#059669"][i]}`,
-                }}>
-                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: ["#DC2626","#D97706","#059669"][i], background: ["#FEF2F2","#FEF3C7","#ECFDF5"][i], borderRadius: 6, padding: "2px 8px" }}>
-                        #{ins.rank}
-                      </span>
-                      <span style={{ fontSize: 14, fontWeight: 700, color: "#0F2747" }}>{ins.title}</span>
-                    </div>
-                    <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                      <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 10, background: "#F1F5F9", color: "#64748B" }}>{ins.tone}</span>
-                      <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 10, background: "#F1F5F9", color: "#64748B" }}>{ins.frequency}</span>
-                    </div>
-                  </div>
-                  <div style={{ fontSize: 12, color: "#64748B", marginBottom: 6 }}><strong>Signal:</strong> {ins.signal}</div>
-                  <div style={{ fontSize: 13, color: "#0F2747", background: "#F8FAFC", borderRadius: 6, padding: "8px 10px" }}>
-                    <strong>Action:</strong> {ins.action}
-                  </div>
+            </div>
+          </div>
+
+          {/* Full student table */}
+          <div style={S.card}>
+            <div style={S.cardHeader}>
+              <span style={S.cardTitle}>All Students · {userBreakdown.length}</span>
+            </div>
+            <div style={{ overflowX: "auto" }}>
+              <div style={{ minWidth: 700 }}>
+                <div
+                  style={{
+                    ...S.tableHeader,
+                    gridTemplateColumns: "2.5fr 1fr 1fr 1fr 1.5fr 1.5fr",
+                  }}
+                >
+                  <span>Email</span>
+                  <span style={{ textAlign: "center" }}>Mock</span>
+                  <span style={{ textAlign: "center" }}>QP</span>
+                  <span style={{ textAlign: "center" }}>Used</span>
+                  <span style={{ textAlign: "center" }}>Access</span>
+                  <span>Last Test</span>
                 </div>
+                {userBreakdown.length === 0 ? (
+                  <div style={{ padding: "20px 14px", color: "#94A3B8", fontSize: 12 }}>No students yet</div>
+                ) : (
+                  userBreakdown.map((u, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        ...S.tableRow(i % 2),
+                        gridTemplateColumns: "2.5fr 1fr 1fr 1fr 1.5fr 1.5fr",
+                      }}
+                    >
+                      <span
+                        style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#0F2747", cursor: "pointer" }}
+                        onClick={() => { setLookupEmail(u.email); setActiveTab("students"); }}
+                      >
+                        {trunc(u.email, 32)}
+                      </span>
+                      <span style={{ textAlign: "center", fontFamily: "'JetBrains Mono', monospace" }}>{u.mock}</span>
+                      <span style={{ textAlign: "center", fontFamily: "'JetBrains Mono', monospace" }}>{u.qp}</span>
+                      <span style={{ textAlign: "center", fontFamily: "'JetBrains Mono', monospace" }}>{u.testsUsed}</span>
+                      <span style={{ textAlign: "center" }}>
+                        <span style={S.statusBadge(u.unlocked ? "paid" : "free")}>
+                          {u.unlocked ? "Paid" : "Free"}
+                        </span>
+                      </span>
+                      <span style={{ color: "#64748B", fontSize: 11 }}>{fmt(u.lastTest)}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Recent tests */}
+          <div style={{ ...S.card, marginTop: 16 }}>
+            <div style={S.cardHeader}>
+              <span style={S.cardTitle}>Recent Tests · {recentTests.length}</span>
+            </div>
+            <div style={{ overflowX: "auto" }}>
+              <div style={{ minWidth: 700 }}>
+                <div
+                  style={{
+                    ...S.tableHeader,
+                    gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 1.5fr",
+                  }}
+                >
+                  <span>Email</span>
+                  <span>Mode</span>
+                  <span style={{ textAlign: "center" }}>Score</span>
+                  <span style={{ textAlign: "center" }}>Correct</span>
+                  <span style={{ textAlign: "center" }}>Accuracy</span>
+                  <span>Completed</span>
+                </div>
+                {recentTests.slice(0, 20).map((t, i) => (
+                  <div
+                    key={t.id}
+                    style={{
+                      ...S.tableRow(i % 2),
+                      gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 1.5fr",
+                    }}
+                  >
+                    <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {trunc(t.email || t.displayName, 30)}
+                    </span>
+                    <span>
+                      <span style={S.statusBadge("info")}>{t.mode}</span>
+                    </span>
+                    <span style={{ textAlign: "center", fontFamily: "'JetBrains Mono', monospace" }}>{t.totalScore ?? "—"}</span>
+                    <span style={{ textAlign: "center", fontFamily: "'JetBrains Mono', monospace" }}>{t.correct ?? "—"}</span>
+                    <span style={{ textAlign: "center", fontFamily: "'JetBrains Mono', monospace" }}>
+                      {t.accuracy != null ? `${t.accuracy}%` : "—"}
+                    </span>
+                    <span style={{ color: "#64748B", fontSize: 11 }}>{fmt(t.completedAt)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── PLATFORM TAB ── */}
+      {activeTab === "platform" && (
+        <div style={S.tabPanel}>
+          {/* Health Check */}
+          <div style={{ ...S.card, marginBottom: 16 }}>
+            <div style={S.cardHeader}>
+              <span style={S.cardTitle}>Platform Health</span>
+              <button onClick={runHealthCheck} style={S.btnSmall(healthData?.overallStatus !== "healthy" ? "primary" : "default")}>
+                {healthLoad ? <span style={S.spinner} /> : "Run Health Check"}
+              </button>
+            </div>
+            <div style={{ padding: 14 }}>
+              {!healthData ? (
+                <div style={{ color: "#94A3B8", fontSize: 12 }}>Run a health check to see results.</div>
+              ) : (
+                <>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                    <span style={S.statusBadge(healthData.overallStatus === "healthy" ? "healthy" : "critical")}>
+                      {healthData.overallStatus?.toUpperCase()}
+                    </span>
+                    {healthData.autoFixed?.length > 0 && (
+                      <span style={{ fontSize: 11, color: "#D97706" }}>
+                        {healthData.autoFixed.length} issue(s) auto-fixed
+                      </span>
+                    )}
+                    {healthData.warnings?.length > 0 && (
+                      <span style={{ fontSize: 11, color: "#D97706" }}>
+                        {healthData.warnings.length} warning(s)
+                      </span>
+                    )}
+                  </div>
+                  {healthData.checks &&
+                    Object.entries(healthData.checks).map(([k, v]) => (
+                      <div key={k} style={S.healthItem(v.ok)}>
+                        <span>{v.ok ? "✓" : "✗"}</span>
+                        <span style={{ fontWeight: 600 }}>{k}</span>
+                        {v.message && <span style={{ color: "#64748B", fontSize: 11 }}>— {v.message}</span>}
+                      </div>
+                    ))}
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Cache Health */}
+          <div style={{ ...S.card, marginBottom: 16 }}>
+            <div style={S.cardHeader}>
+              <span style={S.cardTitle}>Cache Health</span>
+              <button onClick={fillAllCache} style={S.btnSmall("primary")} disabled={filling}>
+                {filling ? "Filling…" : "Fill All Cache"}
+              </button>
+            </div>
+            {Object.entries(CACHE_CONFIG).map(([mode, config]) => (
+              <CacheBar
+                key={mode}
+                mode={mode}
+                config={config}
+                current={cacheStatus?.[mode]?.current ?? 0}
+              />
+            ))}
+            <div style={{ padding: "10px 14px" }}>
+              <button onClick={loadCacheStatus} style={S.btnSmall()}>
+                Refresh Cache Status
+              </button>
+            </div>
+          </div>
+
+          {/* Quick links */}
+          <div style={S.card}>
+            <div style={S.cardHeader}>
+              <span style={S.cardTitle}>Platform Links</span>
+            </div>
+            <div style={{ padding: "12px 14px", display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {[
+                ["Firebase Console", "https://console.firebase.google.com/project/vantiq-cuet"],
+                ["Netlify Dashboard", "https://app.netlify.com"],
+                ["GitHub Actions", "https://github.com/casinghal/cuet-mock-platform/actions"],
+                ["Razorpay Dashboard", "https://dashboard.razorpay.com"],
+                ["GA4 Analytics", "https://analytics.google.com"],
+                ["Live Platform", "https://vantiq-cuetmock.netlify.app"],
+              ].map(([label, href]) => (
+                <a
+                  key={label}
+                  href={href}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ ...S.btnSmall(), textDecoration: "none", display: "inline-flex", alignItems: "center" }}
+                >
+                  {label} ↗
+                </a>
               ))}
-              <div style={{ textAlign: "right", marginTop: 10 }}>
-                <button onClick={() => setInsights(null)} style={{ background: "none", border: "none", fontSize: 11, color: "#94A3B8", cursor: "pointer" }}>
-                  Regenerate ↺
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── PAYMENTS TAB ── */}
+      {activeTab === "payments" && (
+        <div style={S.tabPanel}>
+          {/* Stats */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3,1fr)",
+              gap: 12,
+              marginBottom: 16,
+            }}
+          >
+            <KpiTile
+              value={`₹${stats?.revenue.toLocaleString("en-IN") ?? "—"}`}
+              label="Total Revenue"
+              sub="₹199 × paid students"
+              accent="#059669"
+            />
+            <KpiTile
+              value={stats?.paid ?? "—"}
+              label="Paid Students"
+              sub="unlocked accounts"
+              accent="#4338CA"
+            />
+            <KpiTile
+              value={recentPay.length}
+              label="Transactions"
+              sub="in Firestore"
+              accent="#D97706"
+            />
+          </div>
+
+          {/* Transactions table */}
+          <div style={S.card}>
+            <div style={S.cardHeader}>
+              <span style={S.cardTitle}>Recent Payments · {recentPay.length}</span>
+            </div>
+            {recentPay.length === 0 ? (
+              <div style={{ padding: "20px 14px", color: "#94A3B8", fontSize: 12 }}>No payment records</div>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <div style={{ minWidth: 600 }}>
+                  <div
+                    style={{
+                      ...S.tableHeader,
+                      gridTemplateColumns: "2fr 1.5fr 1.5fr 1fr 1.5fr",
+                    }}
+                  >
+                    <span>Order ID</span>
+                    <span>Payment ID</span>
+                    <span>UID</span>
+                    <span style={{ textAlign: "center" }}>Amount</span>
+                    <span>Date</span>
+                  </div>
+                  {recentPay.map((p, i) => (
+                    <div
+                      key={p.id}
+                      style={{
+                        ...S.tableRow(i % 2),
+                        gridTemplateColumns: "2fr 1.5fr 1.5fr 1fr 1.5fr",
+                      }}
+                    >
+                      <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}>
+                        {trunc(p.orderId, 20)}
+                      </span>
+                      <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}>
+                        {trunc(p.paymentId, 20)}
+                      </span>
+                      <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}>
+                        {trunc(p.uid, 14)}
+                      </span>
+                      <span style={{ textAlign: "center", fontFamily: "'JetBrains Mono', monospace" }}>
+                        ₹{p.amount ?? 199}
+                      </span>
+                      <span style={{ color: "#64748B", fontSize: 11 }}>{fmt(p.createdAt)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── CONTENT TAB ── */}
+      {activeTab === "content" && (
+        <div style={S.tabPanel}>
+          {/* Ratings summary */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3,1fr)",
+              gap: 12,
+              marginBottom: 16,
+            }}
+          >
+            <KpiTile value={avgRating} label="Avg Rating" sub="out of 5" accent="#D97706" />
+            <KpiTile value={ratings.length} label="Total Ratings" sub="collected" accent="#4338CA" />
+            <KpiTile value={feedback.length} label="Feedback Items" sub="received" accent="#0F2747" />
+          </div>
+
+          {/* Feedback insights */}
+          <div style={{ ...S.card, marginBottom: 16 }}>
+            <div style={S.cardHeader}>
+              <span style={S.cardTitle}>Feedback Insights</span>
+              <button onClick={genInsights} style={S.btnSmall("primary")}>
+                Generate Insights
+              </button>
+            </div>
+            <div style={{ padding: 14 }}>
+              {!insights ? (
+                <div style={{ color: "#94A3B8", fontSize: 12 }}>
+                  Click "Generate Insights" to analyse recent feedback.
+                </div>
+              ) : (
+                <>
+                  <div style={{ fontSize: 13, lineHeight: 1.7, color: "#0F2747", marginBottom: 12 }}>
+                    {insights.summary}
+                  </div>
+                  {insights.insights?.map((ins, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        fontSize: 12,
+                        padding: "6px 10px",
+                        background: "#F8FAFC",
+                        borderLeft: "3px solid #4338CA",
+                        borderRadius: 4,
+                        marginBottom: 6,
+                        color: "#0F2747",
+                      }}
+                    >
+                      {ins}
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Raw feedback */}
+          <div style={{ ...S.card, marginBottom: 16 }}>
+            <div style={S.cardHeader}>
+              <span style={S.cardTitle}>Raw Feedback · {feedback.length}</span>
+            </div>
+            {feedback.length === 0 ? (
+              <div style={{ padding: "16px 14px", color: "#94A3B8", fontSize: 12 }}>No feedback yet</div>
+            ) : (
+              feedback.slice(0, 15).map((f, i) => (
+                <div
+                  key={f.id}
+                  style={{
+                    padding: "10px 14px",
+                    borderBottom: "1px solid #F1F5F9",
+                    background: i % 2 ? "#FAFBFD" : "#fff",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "#0F2747" }}>
+                      {trunc(f.email, 30)}
+                    </span>
+                    <span style={{ fontSize: 10, color: "#94A3B8", fontFamily: "'JetBrains Mono', monospace" }}>
+                      {fmt(f.createdAt)}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 12, color: "#334155", lineHeight: 1.5 }}>{f.text}</div>
+                  {f.page && (
+                    <span style={{ fontSize: 10, color: "#94A3B8" }}>page: {f.page}</span>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Intelligence */}
+          <div style={S.card}>
+            <div style={S.cardHeader}>
+              <span style={S.cardTitle}>CUET Intelligence</span>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button
+                  onClick={() => updateIntelligence("English")}
+                  style={S.btnSmall()}
+                  disabled={intelGenLoad}
+                >
+                  {intelGenLoad ? <span style={S.spinner} /> : "Update English"}
+                </button>
+                <button
+                  onClick={runGATCARefresh}
+                  style={{ ...S.btnSmall(), background: gatCALoad ? "#94A3B8" : "#059669", color: "#fff" }}
+                  disabled={gatCALoad}
+                  title="Fetches latest India current affairs via web search and refreshes GAT CA context in Firestore"
+                >
+                  {gatCALoad ? "Fetching..." : "↺ Refresh GAT CA"}
                 </button>
               </div>
             </div>
-          )}
-        </div>
-
-        {/* ── User Feedback & Ratings ─────────────────────────────────────── */}
-        <div style={S.sectionTitle}>
-          User Feedback
-          {feedback.length > 0 && (
-            <span style={{ marginLeft: 8, background: "#4338CA", color: "#fff", borderRadius: 12, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>
-              {feedback.length}
-            </span>
-          )}
-        </div>
-
-        {/* Star Ratings Summary */}
-        {ratings.length > 0 && (() => {
-          const avg = ratings.reduce((s, r) => s + (r.stars || 0), 0) / ratings.length;
-          const dist = [5,4,3,2,1].map(s => ({ star: s, count: ratings.filter(r => r.stars === s).length }));
-          return (
-            <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, padding: "16px 20px", marginBottom: 16 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
-                <div style={{ textAlign: "center" }}>
-                  <div style={{ fontSize: 36, fontWeight: 800, color: "#0F2747", fontFamily: "var(--font-mono)" }}>{avg.toFixed(1)}</div>
-                  <div style={{ fontSize: 18, letterSpacing: 2 }}>{"⭐".repeat(Math.round(avg))}</div>
-                  <div style={{ fontSize: 11, color: "#94A3B8", marginTop: 2 }}>{ratings.length} rating{ratings.length !== 1 ? "s" : ""}</div>
-                </div>
-                <div style={{ flex: 1, minWidth: 160 }}>
-                  {dist.map(({ star, count }) => (
-                    <div key={star} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                      <span style={{ fontSize: 11, color: "#64748B", width: 12 }}>{star}</span>
-                      <span style={{ fontSize: 11 }}>⭐</span>
-                      <div style={{ flex: 1, height: 6, background: "#F1F5F9", borderRadius: 3, overflow: "hidden" }}>
-                        <div style={{ width: ratings.length ? `${(count / ratings.length) * 100}%` : "0%", height: "100%", background: "#F59E0B", borderRadius: 3 }} />
-                      </div>
-                      <span style={{ fontSize: 11, color: "#64748B", width: 20, textAlign: "right" }}>{count}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* Feedback messages table */}
-        <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, overflow: "hidden", marginBottom: 24 }}>
-          {feedback.length === 0 ? (
-            <div style={{ padding: "28px 20px", textAlign: "center", color: "#94A3B8", fontSize: 13 }}>
-              No feedback submitted yet.
-            </div>
-          ) : (
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead>
-                <tr style={{ background: "#F8FAFC", borderBottom: "1px solid #E2E8F0" }}>
-                  <th style={{ padding: "10px 16px", textAlign: "left", fontWeight: 600, color: "#64748B", fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em", width: 200 }}>User</th>
-                  <th style={{ padding: "10px 16px", textAlign: "left", fontWeight: 600, color: "#64748B", fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em" }}>Message</th>
-                  <th style={{ padding: "10px 16px", textAlign: "right", fontWeight: 600, color: "#64748B", fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em", width: 140 }}>Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {feedback.map((f, i) => (
-                  <tr key={f.id} style={{ borderBottom: i < feedback.length - 1 ? "1px solid #F1F5F9" : "none", verticalAlign: "top" }}>
-                    <td style={{ padding: "12px 16px" }}>
-                      <div style={{ fontWeight: 600, color: "#0F2747", fontSize: 12 }}>{f.email || "Anonymous"}</div>
-                      {f.page && f.page !== "/" && (
-                        <div style={{ fontSize: 10, color: "#94A3B8", marginTop: 2 }}>Page: {f.page}</div>
-                      )}
-                    </td>
-                    <td style={{ padding: "12px 16px", color: "#334155", lineHeight: 1.6 }}>{f.text}</td>
-                    <td style={{ padding: "12px 16px", textAlign: "right", color: "#94A3B8", fontSize: 11, whiteSpace: "nowrap" }}>
-                      {f.createdAt?.toDate
-                        ? f.createdAt.toDate().toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
-                        : "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-
-        {/* Activity Log */}
-        <div style={S.sectionTitle}>Activity Log</div>
-        <div style={S.logBox}>
-          {logs.length === 0
-            ? <span style={{ color: "#475569" }}>No activity yet...</span>
-            : logs.map((l, i) => <div key={i}>{l}</div>)
-          }
-        </div>
-
-        {/* Quick Links */}
-        <div style={S.sectionTitle}>Quick Links</div>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          {[
-            { label: "Firebase Console",   url: "https://console.firebase.google.com/project/vantiq-cuet/overview" },
-            { label: "Firebase Functions", url: "https://console.firebase.google.com/project/vantiq-cuet/functions" },
-            { label: "Firestore",          url: "https://console.firebase.google.com/project/vantiq-cuet/firestore" },
-            { label: "Netlify Deploys",    url: "https://app.netlify.com/projects/vantiq-cuetmock/deploys" },
-            { label: "GitHub Actions",     url: import.meta.env.VITE_GITHUB_ACTIONS_URL || "#" },
-            { label: "Razorpay Dashboard", url: "https://dashboard.razorpay.com" },
-            { label: "GA4 Analytics",      url: "https://analytics.google.com" },
-            { label: "Anthropic Console",  url: "https://console.anthropic.com" },
-          ].map(link => (
-            <a key={link.label} href={link.url} target="_blank" rel="noopener noreferrer"
-              style={{ ...S.btn, ...S.btnMuted, textDecoration: "none", fontSize: 12 }}>
-              {link.label} ↗
-            </a>
-          ))}
-        </div>
-
-        {/* Reset User Free Limit */}
-        <div style={S.sectionTitle}>Reset Student Free Limit</div>
-        <ResetUserLimit addLog={addLog} />
-
-        {/* User Manager */}
-        <div style={S.sectionTitle}>User Management</div>
-        <p style={{ fontSize: 13, color: "#64748B", marginBottom: 12, marginTop: -8 }}>
-          Look up any student by email — view their profile, test history, and grant or revoke pro access.
-        </p>
-        <UserManager addLog={addLog} />
-
-        {/* ── CUET Exam Intelligence ────────────────────────────────────────── */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
-          <div style={S.sectionTitle}>CUET Exam Intelligence</div>
-          <button
-            onClick={() => runIntelligenceUpdate("English_101")}
-            disabled={intelLoad}
-            style={{ ...S.btn, ...(intelLoad ? S.btnMuted : S.btnPrimary), fontSize: 12, padding: "7px 14px" }}
-          >
-            {intelLoad ? "Refreshing..." : "↺ Refresh Intelligence"}
-          </button>
-        </div>
-        <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: 12, padding: "18px 22px", marginBottom: 24 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}>
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 600, color: "#94A3B8", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 4 }}>Active Intelligence Version</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "#0F2747" }}>
-                {intel?.preview?.version || "v1.1"} — {intel?.subject?.replace("_"," ") || "English (101)"} Baseline
-              </div>
-              <div style={{ fontSize: 11, color: "#64748B", marginTop: 2 }}>
-                {intel?.preview?.updatedAt
-                  ? `Last refreshed: ${new Date(intel.preview.updatedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`
-                  : "Researched from NTA CUET papers 2022–2025"}
-              </div>
-            </div>
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 600, color: "#94A3B8", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 4 }}>Coverage</div>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <div style={{ padding: 14 }}>
+              {/* Coverage pills */}
+              <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
                 {[
-                  { label: "English 101", color: "green" },
-                  { label: "GAT — coming", color: "amber" },
-                  { label: "Economics — coming", color: "amber" },
-                ].map(s => (
-                  <span key={s.label} style={S.pill(s.color)}>{s.label}</span>
+                  { label: "English 101", color: "#059669" },
+                  { label: "GAT 501", color: "#059669" },
+                  { label: "Economics — coming", color: "#D97706" },
+                ].map((c) => (
+                  <span
+                    key={c.label}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 5,
+                      padding: "3px 10px",
+                      background: `${c.color}18`,
+                      border: `1px solid ${c.color}40`,
+                      borderRadius: 20,
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: c.color,
+                    }}
+                  >
+                    <span style={{ width: 5, height: 5, borderRadius: "50%", background: c.color }} />
+                    {c.label}
+                  </span>
                 ))}
               </div>
-            </div>
-          </div>
-          <div style={{ background: "#F8FAFC", borderRadius: 8, padding: "12px 14px", marginBottom: 14, borderLeft: "3px solid #4338CA" }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#4338CA", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 8 }}>How This Works</div>
-            <div style={{ fontSize: 12, color: "#334155", lineHeight: 1.7 }}>
-              Every question generated by Claude is grounded in 5-year NTA CUET pattern intelligence — topic frequency, question type distribution, difficulty calibration, recurring themes, and quality benchmarks.
-              This intelligence is injected into each generation batch as a targeted contextual brief. Zero extra API calls. Zero latency impact. Confidence that every question is exam-aligned.
-            </div>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 14 }}>
-            {[
-              { label: "Inference Questions", val: "35%", sub: "of RC — highest focus" },
-              { label: "Vocabulary Level", val: "B2-C1", sub: "CEFR — academic register" },
-              { label: "Difficulty Split", val: "60/30/10", sub: "easy-mod / mod / hard" },
-            ].map(s => (
-              <div key={s.label} style={{ background: "#EEF2FF", borderRadius: 8, padding: "10px 12px", textAlign: "center" }}>
-                <div style={{ fontSize: 18, fontWeight: 800, color: "#4338CA", fontFamily: "var(--font-mono)" }}>{s.val}</div>
-                <div style={{ fontSize: 10, color: "#0F2747", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".04em", marginTop: 2 }}>{s.label}</div>
-                <div style={{ fontSize: 10, color: "#64748B", marginTop: 2 }}>{s.sub}</div>
-              </div>
-            ))}
-          </div>
-          {intel && (
-            <div style={{ borderTop: "1px solid #E2E8F0", paddingTop: 14 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#059669", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 8 }}>
-                Latest Refresh — {intel.subject?.replace("_", " ")} · {new Date(intel.preview?.updatedAt || Date.now()).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
-              </div>
-              {(intel.preview?.keyTrends || []).map((trend, i) => (
-                <div key={i} style={{ fontSize: 12, color: "#334155", padding: "4px 0", borderBottom: "1px solid #F1F5F9", lineHeight: 1.5 }}>
-                  • {trend}
-                </div>
-              ))}
-              {intel.preview?.difficultyTrend && (
-                <div style={{ fontSize: 12, color: "#64748B", marginTop: 8, fontStyle: "italic" }}>
-                  Difficulty trend: {intel.preview.difficultyTrend}
+              {gatCAResult && (
+                <div style={{ fontSize: 11, color: "#059669", fontWeight: 600, marginBottom: 10, padding: "6px 10px", background: "#ECFDF5", borderRadius: 6 }}>
+                  GAT CA: v{gatCAResult.refreshVersion} · {gatCAResult.contextLength} chars · {gatCAResult.cacheInvalidated} sets cleared
                 </div>
               )}
+              {!intel || intel.length === 0 ? (
+                <div style={{ color: "#94A3B8", fontSize: 12 }}>No intelligence data loaded.</div>
+              ) : (
+                intel.map((item) => (
+                  <div
+                    key={item.id}
+                    style={{
+                      padding: "10px 12px",
+                      background: "#F8FAFC",
+                      border: "1px solid #E2E8F0",
+                      borderRadius: 8,
+                      marginBottom: 8,
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700 }}>{item.subject}</span>
+                      <span style={{ fontSize: 10, color: "#94A3B8" }}>Updated {fmt(item.updatedAt)}</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: "#64748B", lineHeight: 1.5 }}>
+                      {trunc(item.preview, 180)}
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
-          )}
+          </div>
         </div>
+      )}
 
-                {/* Change Password */}
-        <div style={S.sectionTitle}>Change Admin Password</div>
-        <ChangePassword />
+      {/* ── SETTINGS TAB ── */}
+      {activeTab === "settings" && (
+        <div style={S.tabPanel}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 16,
+            }}
+          >
+            {/* Change Admin Password */}
+            <div style={S.card}>
+              <div style={S.cardHeader}>
+                <span style={S.cardTitle}>Admin Access</span>
+              </div>
+              <div style={{ padding: 14 }}>
+                <div style={{ fontSize: 12, color: "#64748B", marginBottom: 12 }}>
+                  Admin password is set via{" "}
+                  <code style={{ background: "#F1F5F9", padding: "1px 5px", borderRadius: 4 }}>
+                    VITE_ADMIN_PASSWORD
+                  </code>{" "}
+                  in Netlify environment variables.
+                </div>
+                <div style={{ fontSize: 12, color: "#94A3B8" }}>
+                  To rotate: Netlify → Site Config → Environment Variables → update{" "}
+                  <code style={{ background: "#F1F5F9", padding: "1px 5px", borderRadius: 4 }}>VITE_ADMIN_PASSWORD</code>{" "}
+                  → trigger redeploy.
+                </div>
+              </div>
+            </div>
 
-        <div style={{ textAlign: "center", marginTop: 40, fontSize: 11, color: "#CBD5E1" }}>
-          Vantiq CUET Admin · {new Date().getFullYear()} · Internal use only
+            {/* Firebase auth status */}
+            <div style={S.card}>
+              <div style={S.cardHeader}>
+                <span style={S.cardTitle}>Firebase Status</span>
+              </div>
+              <div style={{ padding: 14 }}>
+                {fbUser ? (
+                  <>
+                    <div style={{ fontSize: 12, color: "#059669", marginBottom: 8, fontWeight: 600 }}>
+                      ✓ Signed in as {fbUser.email}
+                    </div>
+                    <button onClick={() => signOut(auth)} style={S.btnSmall("danger")}>
+                      Sign out of Firebase
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ fontSize: 12, color: "#D97706", marginBottom: 8 }}>
+                      Not signed in — Firestore reads disabled
+                    </div>
+                    <button
+                      onClick={() => signInWithPopup(auth, new GoogleAuthProvider())}
+                      style={S.btnSmall("primary")}
+                    >
+                      Sign in with Google
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Activity log */}
+          <div style={{ ...S.card, marginTop: 16 }}>
+            <div style={S.cardHeader}>
+              <span style={S.cardTitle}>Activity Log · this session</span>
+              <button onClick={() => setLogs([])} style={S.btnSmall()}>Clear</button>
+            </div>
+            <div
+              style={{
+                maxHeight: 320,
+                overflowY: "auto",
+                padding: "8px 0",
+              }}
+            >
+              {logs.length === 0 ? (
+                <div style={{ padding: "12px 14px", color: "#94A3B8", fontSize: 12 }}>No activity this session</div>
+              ) : (
+                logs.map((entry, i) => (
+                  <div key={i} style={S.logEntry(entry.type)}>
+                    {entry.text}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Platform info */}
+          <div style={{ ...S.card, marginTop: 16 }}>
+            <div style={S.cardHeader}>
+              <span style={S.cardTitle}>Platform Info</span>
+            </div>
+            <div style={{ padding: 14 }}>
+              {[
+                ["Platform", "Vantiq CUET Mock Test"],
+                ["Live URL", "vantiq-cuetmock.netlify.app"],
+                ["Firebase Project", "vantiq-cuet"],
+                ["CF Region", "us-central1"],
+                ["Node.js (Functions)", "20"],
+                ["Frontend", "React (Vite) · Netlify"],
+                ["Auth", "Firebase Auth · Google only"],
+                ["Payments", "Razorpay · ₹199 one-time"],
+              ].map(([k, v]) => (
+                <div
+                  key={k}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    padding: "5px 0",
+                    borderBottom: "1px solid #F1F5F9",
+                    fontSize: 12,
+                  }}
+                >
+                  <span style={{ color: "#94A3B8", fontWeight: 600 }}>{k}</span>
+                  <span style={{ color: "#0F2747", fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}>{v}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Bottom spacer */}
+      <div style={{ height: 40 }} />
     </div>
   );
 }

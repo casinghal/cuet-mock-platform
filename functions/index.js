@@ -30,13 +30,15 @@ const UNLOCK_AMOUNT    = 19900;
 const CACHE_CONFIG = {
   Mock:          { size: 120, autoFillThreshold: 100 },
   QuickPractice: { size: 200, autoFillThreshold: 160 },
+  GAT_Mock:      { size: 80,  autoFillThreshold: 60  }, // start smaller — scale after traffic data
+  GAT_QP:        { size: 150, autoFillThreshold: 120 },
 };
 // Legacy alias used in a few places — now derived per-mode where needed
 function cacheSizeFor(mode) { return CACHE_CONFIG[mode]?.size || 120; }
 function autoFillThresholdFor(mode) { return CACHE_CONFIG[mode]?.autoFillThreshold || 100; }
 const CACHE_TTL_MS     = 7 * 24 * 60 * 60 * 1000;
 const DAILY_TEST_LIMIT = 15;
-const MODES            = ["Mock", "QuickPractice"];  // Mock first — highest priority
+const MODES            = ["Mock", "QuickPractice", "GAT_Mock", "GAT_QP"];  // Mock first — highest priority
 
 // ── CUET Exam Intelligence Layer ──────────────────────────────────────────────
 // Researched from official NTA CUET UG papers (2022–2025) and syllabus.
@@ -179,6 +181,145 @@ const CUET_EXAM_INTELLIGENCE = {
       },
     },
     // GAT and Economics intelligence will be added here when those subjects launch
+    GAT_501: {
+      officialCode: "501",
+      version: "1.0",
+      lastResearched: "2026-04-11",
+      examPattern: {
+        totalQuestions: 50, duration: 60,
+        marking: { correct: 5, wrong: -1, unanswered: 0 },
+        // 2025 change: renamed "General Aptitude Test" — all 50 compulsory (no optionals)
+      },
+      topics: {
+        QuantitativeAptitude: {
+          questions: 17,
+          // Sub-topic targets derived from 2022-2025 shift analysis
+          subTopics: {
+            NumberSystem:       "3-4q",  // highest frequency — every paper
+            PercentageRatio:    "2-3q",  // always appears
+            ProfitLoss:         "2q",
+            TimeSpeedDistance:  "2q",
+            MensurationGeometry:"2q",    // 2D shapes — rectangles, triangles, perimeter
+            TimeWork:           "1-2q",
+            DataInterpretation: "2q",    // embed all values in question text — no image charts
+            Averages:           "1q",
+          },
+          droppedIn2025: ["Trigonometry", "SimpleInterest", "CompoundInterest"],
+          examTrends: [
+            "Arithmetic dominates — geometry and algebra are minimal vs JEE/CAT/SSC",
+            "Data interpretation uses tables and bar charts — always embed values in text (no external chart files)",
+            "Questions are calculation-light — solvable in 90 seconds with mental math",
+            "Round numbers and simple fractions only — no decimal-heavy arithmetic",
+            "2025: trigonometry, SI, and CI were completely absent — do not generate these",
+            "Wrong options: one from common formula error, one partial calculation, one reversed operation",
+          ],
+          difficultyCalibration: "40% easy (direct formula) | 50% moderate (2-step) | 10% hard (DI)",
+        },
+        LogicalReasoning: {
+          questions: 17,
+          subTopics: {
+            NumberSeries:        "3-4q",  // HIGHEST — every paper, every year
+            AnalogyClassification: "2-3q",
+            LogicalVennDiagram:  "2q",
+            BloodRelations:      "2q",    // 3 generation max, gender stated explicitly
+            CodingDecoding:      "2q",    // letter shift OR symbol substitution (not both)
+            CalendarClocks:      "1-2q",  // anchor day given in question text
+            MirrorWaterImage:    "2q",    // text-described using letters/numbers — no image files
+            DirectionSense:      "1q",
+            SeatingArrangement:  "1q",    // 2025 had circular — include both linear and circular
+            AlphabetSeries:      "1q",
+          },
+          examTrends: [
+            "2025 was TOUGHEST reasoning section to date — do not make questions easy",
+            "Number series: include difference-of-difference patterns, not just +N arithmetic",
+            "Blood relations: 3 generation max, state gender of every person explicitly in question",
+            "Visual questions (mirror/water image): use letter or number sequences only — platform cannot render images",
+            "Seating arrangement: 2025 introduced circular seating — include 1 circular per set",
+            "Coding: letter shift of 2-3 positions OR symbol substitution — never mix both in one question",
+            "Calendar: always give anchor day in question ('26 Jan 2023 was Thursday; what day is...')",
+          ],
+          difficultyCalibration: "30% easy | 50% moderate | 20% hard — harder than English reasoning",
+        },
+        StaticGK: {
+          questions: 10,
+          // INDIA-FIRST: 80%+ of static GK is about India
+          subTopics: {
+            AwardsHonours:     "2q",  // Padma awards, Sahitya Akademi, literary awards
+            BooksAuthors:      "2q",  // most repeated topic — appears in EVERY paper
+            IndianHistory:     "2q",  // freedom movement + NCERT Class 9-10 chapters (confirmed 2025)
+            IndianGeography:   "1q",  // rivers, national parks, states, tiger reserves
+            IndianPolity:      "1q",  // Constitution articles, commissions, national institutions
+            ScienceTechnology: "1q",  // ISRO missions, DRDO, indigenous tech — NTA loves ISRO
+            SportsHistorical:  "1q",  // historical records, first winners, Indian para-sports
+          },
+          highFrequencyFacts: [
+            "MGNREGA: Ministry of Rural Development, launched 2005, full form correct",
+            "Chandrayaan-3: lunar south pole landing, 2023, ISRO — appears frequently",
+            "Startup India: launched January 16, 2016",
+            "Devendra Jhajharia: First para-athlete to receive Padma Bhushan",
+            "Shimla Agreement 1972 | Indus Water Treaty 1960 | RIO Summit 1992",
+            "Han Kang: Nobel Prize in Literature 2024 (South Korea)",
+            "Jasprit Bumrah: ICC Men's Cricketer of Year 2024 (Sir Garfield Sobers Award)",
+            "Vidarbha: Ranji Trophy 2024-25 winner (3rd title); Captain Akshay Wadkar",
+            "DRDO Ugram: Indigenous Assault Rifle (confirmed NTA 2024 question)",
+            "Ocean acidification: pH goes DOWN as ocean becomes more acidic (confirmed NTA 2024)",
+            "Diamond: bad conductor of electricity (confirmed NTA 2024)",
+            "BRICS Jan 2026: Egypt, Indonesia, Saudi Arabia joined",
+            "Paris Olympics 2024: India 6 medals (1 Silver, 5 Bronze); USA highest overall",
+            "Neeraj Chopra: Silver in Javelin at Paris Olympics 2024",
+            "Bhuvneshwar Kumar: First fast bowler to 200 IPL wickets (2026)",
+          ],
+          ncertChapters2025: [
+            // These NCERT Class 9-10 topics appeared in 2025 papers — include 1-2 per set
+            "Shimla Agreement (Class 10 History — Cold War era)", 
+            "Globalisation chapter (Class 10 Economics)",
+            "Indus Water Treaty (Class 10 — India-Pakistan relations)",
+            "RIO Summit 1992 (Class 10 — environment chapter)",
+            "Anti-Ballistic Missile Treaty (Class 9 — Cold War chapter)",
+          ],
+          examTrends: [
+            "Books & Authors: most repeated topic — appears in EVERY paper without exception",
+            "CUET GK is India-first: 80%+ questions are about India; global only when India has clear angle",
+            "Static GK: factual recall, one unambiguous correct answer — no opinion-based questions",
+            "NCERT Class 9-10 Social Science chapters confirmed tested from 2025 onwards",
+            "Awards questions: Padma awards appear every year — know criteria and recent recipients",
+          ],
+        },
+        CurrentAffairs: {
+          questions: 6,
+          // Fetched and verified by refreshGATCurrentAffairs CF every 15 days
+          // Stored in Firestore: cuetIntelligence/GAT_501.currentAffairsContext
+          geographicMix: {
+            indiaSpecific:         "70-75%",  // government schemes, ISRO, Indian awards, Indian sports
+            globalWithIndiaAngle:  "15-20%",  // Nobel Prizes (India framing), Olympics India results, summits India attended
+            pureInternational:     "5-10%",   // countries & capitals, non-political global science facts
+          },
+          categoryTargets: {
+            GovernmentSchemes:  "2q",  // new launches, ministry mapping, objectives
+            AwardsHonours:      "1q",  // recent Nobel, Padma, sports awards
+            Sports:             "1q",  // India cricket, Olympics, national championships
+            ScienceTechnology:  "1q",  // ISRO 2025-26, DRDO, indigenous tech
+            IndiaWorldEvent:    "1q",  // summit India attended, bilateral, infrastructure
+          },
+          neverInclude: [
+            "Active wars or military conflicts",
+            "Contested elections or leadership changes in other countries",
+            "Territorial disputes or sanctions",
+            "Deep geopolitics or anything debatable/politicised",
+          ],
+          fallbackRule: "If uncertain about any CA fact → generate static GK from Indian History or ISRO instead",
+        },
+      },
+      difficultyCalibration: {
+        overall: "Easy to Moderate (2025 slightly harder than previous years)",
+        bySection: {
+          QuantitativeAptitude: "Easy-Moderate (lengthy but conceptually accessible)",
+          LogicalReasoning:     "Moderate-Challenging (TOUGHEST section in 2025)",
+          StaticGK:             "Easy-Moderate (factual recall, scoring section)",
+          CurrentAffairs:       "Easy-Moderate (event recall, no analysis required)",
+        },
+      },
+    },
   },
 };
 
@@ -240,6 +381,193 @@ All 4 options must be plausible. Difficulty: accessible — suitable for first-t
 Explanations must state why the correct answer is right AND why the top distractor is wrong.`;
 }
 
+
+// ── GAT Intelligence Briefs — injected into each of 4 GAT batch prompts ──────
+// Targeted per-batch briefs derived from 4-year NTA GAT paper analysis (2022-2025).
+function buildGATIntelligenceBrief(batchNum) {
+  if (batchNum === 1) {
+    return `GAT EXAM INTELLIGENCE — Quantitative Aptitude (NTA 2022-2025 patterns):
+Difficulty: 40% easy (direct formula), 50% moderate (2-step), 10% hard (DI only).
+BANNED topics: Trigonometry, Simple Interest, Compound Interest (dropped in 2025 papers).
+Number System and Arithmetic dominate — 40%+ of quant questions every year.
+Data Interpretation: embed ALL data values in question text (tables as text) — platform cannot render charts.
+Questions must be solvable in 90 seconds with mental math — no 3-step calculations.
+Round numbers only — no decimal-heavy arithmetic.
+Wrong options: one from common formula error, one partial calc, one reversed operation.
+Contexts: shopkeeper profit/loss, students and marks, workers and wages, distance-train problems.
+Do NOT use algebra, logarithms, complex geometry, or calculus.`;
+  }
+  if (batchNum === 2) {
+    return `GAT EXAM INTELLIGENCE — Logical & Analytical Reasoning (NTA 2022-2025 patterns):
+2025 was TOUGHEST reasoning section — do NOT make questions easy. Difficulty: 30% easy, 50% moderate, 20% hard.
+Number Series: include difference-of-difference patterns and mixed arithmetic-geometric sequences.
+Blood Relations: 3 generation max. State gender of EVERY person explicitly in question text.
+Visual questions (mirror/water image): describe using letters or numbers ONLY — no actual image files.
+Seating Arrangement: include both linear and circular formats (2025 introduced circular).
+Coding-Decoding: use letter shift of 2-3 positions OR symbol substitution — never mix both.
+Calendar: always give anchor day explicitly ('26 Jan 2023 was Thursday; find day of...').
+Venn Diagram: all 3 circles must have meaningful intersections — no empty intersections.
+Only one unambiguously correct answer per question — if two options seem correct, rewrite.`;
+  }
+  if (batchNum === 3) {
+    return `GAT EXAM INTELLIGENCE — Static General Knowledge (NTA 2022-2025 India-first patterns):
+INDIA-FIRST RULE: 8+ of 10 questions must be about India. No contested geopolitics.
+Books & Authors: appears in EVERY paper — always include 2 questions. Use confirmed real books.
+NCERT Class 9-10 confirmed tested in 2025: Shimla Agreement 1972, Indus Water Treaty 1960, RIO Summit 1992, Globalisation chapter — include 1-2 of these.
+Awards: Padma awards appear every year. Know criteria and recent recipients.
+ISRO questions: NTA loves ISRO. Chandrayaan-3 (2023 lunar south pole) is highest-frequency fact.
+All 4 options must be plausible real names/dates/places — no obviously absurd distractors.
+Difficulty: 60% easy recall, 40% moderate (distinguish between two similar-sounding options).
+CONFIRMED NTA QUESTIONS (safe to reuse type): Ocean acidification pH goes down. Diamond = bad conductor. MGNREGA = Ministry of Rural Development, 2005.`;
+  }
+  if (batchNum === 4) {
+    return `GAT EXAM INTELLIGENCE — Current Affairs (India-first, last 12 months):
+INDIA-FIRST: 70-75% India-specific, 15-20% global with India angle, 5-10% pure international.
+FACTUAL ONLY: one unambiguous correct answer per question — verifiable from public domain.
+Government Schemes: highest-frequency category. Ministry-scheme mapping, objectives, launch years.
+Sports: India cricket results, Olympic India performance, national championships.
+Science: ISRO missions, DRDO weapons, indigenous tech — most CA-heavy science questions.
+NEVER include: active wars, contested elections, territorial disputes, anything debatable/politicised.
+If uncertain about a fact → replace with static GK from Indian History or ISRO instead.
+Passage (for passage-based questions): 60-80 words, self-contained — answer must be findable in passage.`;
+  }
+  // GAT_QP brief
+  return `GAT EXAM INTELLIGENCE — Quick Practice mix (NTA GAT patterns, accessible difficulty):
+15 questions covering all 3 GAT sections. Difficulty: easy-moderate (first-time platform visitors).
+Mix: Quant 5q (direct formula, round numbers) | Reasoning 5q (simple series + analogy) | GK/CA 5q (factual recall).
+No trigonometry, SI, CI in quant. No image-dependent reasoning. India-first for GK.
+All 4 options must be plausible. Explanations: why correct is right AND why top distractor is wrong.`;
+}
+
+// ── GAT Batch Prompts — 4 parallel batches for GAT_Mock (50 questions total) ──
+// Batch 1: 17 Quant | Batch 2: 17 Reasoning | Batch 3: 10 Static GK | Batch 4: 6 CA
+// All batches run in parallel via Promise.all() — wall time ~15-16 seconds
+function buildGATBatch(batchNum, caContext) {
+  const schema = '{"questions":[{"question":"...","options":["A","B","C","D"],"correct":0,"topic":"...","passage":null,"explanation":"2-3 sentences"}]}';
+
+  if (batchNum === 1) {
+    return `You are an NTA CUET GAT (General Aptitude Test 501) question paper generator.
+${buildGATIntelligenceBrief(1)}
+Generate exactly 20 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
+JSON schema: ${schema}
+Topic distribution (MANDATORY — exact counts):
+- Number System / Arithmetic: 4 questions (number properties, HCF, LCM, basic operations)
+- Percentage / Ratio / Proportion: 4 questions
+- Profit and Loss: 3 questions (cost price, selling price, discount, markup)
+- Time, Speed and Distance: 3 questions (trains, boats optional)
+- Mensuration / Geometry 2D: 3 questions (area, perimeter of triangles, rectangles, circles)
+- Time and Work: 2 questions
+- Data Interpretation: 1 question (embed table data in question text as: 'Given data: Year|Sales — 2022|500, 2023|650, 2024|800')
+Rules: correct is 0-indexed (0=A,1=B,2=C,3=D). passage = null for ALL questions. Explanation: 2-3 sentences.
+Do NOT generate: Trigonometry, Simple Interest, Compound Interest.
+Return ONLY the JSON object. Begin with { — nothing before it.`;
+  }
+
+  if (batchNum === 2) {
+    return `You are an NTA CUET GAT (General Aptitude Test 501) question paper generator.
+${buildGATIntelligenceBrief(2)}
+Generate exactly 20 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
+JSON schema: ${schema}
+Topic distribution (MANDATORY — exact counts):
+- Number / Missing Series: 4 questions (include at least 2 difference-of-difference patterns)
+- Analogy and Classification: 3 questions (word-pair analogy or odd-one-out)
+- Logical Venn Diagram: 2 questions (3-circle set, meaningful intersections)
+- Blood Relations: 2 questions (3 generations max, state gender explicitly)
+- Coding-Decoding: 2 questions (letter shift 2-3 positions OR symbol substitution — not both)
+- Calendar / Clocks: 2 questions (provide anchor day in question)
+- Mirror Image / Water Image: 2 questions (use letter strings like REPUBLIC — no image files)
+- Direction Sense: 1 question (4-directional navigation problem)
+- Seating Arrangement: 1 question (linear or circular — vary between sets)
+- Alphabet Series: 1 question
+Rules: correct is 0-indexed. passage = null for ALL questions. Explanation: 2-3 sentences.
+Return ONLY the JSON object. Begin with { — nothing before it.`;
+  }
+
+  if (batchNum === 3) {
+    return `You are an NTA CUET GAT (General Aptitude Test 501) question paper generator.
+${buildGATIntelligenceBrief(3)}
+Generate exactly 12 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
+JSON schema: ${schema}
+Topic distribution (MANDATORY — exact counts):
+- Awards and Honours (India): 2 questions (Padma awards, Sahitya Akademi, ICC/BCCI awards)
+- Books and Authors: 2 questions (confirmed real books by Indian or internationally known authors)
+- Indian History and National Movement: 2 questions (freedom movement events + 1 NCERT Class 9-10 treaty/summit)
+- Indian Geography: 2 questions (rivers, national parks, tiger reserves, states)
+- Indian Polity and Constitution: 1 question (Constitution articles, commissions, national institutions)
+- Science and Technology (ISRO/DRDO): 2 questions (ISRO missions, DRDO weapons, space milestones)
+- Sports Historical Records: 1 question (first Indian to win X, Olympic record, national championship)
+Rules: correct is 0-indexed. passage = null for ALL questions. All 4 options must be plausible real names/dates. Explanation: 2-3 sentences.
+Return ONLY the JSON object. Begin with { — nothing before it.`;
+  }
+
+  if (batchNum === 4) {
+    const caSection = caContext
+      ? `VERIFIED CURRENT AFFAIRS CONTEXT (use ONLY facts from this list — do not invent events):\n${caContext}\n`
+      : `FALLBACK (CA context unavailable): Generate 4 additional Static GK questions from Indian History, ISRO milestones, Padma Awards, or Constitution articles instead. No current events.\n`;
+
+    return `You are an NTA CUET GAT (General Aptitude Test 501) question paper generator.
+${buildGATIntelligenceBrief(4)}
+${caSection}
+Generate exactly 7 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
+JSON schema: ${schema}
+Topic distribution (MANDATORY):
+- Current Affairs standalone MCQs: 4 questions using ONLY confirmed facts from the context above (passage = null)
+- Passage-based comprehension: 1 short passage (60-80 words on an India-relevant current topic) with 2 direct questions
+  For passage questions: include the passage text in the "passage" field of BOTH questions. The answer must be findable within the passage.
+Rules: correct is 0-indexed. India-first: 70%+ questions about India. Explanation: 2-3 sentences.
+If uncertain about any fact in the context → replace that question with static GK from ISRO or Indian History.
+Return ONLY the JSON object. Begin with { — nothing before it.`;
+  }
+
+  return null;
+}
+
+// ── GAT Quick Practice — single 15-question balanced prompt ──────────────────
+function buildGATQPPrompt() {
+  const schema = '{"questions":[{"question":"...","options":["A","B","C","D"],"correct":0,"topic":"...","passage":null,"explanation":"1-2 sentences"}]}';
+  return `You are an NTA CUET GAT (General Aptitude Test 501) question generator for quick practice.
+${buildGATIntelligenceBrief("GAT_QP")}
+Generate exactly 15 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
+JSON schema: ${schema}
+Topic distribution (MANDATORY — exact counts):
+- Quantitative Aptitude: 5 questions (mix of: percentage, profit-loss, ratio, number system — easy-moderate only)
+- Logical Reasoning: 5 questions (mix of: number series, analogy, blood relations, coding — no complex seating arrangements)
+- General Knowledge: 5 questions (India-first static GK — awards, books/authors, ISRO, Indian history — factual recall)
+Rules:
+1. correct is 0-indexed (0=A,1=B,2=C,3=D)
+2. passage = null for all questions
+3. No trigonometry, SI, CI in quant
+4. No image-dependent reasoning questions
+5. Difficulty: easy-moderate — suitable for first-time GAT students
+6. Explanation: 1-2 sentences stating why correct and why top distractor is wrong
+Return ONLY the JSON object. Begin with { — nothing before it.`;
+}
+
+// ── Anthropic call with web_search tool — for refreshGATCurrentAffairs ────────
+async function callAnthropicWithSearch(systemPrompt, userContent, maxTokens, apiKey) {
+  const r = await axios.post(
+    "https://api.anthropic.com/v1/messages",
+    {
+      model:      "claude-sonnet-4-6",
+      max_tokens: maxTokens,
+      system:     systemPrompt,
+      messages:   [{ role: "user", content: userContent }],
+      tools:      [{ type: "web_search_20250305", name: "web_search" }],
+    },
+    {
+      headers: {
+        "Content-Type":    "application/json",
+        "x-api-key":       apiKey,
+        "anthropic-version": "2023-06-01",
+        "anthropic-beta":  "web-search-2025-03-05",
+      },
+      timeout: 100000,
+    }
+  );
+  // Extract all text blocks from content (may include tool_use/tool_result blocks)
+  const textBlocks = (r.data?.content || []).filter(b => b.type === "text");
+  return textBlocks.map(b => b.text).join("\n");
+}
 
 function todayIST() {
   return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
@@ -398,8 +726,8 @@ Return ONLY the JSON object. Begin with { — nothing before it.`,
 
 // ── Quality Gate — validates every question before accepting the set ──────────
 function validateQuestionSet(questions, mode) {
-  // With 5-batch architecture, Mock always returns exactly 50 (5 × 10)
-  const REQUIRED_COUNT = mode === "Mock" ? 50 : 15;
+  // Required question count per mode
+  const REQUIRED_COUNT = { Mock: 50, QuickPractice: 15, GAT_Mock: 50, GAT_QP: 15 }[mode] ?? 50;
   const errors = [];
 
   if (questions.length !== REQUIRED_COUNT) {
@@ -443,25 +771,62 @@ async function generateQuestionSet(mode, apiKey) {
     try {
       let questions;
 
-      if (mode === "QuickPractice") {
+      if (mode === "GAT_QP") {
+        // ── GAT Quick Practice — single 15-question balanced batch ────────────
+        questions = await callAnthropic(buildGATQPPrompt(), 3000, apiKey);
+
+      } else if (mode === "GAT_Mock") {
+        // ── GAT Mock — 4 parallel batches via Promise.all ────────────────────
+        // Batch 1: Quant 17q | Batch 2: Reasoning 17q | Batch 3: Static GK 10q | Batch 4: CA 6q
+        // All independent — run simultaneously. Wall time ~15-16s (max of 4 parallel calls).
+        let caContext = "";
+        try {
+          const caSnap = await db.collection("cuetIntelligence").doc("GAT_501").get();
+          if (caSnap.exists && caSnap.data()?.currentAffairsContext) {
+            caContext = caSnap.data().currentAffairsContext;
+          }
+        } catch (e) {
+          functions.logger.warn("GAT_CA_READ_FAILED", { attempt, error: e.message });
+        }
+        functions.logger.info("GAT_MOCK_START", { attempt, hasCaContext: !!caContext });
+
+        const [b1raw, b2raw, b3raw, b4raw] = await Promise.all([
+          callAnthropic(buildGATBatch(1, caContext), 8000, apiKey),
+          callAnthropic(buildGATBatch(2, caContext), 8000, apiKey),
+          callAnthropic(buildGATBatch(3, caContext), 5000, apiKey),
+          callAnthropic(buildGATBatch(4, caContext), 4000, apiKey),
+        ]);
+
+        // Prompts request 20/20/12/7 with buffer — slice to exact targets: 17/17/10/6 = 50
+        const b1 = Array.isArray(b1raw) ? b1raw.slice(0, 17) : [];
+        const b2 = Array.isArray(b2raw) ? b2raw.slice(0, 17) : [];
+        const b3 = Array.isArray(b3raw) ? b3raw.slice(0, 10) : [];
+        const b4 = Array.isArray(b4raw) ? b4raw.slice(0, 6)  : [];
+
+        functions.logger.info("GAT_BATCH_COUNTS", { b1: b1.length, b2: b2.length, b3: b3.length, b4: b4.length });
+
+        if (b1.length < 17 || b2.length < 17 || b3.length < 10 || b4.length < 6) {
+          throw new Error(`GAT_BATCH_LOW: b1=${b1.length}/17 b2=${b2.length}/17 b3=${b3.length}/10 b4=${b4.length}/6`);
+        }
+        questions = [...b1, ...b2, ...b3, ...b4]; // exactly 50
+
+      } else if (mode === "QuickPractice") {
+        // ── English Quick Practice ────────────────────────────────────────────
         const prompt = buildPrompt("QuickPractice");
         questions = await callAnthropic(prompt, 5000, apiKey);
+
       } else {
-        // 5 sequential batches of 10 questions each = exactly 50
-        // Per-batch retry strategy: retry individual failing batch (not all 5)
-        // Slice to exactly 10 if model returns more
+        // ── English Mock — 5 sequential batches of 10 = exactly 50 ───────────
         // RC batches (1-3) embed full passage text in every question's JSON field:
         // 9 RC questions × ~350 tokens/passage = ~3150 tokens in passages alone.
-        // 4000 was causing TRUNCATION on batches 1-3 every single attempt.
         // 8000 provides safe headroom: ~4650 token worst-case (batch 2) fits comfortably.
-        const tokenBudgets = [8000, 8000, 8000, 3000, 3000]; // RC batches need 8000 — passage repeats in every question
+        const tokenBudgets = [8000, 8000, 8000, 3000, 3000];
         const allBatches = [];
 
         for (let b = 1; b <= 5; b++) {
           let batchResult = null;
           let batchError = null;
 
-          // Up to 3 attempts per individual batch
           for (let ba = 1; ba <= 3; ba++) {
             try {
               functions.logger.info("BATCH_START", { batchNum: b, attempt: ba, tokenBudget: tokenBudgets[b-1] });
@@ -470,13 +835,11 @@ async function generateQuestionSet(mode, apiKey) {
               functions.logger.info("BATCH_RESULT", { batchNum: b, attempt: ba, count });
 
               if (!Array.isArray(raw) || count < 10) {
-                // Need >= 10 to slice to exactly 10 — retry this batch alone
                 throw new Error(`BATCH_${b}_LOW:${count}/12`);
               }
-              // Slice to exactly 10 — drop the 2 buffer questions
               batchResult = raw.slice(0, 10);
               functions.logger.info("BATCH_ACCEPTED", { batchNum: b, generated: count, used: 10 });
-              break; // Batch succeeded
+              break;
             } catch(e) {
               batchError = e;
               functions.logger.warn("BATCH_RETRY", { batchNum: b, attempt: ba, reason: e.message });
@@ -491,7 +854,6 @@ async function generateQuestionSet(mode, apiKey) {
           await new Promise(r => setTimeout(r, 800));
         }
 
-        // Final count check — should be exactly 50
         if (allBatches.length !== 50) {
           throw new Error(`COMBINED_COUNT:${allBatches.length}/50`);
         }
@@ -675,13 +1037,27 @@ exports.generateQuestions = functions
 
     const mode = (req.body.config || {}).mode || "Mock";
 
-    // QuickPractice: free forever, no limits checked
-    if (mode !== "QuickPractice") {
+    // ── Free modes: always allowed, no limit checks ───────────────────────────
+    const isFreeMode = mode === "QuickPractice" || mode === "GAT_QP";
+
+    if (!isFreeMode) {
       const isUnlocked = !!(userDoc.unlocked);
-      const testsUsed  = userDoc.testsUsed || 0;
-      if (!isUnlocked && testsUsed >= FREE_LIMIT) {
-        res.status(402).json({ error: "free_limit_reached", paywall: true }); return;
+
+      if (mode === "GAT_Mock") {
+        // ── GAT separate free pool (4 GAT Mocks free, independent of English) ──
+        const gatTestsUsed = userDoc.gatTestsUsed || 0;
+        if (!isUnlocked && gatTestsUsed >= FREE_LIMIT) {
+          res.status(402).json({ error: "free_limit_reached", paywall: true }); return;
+        }
+      } else {
+        // ── English Mock free pool ─────────────────────────────────────────────
+        const testsUsed = userDoc.testsUsed || 0;
+        if (!isUnlocked && testsUsed >= FREE_LIMIT) {
+          res.status(402).json({ error: "free_limit_reached", paywall: true }); return;
+        }
       }
+
+      // Daily limit applies to paid users only (both English and GAT Mocks share the daily cap)
       if (isUnlocked) {
         const today      = todayIST();
         const dailyCount = (userDoc.dailyTests || {})[today] || 0;
@@ -699,8 +1075,7 @@ exports.generateQuestions = functions
     try {
       const allSnap   = await db.collection("questionCache").where("mode", "==", mode).get();
       const usedSet   = new Set(usedSetIds);
-      // Quality filter — reject any cached set with fewer than expected questions
-      const REQUIRED_Q = mode === "Mock" ? 50 : 15;
+      const REQUIRED_Q = { Mock: 50, QuickPractice: 15, GAT_Mock: 50, GAT_QP: 15 }[mode] ?? 50;
       const available = allSnap.docs.filter(d => {
         if (usedSet.has(d.id)) return false;
         if (d.data().createdAt?.toDate() <= cutoff) return false;
@@ -720,7 +1095,7 @@ exports.generateQuestions = functions
     if (!cacheDoc) {
       functions.logger.info("CACHE_EXHAUSTED_FOR_USER", { uid, mode });
       res.status(503).json({
-        error: mode === "QuickPractice"
+        error: (mode === "QuickPractice" || mode === "GAT_QP")
           ? "Quick Practice is being refreshed. Please try again in a few minutes."
           : "You have completed all available tests for this mode. More tests are being prepared — please check back later.",
         code: "no_tests_available"
@@ -731,15 +1106,24 @@ exports.generateQuestions = functions
     const setId     = cacheDoc.id;
     const today     = todayIST();
 
-    // Only increment counters for Mock (not QuickPractice)
-    // Use set() with merge:true — works even if user doc doesn't exist yet
+    // ── Increment counters per mode ───────────────────────────────────────────
     try {
-      if (mode === "QuickPractice") {
+      if (mode === "QuickPractice" || mode === "GAT_QP") {
+        // Free modes — only track set usage, no test counter
         await db.collection("users").doc(uid).set({
           lastTestAt: admin.firestore.FieldValue.serverTimestamp(),
           usedCacheSetIds: admin.firestore.FieldValue.arrayUnion(setId),
         }, { merge: true });
+      } else if (mode === "GAT_Mock") {
+        // GAT separate free pool — increment gatTestsUsed
+        await db.collection("users").doc(uid).set({
+          gatTestsUsed: admin.firestore.FieldValue.increment(1),
+          lastTestAt: admin.firestore.FieldValue.serverTimestamp(),
+          usedCacheSetIds: admin.firestore.FieldValue.arrayUnion(setId),
+          [`dailyTests.${today}`]: admin.firestore.FieldValue.increment(1),
+        }, { merge: true });
       } else {
+        // English Mock — increment testsUsed
         await db.collection("users").doc(uid).set({
           testsUsed: admin.firestore.FieldValue.increment(1),
           lastTestAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -776,15 +1160,19 @@ exports.checkTestLimit = functions.runWith({ timeoutSeconds: 20, memory: "256MB"
   if (req.method !== "POST")    { res.status(405).json({ error: "Method not allowed" }); return; }
   const decoded = await verifyToken(req, res); if (!decoded) return;
   const uid = decoded.uid;
+  const mode = req.body?.mode || "Mock"; // default English Mock if not specified
   try {
     const snap       = await db.collection("users").doc(uid).get();
     const ud         = snap.data() || {};
     const isUnlocked = !!(ud.unlocked);
-    const testsUsed  = ud.testsUsed || 0;
     const today      = todayIST();
     const dailyCount = (ud.dailyTests || {})[today] || 0;
+    const dailyBlocked = isUnlocked && dailyCount >= DAILY_TEST_LIMIT;
+
+    // Free pool depends on mode — English and GAT are separate counters
+    const isGATMode      = mode === "GAT_Mock";
+    const testsUsed      = isGATMode ? (ud.gatTestsUsed || 0) : (ud.testsUsed || 0);
     const freemiumBlocked = !isUnlocked && testsUsed >= FREE_LIMIT;
-    const dailyBlocked    = isUnlocked && dailyCount >= DAILY_TEST_LIMIT;
     const allowed         = !freemiumBlocked && !dailyBlocked;
     const testsRemaining  = isUnlocked ? Math.max(0, DAILY_TEST_LIMIT - dailyCount) : Math.max(0, FREE_LIMIT - testsUsed);
     const limitLabel      = isUnlocked ? `${testsRemaining} mock tests remaining today` : `${testsRemaining} free mock tests remaining`;
@@ -797,6 +1185,7 @@ exports.checkTestLimit = functions.runWith({ timeoutSeconds: 20, memory: "256MB"
       dailyRemaining: isUnlocked ? Math.max(0, DAILY_TEST_LIMIT - dailyCount) : null,
       testsRemaining, limitLabel,
       quickPracticeAlwaysFree: true,
+      gatTestsUsed: ud.gatTestsUsed || 0,
     });
   } catch (e) { res.status(500).json({ error: "Limit check failed" }); }
 });
@@ -870,7 +1259,149 @@ exports.razorpayWebhook = functions.runWith({ timeoutSeconds: 30, memory: "128MB
   res.status(200).json({ status: "ok" });
 });
 
-// ─── 7. generateFeedbackInsights ────────────────────────────────────────────
+// ─── 7. refreshGATCurrentAffairs ─────────────────────────────────────────────
+// Autonomous CA refresh engine — no admin manual input required.
+// Calls Claude with web_search to fetch verified India-first current events.
+// Stores result in Firestore: cuetIntelligence/GAT_501.currentAffairsContext
+// Triggered by: Cloud Scheduler every 15 days OR admin dashboard "Trigger Refresh" button.
+//
+// CLOUD SCHEDULER SETUP (run once after deploy):
+// gcloud scheduler jobs create http refreshGATCurrentAffairs \
+//   --schedule="0 6 */15 * *" \
+//   --uri="https://us-central1-vantiq-cuet.cloudfunctions.net/refreshGATCurrentAffairs" \
+//   --message-body='{"trigger":"scheduled"}' \
+//   --time-zone="Asia/Kolkata" \
+//   --project=vantiq-cuet
+exports.refreshGATCurrentAffairs = functions
+  .runWith({ timeoutSeconds: 120, memory: "512MB" })
+  .https.onRequest(async (req, res) => {
+    setCORS(res);
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+    if (req.method !== "POST")    { res.status(405).json({ error: "Method not allowed" }); return; }
+
+    // Auth: allow Cloud Scheduler (no body auth needed — secured by CF IAM) or admin key
+    const cfg        = functions.config();
+    const adminKey   = req.body?.adminKey || req.headers["x-admin-key"] || "";
+    const expectedKey = cfg.admin?.key || process.env.ADMIN_KEY || "";
+    const isScheduled = req.body?.trigger === "scheduled";
+    if (!isScheduled && (!adminKey || adminKey !== expectedKey)) {
+      res.status(403).json({ error: "Forbidden" }); return;
+    }
+
+    const KEY = cfg.anthropic?.api_key || process.env.ANTHROPIC_API_KEY;
+    if (!KEY) { res.status(500).json({ error: "Anthropic API key not configured" }); return; }
+
+    const startedAt = new Date().toISOString();
+    functions.logger.info("GAT_CA_REFRESH_START", { trigger: req.body?.trigger || "admin", startedAt });
+
+    try {
+      const systemPrompt = `You are a CUET GAT current affairs researcher for an Indian education platform.
+Your task: identify the most important, verifiable, India-centric events from the last 30 days
+that are suitable for CUET GAT exam questions taken by Indian Class 12 students.
+RULES:
+- Only include facts where you are 100% certain of the correct answer
+- Prioritise India-specific events (government schemes, ISRO, Indian awards, Indian sports)
+- Include global events only if they have a clear India angle (Nobel Prize, Olympics India result)
+- EXCLUDE: active wars, contested elections, territorial disputes, anything debatable or political
+- Every fact must have one unambiguous correct answer verifiable from public sources
+- Format output as a structured plain-text list — no JSON, no markdown headers`;
+
+      const userContent = `Search for current affairs events from the last 30 days suitable for CUET GAT questions.
+Find and verify facts in these categories:
+1. New Indian government schemes — name, ministry responsible, objective
+2. Indian science and technology — ISRO missions, DRDO weapons, indigenous tech achievements  
+3. Awards and honours — Nobel Prize winners, Padma award recipients, sports awards (Indian angle)
+4. India sports results — cricket tournaments, Olympics, national championships, records
+5. India infrastructure and bilateral — new bridges/projects, summits India attended, bilateral agreements
+6. India economy highlights — RBI policy decisions, GDP data, UPI records, budget announcements
+
+For each fact found, state:
+CATEGORY | FACT | CORRECT ANSWER | WHY EXAM-WORTHY
+
+After the fact list, provide a formatted context string starting with exactly this line:
+===CONTEXT_START===
+Then list all verified facts as:
+GOVERNMENT SCHEMES:
+- [scheme name]: [ministry], [objective in one line], [key fact a student must know]
+
+AWARDS & HONOURS:
+- [award] [year]: [recipient name], [significance]
+
+SPORTS:
+- [tournament/event]: [winner/result], [India angle], [key player if relevant]
+
+SCIENCE & TECHNOLOGY:
+- [mission/initiative]: [organisation], [achievement in one line]
+
+INDIA & WORLD:
+- [event]: India [role/participation/achievement], [key verifiable fact]
+
+FALLBACK RULE: If uncertain about any fact in this list → replace CA question with static GK from Indian History or ISRO milestones instead.
+===CONTEXT_END===`;
+
+      const rawText = await callAnthropicWithSearch(systemPrompt, userContent, 2000, KEY);
+
+      // Extract the formatted context block
+      const startMarker = "===CONTEXT_START===";
+      const endMarker   = "===CONTEXT_END===";
+      const startIdx = rawText.indexOf(startMarker);
+      const endIdx   = rawText.indexOf(endMarker);
+
+      let caContext;
+      if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+        caContext = rawText.substring(startIdx + startMarker.length, endIdx).trim();
+      } else {
+        // Fallback: use the entire response if markers not found
+        caContext = rawText.trim();
+        functions.logger.warn("GAT_CA_MARKERS_NOT_FOUND", { preview: rawText.substring(0, 200) });
+      }
+
+      if (!caContext || caContext.length < 100) {
+        throw new Error("CA context too short — refresh may have failed to find events");
+      }
+
+      // Get current version number
+      const existingSnap = await db.collection("cuetIntelligence").doc("GAT_501").get();
+      const currentVersion = existingSnap.exists ? (existingSnap.data()?.refreshVersion || 0) : 0;
+
+      // Store in Firestore
+      await db.collection("cuetIntelligence").doc("GAT_501").set({
+        currentAffairsContext: caContext,
+        lastRefreshed: admin.firestore.FieldValue.serverTimestamp(),
+        refreshVersion: currentVersion + 1,
+        factCount: (caContext.match(/^-/gm) || []).length, // count bullet points
+        refreshTrigger: req.body?.trigger || "admin",
+      }, { merge: true });
+
+      // Invalidate GAT caches so next generation uses fresh CA context
+      const gatCacheDocs = await db.collection("questionCache")
+        .where("mode", "in", ["GAT_Mock", "GAT_QP"])
+        .get();
+      if (!gatCacheDocs.empty) {
+        const batch = db.batch();
+        gatCacheDocs.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+        functions.logger.info("GAT_CACHE_INVALIDATED", { deleted: gatCacheDocs.size });
+      }
+
+      const result = {
+        success: true,
+        refreshVersion: currentVersion + 1,
+        contextLength: caContext.length,
+        cacheInvalidated: gatCacheDocs.size,
+        completedAt: new Date().toISOString(),
+        durationMs: Date.now() - new Date(startedAt).getTime(),
+      };
+      functions.logger.info("GAT_CA_REFRESH_DONE", result);
+      res.status(200).json(result);
+
+    } catch (e) {
+      functions.logger.error("GAT_CA_REFRESH_FAILED", { error: e.message });
+      res.status(500).json({ error: "CA refresh failed: " + e.message });
+    }
+  });
+
+// ─── 8. generateFeedbackInsights ────────────────────────────────────────────
 // Reads all feedback from Firestore, sends to Claude, returns top 3 actionable insights
 exports.generateFeedbackInsights = functions
   .runWith({ timeoutSeconds: 60, memory: "256MB" })
@@ -1086,9 +1617,9 @@ Return ONLY the JSON object. Begin with { — nothing before it.`;
 
 // ─── returnTestCredit ────────────────────────────────────────────────────────
 // Grace window: called when student exits a Mock exam within 60s with 0 answers.
-// Decrements testsUsed by 1 so the accidental open doesn't consume a free test.
-// Guards: only works for unlocked=false users (free tier), max 3 returns per day,
-// cannot reduce testsUsed below 0.
+// Decrements the correct counter (testsUsed for English, gatTestsUsed for GAT)
+// so the accidental open doesn't consume a free test.
+// Guards: only works for unlocked=false users, max 3 returns per day, cannot go below 0.
 exports.returnTestCredit = functions
   .runWith({ timeoutSeconds: 15, memory: "128MB" })
   .https.onRequest(async (req, res) => {
@@ -1096,27 +1627,28 @@ exports.returnTestCredit = functions
     if (req.method === "OPTIONS") { res.status(204).send(""); return; }
     if (req.method !== "POST")    { res.status(405).json({ error: "Method not allowed" }); return; }
     const decoded = await verifyToken(req, res); if (!decoded) return;
-    const uid = decoded.uid;
+    const uid  = decoded.uid;
+    const mode = req.body?.mode || "Mock"; // "Mock" or "GAT_Mock"
+    const isGAT = mode === "GAT_Mock";
     try {
       const snap = await db.collection("users").doc(uid).get();
       const ud   = snap.data() || {};
-      // Only for free-tier users — paid users have no limit to protect
       if (ud.unlocked) { res.status(200).json({ returned: false, reason: "paid_user" }); return; }
-      // Cannot go below 0
-      if ((ud.testsUsed || 0) <= 0) { res.status(200).json({ returned: false, reason: "already_zero" }); return; }
-      // Abuse guard: max 3 grace returns per day per user
+      const currentCount = isGAT ? (ud.gatTestsUsed || 0) : (ud.testsUsed || 0);
+      if (currentCount <= 0) { res.status(200).json({ returned: false, reason: "already_zero" }); return; }
       const today      = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
       const todayKey   = `graceReturns.${today}`;
       const todayCount = (ud.graceReturns || {})[today] || 0;
       if (todayCount >= 3) {
         res.status(200).json({ returned: false, reason: "daily_grace_limit_reached" }); return;
       }
+      const counterField = isGAT ? "gatTestsUsed" : "testsUsed";
       await db.collection("users").doc(uid).set({
-        testsUsed:    admin.firestore.FieldValue.increment(-1),
-        [todayKey]:   admin.firestore.FieldValue.increment(1),
+        [counterField]: admin.firestore.FieldValue.increment(-1),
+        [todayKey]:     admin.firestore.FieldValue.increment(1),
       }, { merge: true });
-      functions.logger.info("TEST_CREDIT_RETURNED", { uid, previousCount: ud.testsUsed });
-      res.status(200).json({ returned: true, newCount: Math.max(0, (ud.testsUsed || 1) - 1) });
+      functions.logger.info("TEST_CREDIT_RETURNED", { uid, mode, previousCount: currentCount });
+      res.status(200).json({ returned: true, newCount: Math.max(0, currentCount - 1) });
     } catch (e) {
       functions.logger.error("RETURN_CREDIT_FAILED", { uid, error: e.message });
       res.status(500).json({ error: "Could not return credit" });
