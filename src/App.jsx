@@ -274,7 +274,32 @@ function PaywallModal({ user, onSuccess, onClose }) {
             </div>
           ))}
         </div>
-        {error && <div className="error-msg">{error}</div>}
+        {error && (() => {
+          if (error.startsWith("__PERMANENTLY_BLOCKED__:")) {
+            const reason = error.replace("__PERMANENTLY_BLOCKED__:", "");
+            return (
+              <div style={{ background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:10, padding:"16px 18px", marginTop:10, textAlign:"left" }}>
+                <div style={{ fontWeight:700, color:"#DC2626", fontSize:13, marginBottom:6 }}>⛔ Account Permanently Blocked</div>
+                <div style={{ color:"#7F1D1D", fontSize:12, lineHeight:1.6 }}>{reason}</div>
+                <div style={{ color:"#94A3B8", fontSize:11, marginTop:8 }}>Contact support if you believe this is an error.</div>
+              </div>
+            );
+          }
+          if (error.startsWith("__TEMPORARILY_BLOCKED__:")) {
+            const parts = error.replace("__TEMPORARILY_BLOCKED__:", "").split(":");
+            const mins = parts[0];
+            const reason = parts.slice(1).join(":");
+            return (
+              <div style={{ background:"#FEF3C7", border:"1px solid #FCD34D", borderRadius:10, padding:"16px 18px", marginTop:10, textAlign:"left" }}>
+                <div style={{ fontWeight:700, color:"#D97706", fontSize:13, marginBottom:6 }}>⚠️ Account Temporarily Suspended</div>
+                <div style={{ color:"#78350F", fontSize:12, lineHeight:1.6 }}>{reason || "Unusual activity was detected on your account."}</div>
+                <div style={{ color:"#92400E", fontSize:12, marginTop:8, fontWeight:600 }}>You can try again in {mins} minute{mins!=="1"?"s":""}.</div>
+                <div style={{ color:"#94A3B8", fontSize:11, marginTop:6 }}>Repeated violations will result in a permanent ban.</div>
+              </div>
+            );
+          }
+          return <div className="error-msg">{error}</div>;
+        })()}
         <button className="btn-primary full" onClick={pay} disabled={loading} style={{ marginTop: 16 }}>
           {loading ? "Processing..." : "Pay ₹199 · One-time"}
         </button>
@@ -302,12 +327,28 @@ function AuthScreen({ onLogin, showToast }) {
       await setDoc(ref, {
         uid: user.uid, email: user.email, displayName: user.displayName,
         photoURL: user.photoURL, testsUsed: 0, createdAt: serverTimestamp(),
-        // unlocked intentionally omitted — only CF admin SDK can set this field
       });
     } else {
-      // Update profile fields on every login — ensures email is always present
-      // (older accounts may have been created before email field was added)
       const data = snap.data();
+      // ── Block checks ────────────────────────────────────────────────────────
+      if (data.blocked) {
+        const err = new Error("PERMANENTLY_BLOCKED");
+        err.blockType = "permanent";
+        err.blockReason = data.blockReason || "Your account has been permanently blocked.";
+        throw err;
+      }
+      if (data.blockedUntil) {
+        const until = data.blockedUntil.toDate ? data.blockedUntil.toDate() : new Date(data.blockedUntil);
+        if (until > new Date()) {
+          const minsLeft = Math.ceil((until - new Date()) / 60000);
+          const err = new Error("TEMPORARILY_BLOCKED");
+          err.blockType = "temporary";
+          err.minutesLeft = minsLeft;
+          err.blockReason = data.blockReason || `Access suspended for ${minsLeft} more minutes.`;
+          throw err;
+        }
+      }
+      // Update profile fields on every login
       if (!data.email || !data.displayName) {
         await setDoc(ref, {
           email: user.email, displayName: user.displayName, photoURL: user.photoURL,
@@ -324,7 +365,17 @@ function AuthScreen({ onLogin, showToast }) {
       await ensureUserDoc(r.user);
       logEvent(isNew ? "sign_up" : "login", { method: "google" });
       onLogin(r.user);
-    } catch(e) { setError(e.message || "Google sign-in failed. Try again."); }
+    } catch(e) {
+      // Sign out silently so Google session doesn't persist on block
+      try { if (auth) await import("firebase/auth").then(m => m.signOut(auth)); } catch(_) {}
+      if (e.blockType === "permanent") {
+        setError("__PERMANENTLY_BLOCKED__:" + (e.blockReason || "Your account has been permanently blocked."));
+      } else if (e.blockType === "temporary") {
+        setError("__TEMPORARILY_BLOCKED__:" + e.minutesLeft + ":" + (e.blockReason || ""));
+      } else {
+        setError(e.message || "Google sign-in failed. Try again.");
+      }
+    }
     finally { setLoading(null); }
   }
 
