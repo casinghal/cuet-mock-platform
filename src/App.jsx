@@ -873,56 +873,32 @@ function AuthScreen({ onLogin, showToast }) {
         {/* ── Right: Auth Card ── */}
         <div style={S.authCard}>
 
-          {/* ── Cycling hook typewriter — highlighted, always moving ── */}
-          <div style={{
-            minHeight: 52,
-            marginBottom: 18,
-            padding: "10px 14px",
-            background: "rgba(251,191,36,0.07)",
-            border: "1px solid rgba(251,191,36,0.22)",
-            borderRadius: 10,
-            borderLeft: "3px solid #FBBF24",
-          }}>
-            <span
-              className="hook-text"
-              style={{
-                fontSize: 13,
-                fontWeight: 600,
-                color: "#FCD34D",
-                lineHeight: 1.55,
-                letterSpacing: 0.1,
-                display: "inline",
-              }}
-            >
-              {hookText}
-            </span>
+          {/* ── Typewriter hook — desktop only (mobile has headline above) ── */}
+          {!isMobile && (
+          <div style={{ minHeight:52, marginBottom:18, padding:"10px 14px", background:"rgba(251,191,36,0.07)", border:"1px solid rgba(251,191,36,0.22)", borderRadius:10, borderLeft:"3px solid #FBBF24" }}>
+            <span className="hook-text" style={{ fontSize:13, fontWeight:600, color:"#FCD34D", lineHeight:1.55, letterSpacing:0.1, display:"inline" }}>{hookText}</span>
             <span className="hook-caret" />
           </div>
+          )}
 
-          {/* CUET-LIVE-PREMIUM P0: Recency timestamp — most powerful freshness signal */}
+          {/* Heading — always shown */}
+          <h2 style={{ ...S.authHeading, marginBottom: isMobile ? 4 : undefined }}>Try a Free Mock Test Now</h2>
+          <p style={{ ...S.authSub, marginBottom: isMobile ? 14 : undefined }}>
+            No coaching. No content. Just the real exam — simulated.
+          </p>
+
+          {/* Recency strip — desktop only (mobile hero already shows it) */}
+          {!isMobile && (
           <div className="recency-pop" style={{ display:"flex", alignItems:"center", gap:8, marginBottom:16, padding:"7px 12px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:8 }}>
             <span className="live-pulse-dot" style={{ width:6, height:6, borderRadius:"50%", background:"#6EE7B7", display:"inline-block", flexShrink:0 }} />
             <span style={{ fontFamily:"var(--font-mono)", fontSize:11, color:"rgba(255,255,255,0.42)", letterSpacing:"0.2px" }}>
               Last paper generated: <strong style={{ color:"rgba(110,231,183,0.8)", fontWeight:600 }}>{recencyMins} min ago</strong>
-              {" · "}<strong style={{ color:"rgba(110,231,183,0.7)", fontWeight:600 }}>{recencyCount}</strong> tests today
+              {" · "}<strong style={{ color:"rgba(110,231,183,0.7)", fontWeight:600 }}>{recencyCount}</strong> tests today
             </span>
           </div>
+          )}
 
-          <h2 style={S.authHeading}>Try a Free Mock Test Now</h2>
-          <p style={S.authSub}>
-            No coaching. No content. Just the real exam — simulated.
-          </p>
-
-          {/* Free trial badge */}
-          <div style={S.trialBadge}>
-            <span style={S.trialIcon}>&#127381;</span>
-            <div style={S.trialText}>
-              <span style={S.trialStrong}>4 full Mock Exams free.</span>{" "}
-              Quick Practice free forever. Unlimited Mock Exams at ₹199 till 30 June.
-            </div>
-          </div>
-
-          {/* Google button */}
+          {/* ── GOOGLE BUTTON — first visible CTA, no scroll required ── */}
           <button
             onClick={handleGoogle}
             disabled={loading === "google"}
@@ -934,17 +910,26 @@ function AuthScreen({ onLogin, showToast }) {
             {loading === "google" ? "Signing you in..." : "Continue with Google"}
           </button>
 
-          {/* Value props */}
+          {/* Trial badge — below button so CTA is never pushed below fold */}
+          <div style={{ ...S.trialBadge, marginTop: 4 }}>
+            <span style={S.trialIcon}>&#127381;</span>
+            <div style={S.trialText}>
+              <span style={S.trialStrong}>4 full Mock Exams free.</span>{" "}
+              Quick Practice free forever. Unlimited Mock Exams at ₹199 till 30 June.
+            </div>
+          </div>
+
+          {/* Value props — all 4 on desktop, top 2 on mobile */}
           <div style={{ marginBottom: 20 }}>
             {[
               "Never the same paper twice",
-              "Exact 50-question format, +5/\u22121 marking",
-              "Topic mix calibrated to NTA\u2019s declared weightage",
-              "First 4 tests free \u2014 no card required",
-            ].map((v, i) => (
-              <div key={v} className="value-stagger" style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 7 }}>
-                <span style={{ color: "#6EE7B7", fontWeight: 700, fontSize: 13, marginTop: 1, flexShrink: 0 }}>✓</span>
-                <span style={{ fontSize: 13, color: "rgba(255,255,255,0.72)", lineHeight: 1.45 }}>{v}</span>
+              "Exact 50-question format, +5/−1 marking",
+              "Topic mix calibrated to NTA’s declared weightage",
+              "First 4 tests free — no card required",
+            ].filter((_, i) => !isMobile || i < 2).map((v) => (
+              <div key={v} className="value-stagger" style={{ display:"flex", alignItems:"flex-start", gap:8, marginBottom:7 }}>
+                <span style={{ color:"#6EE7B7", fontWeight:700, fontSize:13, marginTop:1, flexShrink:0 }}>✓</span>
+                <span style={{ fontSize:13, color:"rgba(255,255,255,0.72)", lineHeight:1.45 }}>{v}</span>
               </div>
             ))}
           </div>
@@ -952,13 +937,11 @@ function AuthScreen({ onLogin, showToast }) {
           {/* Error */}
           {error && <div style={S.errorBox}>{error}</div>}
 
-          {/* Toggle link removed — platform uses Google Sign-In only */}
-
           {/* Trust */}
           <p style={S.trustLine}>
             By continuing you agree to our{" "}
-            <a href="/terms"   style={{ color: "rgba(255,255,255,0.6)", textDecoration: "underline" }}>Terms</a>{" & "}
-            <a href="/privacy" style={{ color: "rgba(255,255,255,0.6)", textDecoration: "underline" }}>Privacy Policy</a>.
+            <a href="/terms"   style={{ color:"rgba(255,255,255,0.6)", textDecoration:"underline" }}>Terms</a>{" & "}
+            <a href="/privacy" style={{ color:"rgba(255,255,255,0.6)", textDecoration:"underline" }}>Privacy Policy</a>.
             <br />Your data is safe and never shared.
           </p>
         </div>
