@@ -1,3 +1,4 @@
+// GAT sequential model — 6 batches, mirrors English architecture
 /**
  * Firebase Cloud Functions — Vantiq CUET Platform
  * TWO-TIER ARCHITECTURE:
