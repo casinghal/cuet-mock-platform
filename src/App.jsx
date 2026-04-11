@@ -873,13 +873,11 @@ function AuthScreen({ onLogin, showToast }) {
         {/* ── Right: Auth Card ── */}
         <div style={S.authCard}>
 
-          {/* ── Typewriter hook — desktop only (mobile has headline above) ── */}
-          {!isMobile && (
-          <div style={{ minHeight:52, marginBottom:18, padding:"10px 14px", background:"rgba(251,191,36,0.07)", border:"1px solid rgba(251,191,36,0.22)", borderRadius:10, borderLeft:"3px solid #FBBF24" }}>
-            <span className="hook-text" style={{ fontSize:13, fontWeight:600, color:"#FCD34D", lineHeight:1.55, letterSpacing:0.1, display:"inline" }}>{hookText}</span>
+          {/* ── Typewriter hook — always shown, compact on mobile ── */}
+          <div style={{ minHeight: isMobile ? 42 : 52, marginBottom: isMobile ? 12 : 18, padding: isMobile ? "8px 12px" : "10px 14px", background:"rgba(251,191,36,0.07)", border:"1px solid rgba(251,191,36,0.22)", borderRadius:10, borderLeft:"3px solid #FBBF24" }}>
+            <span className="hook-text" style={{ fontSize: isMobile ? 12 : 13, fontWeight:600, color:"#FCD34D", lineHeight:1.5, letterSpacing:0.1, display:"inline" }}>{hookText}</span>
             <span className="hook-caret" />
           </div>
-          )}
 
           {/* Heading — always shown */}
           <h2 style={{ ...S.authHeading, marginBottom: isMobile ? 4 : undefined }}>Try a Free Mock Test Now</h2>
