@@ -55,12 +55,14 @@ const trunc = (str, n) =>
   str && str.length > n ? str.slice(0, n) + "…" : str || "—";
 
 const cfFetch = async (path, body = {}) => {
+  if (!CF_BASE) throw new Error("VITE_CLOUD_FUNCTION_BASE not set in Netlify env vars");
+  if (!ADMIN_KEY) throw new Error("VITE_ADMIN_KEY not set in Netlify env vars");
   const res = await fetch(`${CF_BASE}/${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-admin-key": ADMIN_KEY },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`${path} → ${res.status}`);
+  if (!res.ok) throw new Error(`${path} → HTTP ${res.status}`);
   return res.json();
 };
 
@@ -657,13 +659,16 @@ export default function AdminDashboard() {
   }, [fbUser, addLog]);
 
   // ── Load cache status ────────────────────────────────────────────────────────
-  const loadCacheStatus = useCallback(async () => {
+  const loadCacheStatus = useCallback(async (silent = false) => {
     try {
       const data = await cfFetch("getCacheStatus");
       setCacheStatus(data?.status || null);
       return data?.status || null;
     } catch (e) {
-      addLog("Cache status error: " + e.message, "warn");
+      // Only log config errors (missing env vars) — transient fetch errors are silent during polling
+      if (!silent && (e.message.includes("not set") || e.message.includes("HTTP 403"))) {
+        addLog("Cache status error: " + e.message, "warn");
+      }
       return null;
     }
   }, [addLog]);
@@ -682,8 +687,17 @@ export default function AdminDashboard() {
     try {
       const res = await cfFetch("triggerCacheWarm", {});
       if (res?.locked) {
-        addLog("Fill lock active — another run in progress", "warn");
-        setFillProgress({ locked: true });
+        addLog(`Fill already running (locked since ${res.lockedSince ? new Date(res.lockedSince).toLocaleTimeString("en-IN") : "recently"}) — watching progress...`, "info");
+        // Still show progress strip using last known counts from getCacheStatus
+        const s = res.status || {};
+        setFillProgress({
+          locked: true,
+          mock: s.Mock?.current ?? 0,
+          qp: s.QuickPractice?.current ?? 0,
+          mockTarget: CACHE_CONFIG.Mock.size,
+          qpTarget: CACHE_CONFIG.QuickPractice.size,
+          elapsed: 0,
+        });
       } else {
         addLog("Cache fill started: " + (res?.message || ""), "success");
         setFillProgress({ started: true });
@@ -697,7 +711,7 @@ export default function AdminDashboard() {
     // Poll every 15 seconds
     fillPollRef.current = setInterval(async () => {
       const elapsed = Math.round((Date.now() - fillStartRef.current) / 1000);
-      const status = await loadCacheStatus();
+      const status = await loadCacheStatus(true); // silent=true — no log spam during polling
       if (status) {
         const mCurrent = status.Mock?.current ?? 0;
         const qCurrent = status.QuickPractice?.current ?? 0;
@@ -734,7 +748,7 @@ export default function AdminDashboard() {
 
   // ── Auto-fill check on load ──────────────────────────────────────────────────
   const checkAndFill = useCallback(async () => {
-    const status = await loadCacheStatus();
+    const status = await loadCacheStatus(true); // silent on auto-check
     if (!status) return;
     const needsFill =
       (status.Mock?.current ?? 0) < CACHE_CONFIG.Mock.threshold ||
