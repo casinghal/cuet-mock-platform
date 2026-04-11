@@ -47,8 +47,12 @@ button{cursor:pointer;border:none;outline:none;font-family:var(--font-body);}
 @keyframes indeterminate{0%{transform:translateX(-100%) scaleX(.5)}50%{transform:translateX(0) scaleX(.5)}100%{transform:translateX(100%) scaleX(.5)}}
 @keyframes pillGlow{0%,100%{box-shadow:0 0 0 0 rgba(110,231,183,0);}50%{box-shadow:0 0 0 4px rgba(110,231,183,0.18),0 0 16px rgba(110,231,183,0.12);}}
 @keyframes caretBlink{0%,100%{opacity:1;}50%{opacity:0;}}
+@keyframes hookGlow{0%,100%{text-shadow:0 0 12px rgba(251,191,36,0.5),0 0 24px rgba(251,191,36,0.2);}50%{text-shadow:0 0 20px rgba(251,191,36,0.8),0 0 40px rgba(251,191,36,0.35);}}
+@keyframes hookFadeIn{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:translateY(0);}}
 .eyebrow-live{animation:pillGlow 2.4s ease-in-out infinite;}
 .typewriter-caret{display:inline-block;width:2px;height:1em;background:rgba(255,255,255,0.7);margin-left:2px;vertical-align:text-bottom;animation:caretBlink 0.8s step-end infinite;}
+.hook-caret{display:inline-block;width:2px;height:0.9em;background:#FBBF24;margin-left:2px;vertical-align:text-bottom;animation:caretBlink 0.7s step-end infinite;}
+.hook-text{animation:hookGlow 2s ease-in-out infinite,hookFadeIn 0.3s ease-out;}
 .pbar-track{width:100%;height:4px;background:#E0E7FF;border-radius:2px;overflow:hidden;}
 .pbar-fill{height:100%;background:var(--indigo);border-radius:2px;animation:indeterminate 1.6s ease-in-out infinite;transform-origin:left;}
 .option-box{display:flex;align-items:flex-start;gap:12px;padding:14px 16px;border:1.5px solid var(--border);border-radius:4px;cursor:pointer;transition:border-color .12s,background .12s;background:#fff;}
@@ -330,22 +334,38 @@ function AuthScreen({ onLogin, showToast }) {
   const [mode,    setMode]    = useState("login");
   const isMobile = useMobile();
 
-  // ── Typewriter effect for sub-headline ──────────────────────────────────────
-  const TYPEWRITER_FULL = "Every test paper is new. Every question reflects the current exam pattern. No recycled content, ever.";
-  const [twText, setTwText]         = useState("");
-  const [twDone, setTwDone]         = useState(false);
+  // ── Cycling typewriter hook — above auth card, keeps moving ─────────────────
+  const HOOK_LINES = [
+    "Every test paper is new. No recycled content, ever.",
+    "No old PDFs. Real-time intelligence generates the most expected questions.",
+    "Every question reflects the current NTA exam pattern.",
+    "Built fresh for CUET 2026 — not last year's coaching material.",
+    "The AI reads the syllabus. You take the test.",
+  ];
+  const [hookIdx,   setHookIdx]   = useState(0);
+  const [hookText,  setHookText]  = useState("");
+  const [hookPhase, setHookPhase] = useState("typing"); // "typing" | "pausing" | "deleting"
   useEffect(() => {
-    let i = 0;
-    const delay = setTimeout(() => {
-      const interval = setInterval(() => {
-        i++;
-        setTwText(TYPEWRITER_FULL.slice(0, i));
-        if (i >= TYPEWRITER_FULL.length) { clearInterval(interval); setTwDone(true); }
-      }, 28);
-      return () => clearInterval(interval);
-    }, 600); // 600ms pause before typing starts
-    return () => clearTimeout(delay);
-  }, []);
+    const full = HOOK_LINES[hookIdx];
+    let timer;
+    if (hookPhase === "typing") {
+      if (hookText.length < full.length) {
+        timer = setTimeout(() => setHookText(full.slice(0, hookText.length + 1)), 32);
+      } else {
+        timer = setTimeout(() => setHookPhase("pausing"), 1800);
+      }
+    } else if (hookPhase === "pausing") {
+      timer = setTimeout(() => setHookPhase("deleting"), 400);
+    } else if (hookPhase === "deleting") {
+      if (hookText.length > 0) {
+        timer = setTimeout(() => setHookText(hookText.slice(0, -1)), 16);
+      } else {
+        setHookIdx(i => (i + 1) % HOOK_LINES.length);
+        setHookPhase("typing");
+      }
+    }
+    return () => clearTimeout(timer);
+  }, [hookText, hookPhase, hookIdx]);
 
   useEffect(() => { logEvent("page_view", { page: "auth" }); }, []);
 
@@ -647,7 +667,7 @@ function AuthScreen({ onLogin, showToast }) {
           </h1>
 
           <p style={S.subtext}>
-            {twText}{!twDone && <span className="typewriter-caret" />}
+            NTA-standard papers. Instant analytics. Free to start.
           </p>
 
           {/* Social proof */}
@@ -694,6 +714,33 @@ function AuthScreen({ onLogin, showToast }) {
 
         {/* ── Right: Auth Card ── */}
         <div style={S.authCard}>
+
+          {/* ── Cycling hook typewriter — highlighted, always moving ── */}
+          <div style={{
+            minHeight: 52,
+            marginBottom: 18,
+            padding: "10px 14px",
+            background: "rgba(251,191,36,0.07)",
+            border: "1px solid rgba(251,191,36,0.22)",
+            borderRadius: 10,
+            borderLeft: "3px solid #FBBF24",
+          }}>
+            <span
+              className="hook-text"
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: "#FCD34D",
+                lineHeight: 1.55,
+                letterSpacing: 0.1,
+                display: "inline",
+              }}
+            >
+              {hookText}
+            </span>
+            <span className="hook-caret" />
+          </div>
+
           <h2 style={S.authHeading}>Try a Free Mock Test Now</h2>
           <p style={S.authSub}>
             No coaching. No content. Just the real exam — simulated.
