@@ -12,7 +12,7 @@ service cloud.firestore {
     match /users/{uid} {
       allow read:   if request.auth != null && (request.auth.uid == uid || isAdmin());
       allow create: if request.auth != null && request.auth.uid == uid
-                    && !request.resource.data.keys().hasAny(['unlocked']);
+                    && !request.resource.data.keys().hasAny(['unlocked', 'testsUsed', 'gatTestsUsed', 'blocked', 'blockedUntil', 'blockCount', 'paymentId', 'orderId']);
       // Regular users: can update own doc but cannot touch protected fields
       allow update: if request.auth != null && request.auth.uid == uid
                     && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['unlocked', 'paymentId', 'orderId', 'unlockedAt', 'graceReturns', 'testsUsed', 'gatTestsUsed', 'dailyTests', 'blocked', 'blockedUntil', 'blockReason', 'blockCount', 'lastBlockedAt']);
