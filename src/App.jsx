@@ -498,8 +498,9 @@ function AuthScreen({ onLogin, showToast }) {
   const S = {
     page: {
       minHeight: "100vh",
-      // ORIGINAL BACKGROUND (restore by swapping comments): "linear-gradient(135deg, #080F1E 0%, #0D1B3E 50%, #0A1628 100%)"
-      background: "linear-gradient(135deg, #1C1C1C 0%, #2A2A2A 50%, #232323 100%)", // charcoal grey
+      // ORIGINAL NAVY (restore): "linear-gradient(135deg, #080F1E 0%, #0D1B3E 50%, #0A1628 100%)"
+      // CHARCOAL GREY (restore): "linear-gradient(135deg, #1C1C1C 0%, #2A2A2A 50%, #232323 100%)"
+      background: "#000000", // black
       display: "flex",
       flexDirection: "column",
       fontFamily: "var(--font-body)",
