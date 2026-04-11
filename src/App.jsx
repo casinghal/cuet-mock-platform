@@ -719,8 +719,80 @@ function AuthScreen({ onLogin, showToast }) {
       {/* Main split layout */}
       <div style={S.main}>
 
-        {/* ── Left: Hero — hidden on mobile ── */}
-        {!isMobile && (
+        {/* ── Left: Hero — desktop full / mobile compact strip above auth card ── */}
+        {isMobile ? (
+          /* ── Mobile hero — compact, above auth card ── */
+          <div style={{ marginBottom: 8 }}>
+
+            {/* Eyebrow pill — live subjects */}
+            <div style={{ display:"inline-flex", alignItems:"center", gap:7,
+              background:"rgba(99,102,241,0.15)", border:"1px solid rgba(99,102,241,0.3)",
+              color:"#A5B4FC", padding:"5px 12px", borderRadius:20,
+              fontSize:11, fontWeight:600, letterSpacing:"0.05em", textTransform:"uppercase",
+              marginBottom:14, width:"fit-content"
+            }}>
+              <span style={{ width:6, height:6, borderRadius:"50%", background:"#6EE7B7",
+                boxShadow:"0 0 6px #6EE7B7", display:"inline-block" }} />
+              English (101) + GAT (501) Live Now
+            </div>
+
+            {/* Headline */}
+            <h1 style={{ fontFamily:"var(--font-display)", fontSize:"clamp(28px,7vw,38px)",
+              color:"#FFFFFF", lineHeight:1.15, marginBottom:8, fontStyle:"normal" }}>
+              Practice CUET 2026 Mock Tests
+              <span style={{ color:"#F59E0B", display:"block" }}>— Free to Start</span>
+            </h1>
+
+            <p style={{ fontSize:13, color:"rgba(255,255,255,0.55)", lineHeight:1.6, marginBottom:16 }}>
+              NTA-standard papers. Instant analytics. Free to start.
+            </p>
+
+            {/* Social proof — horizontal scroll strip */}
+            <div style={{ display:"flex", gap:20, marginBottom:16, overflowX:"auto",
+              paddingBottom:4, WebkitOverflowScrolling:"touch" }}>
+              {[
+                { num:"50Q", label:"Per Paper" },
+                { num:"+5/−1", label:"NTA Marking" },
+                { num:"60min", label:"Timed" },
+                { num:recencyCount, label:"Tests today", live:true },
+              ].map(p => (
+                <div key={p.label} style={{ display:"flex", flexDirection:"column", gap:2, flexShrink:0 }}>
+                  <span style={{ fontFamily:"var(--font-mono)", fontSize:20, fontWeight:700,
+                    color: p.live ? "#6EE7B7" : "#FFFFFF", lineHeight:1 }}>{p.num}</span>
+                  <span style={{ fontSize:10, color: p.live ? "rgba(110,231,183,0.5)" : "rgba(255,255,255,0.4)",
+                    letterSpacing:"0.04em", whiteSpace:"nowrap" }}>{p.label}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Subject chips */}
+            <div style={{ fontSize:10, fontWeight:600, color:"rgba(255,255,255,0.35)",
+              textTransform:"uppercase", letterSpacing:"0.07em", marginBottom:8 }}>
+              Subjects on this platform
+            </div>
+            <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:4 }}>
+              {subjects.map(s => {
+                const isEcon = s.name.includes("Economics");
+                return (
+                  <span key={s.name} style={s.live ? {
+                    background:"rgba(16,185,129,0.12)", border:"1px solid rgba(16,185,129,0.3)",
+                    color:"#6EE7B7", padding:"4px 11px", borderRadius:20, fontSize:11, fontWeight:600,
+                    display:"flex", alignItems:"center", gap:5,
+                  } : {
+                    background: isEcon ? "rgba(99,102,241,0.08)" : "rgba(255,255,255,0.05)",
+                    border: isEcon ? "1px solid rgba(99,102,241,0.2)" : "1px solid rgba(255,255,255,0.1)",
+                    color:"rgba(255,255,255,0.35)", padding:"4px 11px", borderRadius:20, fontSize:11,
+                  }}>
+                    {s.live && <span style={{ width:5, height:5, borderRadius:"50%", background:"#6EE7B7", display:"inline-block" }} />}
+                    {s.name}
+                    {!s.live && <span style={{ fontSize:9, marginLeft:3, opacity:0.6 }}>{isEcon ? "preparing" : "soon"}</span>}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+        /* ── Desktop hero — full ── */
         <div style={S.hero}>
           <div style={S.eyebrow} className="eyebrow-live">
             <span style={S.dot} />
