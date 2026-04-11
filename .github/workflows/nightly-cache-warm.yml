@@ -15,8 +15,8 @@ jobs:
   fill-until-full:
     name: Fill Cache Until Full
     runs-on: ubuntu-latest
-    # Hard cap: 12 loops x ~9 min each = ~108 min. Killed at 110 if runaway.
-    timeout-minutes: 110
+    # 12 loops x 12 min each = 144 min max. Kill at 150 if runaway.
+    timeout-minutes: 150
 
     steps:
       - name: Self-looping cache fill engine
@@ -30,104 +30,102 @@ jobs:
           MOCK_NOW=0
           QP_NOW=0
 
+          # How long to wait after triggering before checking status
+          # triggerCacheWarm responds IMMEDIATELY but runs in background for up to 8 min
+          # We wait 10 min to be certain the fill run has finished before looping
+          FILL_WAIT_SECS=600
+
           echo "========================================"
-          echo "Cache Fill Engine started: $(date -u '+%Y-%m-%d %H:%M UTC')"
-          echo "Target: Mock=120 / QuickPractice=200 sets | Max loops: $MAX_LOOPS | Timeout: 110 min"
+          echo "Cache Fill Engine — $(date -u '+%Y-%m-%d %H:%M UTC')"
+          echo "Target: Mock=120 / QP=200 | Max loops: $MAX_LOOPS | Fill wait: ${FILL_WAIT_SECS}s"
           echo "========================================"
 
           # Initial status check
-          INITIAL=$(curl -s -X POST "$CF_BASE/getCacheStatus" \
-            -H "x-admin-key: $ADMIN_KEY" -H "Content-Type: application/json" \
-            -d '{}' --max-time 15)
-          echo "Initial: $INITIAL"
+          INITIAL=$(curl -s -X POST "$CF_BASE/getCacheStatus"             -H "x-admin-key: $ADMIN_KEY" -H "Content-Type: application/json"             -d '{}' --max-time 15)
+          echo "Initial status: $INITIAL"
 
-          MOCK_NEEDED=$(echo "$INITIAL" | python3 -c \
-            "import json,sys; d=json.load(sys.stdin); print(d['status']['Mock']['needed'])" 2>/dev/null || echo "120")
-          QP_NEEDED=$(echo "$INITIAL" | python3 -c \
-            "import json,sys; d=json.load(sys.stdin); print(d['status']['QuickPractice']['needed'])" 2>/dev/null || echo "120")
+          MOCK_NEEDED=$(echo "$INITIAL" | python3 -c             "import json,sys; d=json.load(sys.stdin); print(d['status']['Mock']['needed'])" 2>/dev/null || echo "120")
+          QP_NEEDED=$(echo "$INITIAL" | python3 -c             "import json,sys; d=json.load(sys.stdin); print(d['status']['QuickPractice']['needed'])" 2>/dev/null || echo "200")
+          MOCK_NOW=$(echo "$INITIAL" | python3 -c             "import json,sys; d=json.load(sys.stdin); print(d['status']['Mock']['current'])" 2>/dev/null || echo "0")
+          QP_NOW=$(echo "$INITIAL" | python3 -c             "import json,sys; d=json.load(sys.stdin); print(d['status']['QuickPractice']['current'])" 2>/dev/null || echo "0")
 
-          echo "Mock needed: $MOCK_NEEDED | QP needed: $QP_NEEDED"
+          echo "Mock: $MOCK_NOW/120 (needed: $MOCK_NEEDED) | QP: $QP_NOW/200 (needed: $QP_NEEDED)"
 
-          # Already full — nothing to do
           if [ "$MOCK_NEEDED" = "0" ] && [ "$QP_NEEDED" = "0" ]; then
-            echo "Cache already full. Exiting."
+            echo "Cache already full. Nothing to do."
             exit 0
           fi
 
-          # Fill loop — runs until full OR max loops hit
           while [ $LOOP -lt $MAX_LOOPS ]; do
             LOOP=$((LOOP + 1))
             ELAPSED=$(( $(date +%s) - START_TIME ))
             echo ""
             echo "--- Loop $LOOP/$MAX_LOOPS | ${ELAPSED}s elapsed ---"
-            echo "    Mock still needed: $MOCK_NEEDED | QP still needed: $QP_NEEDED"
+            echo "    Mock: $MOCK_NOW/120 (needed: $MOCK_NEEDED) | QP: $QP_NOW/200 (needed: $QP_NEEDED)"
 
-            # Trigger one fill run (8 min function, waits for response)
-            WARM=$(curl -s -w "\n%{http_code}" -X POST "$CF_BASE/triggerCacheWarm" \
-              -H "x-admin-key: $ADMIN_KEY" -H "Content-Type: application/json" \
-              -d '{}' --max-time 570)
+            # Trigger fill — responds immediately, runs in background
+            WARM=$(curl -s -w "
+%{http_code}" -X POST "$CF_BASE/triggerCacheWarm"               -H "x-admin-key: $ADMIN_KEY" -H "Content-Type: application/json"               -d '{}' --max-time 30)
             HTTP=$(echo "$WARM" | tail -1)
             BODY=$(echo "$WARM" | head -n -1)
-            echo "    HTTP: $HTTP"
-            echo "    Response: $BODY"
+            echo "    Trigger HTTP: $HTTP"
 
             if [ "$HTTP" != "200" ]; then
-              echo "    triggerCacheWarm returned HTTP $HTTP. Waiting 30s then retrying."
-              sleep 30
+              echo "    HTTP $HTTP — waiting 60s then retrying"
+              sleep 60
               continue
             fi
 
-            # Wait for Firestore writes to settle then re-check status
-            sleep 5
-            STATUS=$(curl -s -X POST "$CF_BASE/getCacheStatus" \
-              -H "x-admin-key: $ADMIN_KEY" -H "Content-Type: application/json" \
-              -d '{}' --max-time 15)
+            # Check if already locked (previous fill still running from another trigger)
+            IS_LOCKED=$(echo "$BODY" | python3 -c               "import json,sys; d=json.load(sys.stdin); print('yes' if d.get('locked') else 'no')" 2>/dev/null || echo "no")
 
-            MOCK_NOW=$(echo "$STATUS" | python3 -c \
-              "import json,sys; d=json.load(sys.stdin); print(d['status']['Mock']['current'])" 2>/dev/null || echo "0")
-            QP_NOW=$(echo "$STATUS" | python3 -c \
-              "import json,sys; d=json.load(sys.stdin); print(d['status']['QuickPractice']['current'])" 2>/dev/null || echo "0")
-            MOCK_NEEDED=$(echo "$STATUS" | python3 -c \
-              "import json,sys; d=json.load(sys.stdin); print(d['status']['Mock']['needed'])" 2>/dev/null || echo "999")
-            QP_NEEDED=$(echo "$STATUS" | python3 -c \
-              "import json,sys; d=json.load(sys.stdin); print(d['status']['QuickPractice']['needed'])" 2>/dev/null || echo "999")
+            if [ "$IS_LOCKED" = "yes" ]; then
+              LOCK_SINCE=$(echo "$BODY" | python3 -c                 "import json,sys; d=json.load(sys.stdin); print(d.get('lockedSince','unknown'))" 2>/dev/null || echo "unknown")
+              echo "    Fill lock held since $LOCK_SINCE — another fill is running. Waiting ${FILL_WAIT_SECS}s..."
+              sleep $FILL_WAIT_SECS
+            else
+              echo "    Fill started. Waiting ${FILL_WAIT_SECS}s for generation to complete..."
+              sleep $FILL_WAIT_SECS
+            fi
 
-            echo "    After loop $LOOP: Mock=$MOCK_NOW/120 (target) | QP=$QP_NOW/200 (target)"
+            # Re-check status after waiting
+            STATUS=$(curl -s -X POST "$CF_BASE/getCacheStatus"               -H "x-admin-key: $ADMIN_KEY" -H "Content-Type: application/json"               -d '{}' --max-time 15)
 
-            # Both modes full — success, stop immediately
+            MOCK_NOW=$(echo "$STATUS" | python3 -c               "import json,sys; d=json.load(sys.stdin); print(d['status']['Mock']['current'])" 2>/dev/null || echo "$MOCK_NOW")
+            QP_NOW=$(echo "$STATUS" | python3 -c               "import json,sys; d=json.load(sys.stdin); print(d['status']['QuickPractice']['current'])" 2>/dev/null || echo "$QP_NOW")
+            MOCK_NEEDED=$(echo "$STATUS" | python3 -c               "import json,sys; d=json.load(sys.stdin); print(d['status']['Mock']['needed'])" 2>/dev/null || echo "999")
+            QP_NEEDED=$(echo "$STATUS" | python3 -c               "import json,sys; d=json.load(sys.stdin); print(d['status']['QuickPractice']['needed'])" 2>/dev/null || echo "999")
+
+            echo "    After loop $LOOP: Mock=$MOCK_NOW/120 | QP=$QP_NOW/200"
+
             if [ "$MOCK_NEEDED" = "0" ] && [ "$QP_NEEDED" = "0" ]; then
               ELAPSED=$(( $(date +%s) - START_TIME ))
               echo ""
               echo "========================================"
               echo "CACHE FULLY FILLED"
-              echo "  Mock: $MOCK_NOW/120 | QP: $QP_NOW/120"
-              echo "  Loops used: $LOOP | Time: ${ELAPSED}s"
+              echo "  Mock: $MOCK_NOW/120 | QP: $QP_NOW/200"
+              echo "  Loops: $LOOP | Time: ${ELAPSED}s"
               echo "========================================"
               exit 0
             fi
 
-            echo "    Cache not yet full. Next loop starting..."
+            echo "    Not yet full — next loop starting..."
           done
 
-          # Max loops hit — log and decide exit code
           ELAPSED=$(( $(date +%s) - START_TIME ))
           echo ""
           echo "========================================"
-          echo "MAX LOOPS REACHED ($MAX_LOOPS loops / ${ELAPSED}s)"
+          echo "MAX LOOPS REACHED ($MAX_LOOPS / ${ELAPSED}s)"
           echo "  Mock: $MOCK_NOW/120 (needed: $MOCK_NEEDED)"
-          echo "  QP:   $QP_NOW/120  (needed: $QP_NEEDED)"
-          echo "  Next scheduled run will continue filling."
-          echo "  To manually force-fill: trigger this workflow from GitHub Actions tab."
+          echo "  QP:   $QP_NOW/200  (needed: $QP_NEEDED)"
           echo "========================================"
-          # Critical alert if either mode is below 20% of target
-          # Mock: 20% of 120 = 24 | QuickPractice: 20% of 200 = 40
           CRITICAL=0
           if [ "$MOCK_NOW" -lt 24 ] 2>/dev/null; then
-            echo "CRITICAL: Mock cache below 20% (${MOCK_NOW}/120). Manual fill required."
+            echo "CRITICAL: Mock below 20% — manual fill required"
             CRITICAL=1
           fi
           if [ "$QP_NOW" -lt 40 ] 2>/dev/null; then
-            echo "CRITICAL: QuickPractice cache below 20% (${QP_NOW}/200). Manual fill required."
+            echo "CRITICAL: QP below 20% — manual fill required"
             CRITICAL=1
           fi
           exit $CRITICAL
@@ -146,4 +144,3 @@ jobs:
           echo "| Result | ${{ needs.fill-until-full.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Admin Dashboard | https://vantiq-cuetmock.netlify.app/admin |" >> $GITHUB_STEP_SUMMARY
           echo "| Firebase Logs | https://console.firebase.google.com/project/vantiq-cuet/functions/logs |" >> $GITHUB_STEP_SUMMARY
-          echo "| Manual Trigger | https://github.com/casinghal/cuet-mock-platform/actions/workflows/nightly-cache-warm.yml |" >> $GITHUB_STEP_SUMMARY
