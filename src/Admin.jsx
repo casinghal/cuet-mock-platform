@@ -638,6 +638,19 @@ export default function AdminDashboard() {
       }
       setCache(cacheData);
 
+      // ── Auto-trigger cache fill if any mode is below target ───────────────
+      // Runs every time the dashboard loads — no manual button click needed
+      const anyNeeded = Object.values(cacheData).some(m => m.needed > 0);
+      if (anyNeeded && !filling) {
+        const modesBelow = Object.entries(cacheData)
+          .filter(([, m]) => m.needed > 0)
+          .map(([mode, m]) => `${mode}: ${m.current}/${m.total}`)
+          .join(", ");
+        addLog(`Cache below target (${modesBelow}) — auto-fill starting...`, "info");
+        // Small delay so dashboard renders first before fill starts
+        setTimeout(() => fillAllCache(), 1500);
+      }
+
       // ── Recent tests ─────────────────────────────────────────────────────
       const testsSnap = await getDocs(query(collection(db, "tests"), orderBy("completedAt", "desc"), limit(10)));
       setRecentTests(testsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -895,6 +908,28 @@ export default function AdminDashboard() {
           const elapsed = Date.now() - prev.startedAt;
           if (stale >= 8 || elapsed > 9.5 * 60 * 1000) {
             clearInterval(fillPollRef.current);
+            // Self-loop: after fill run completes, re-check status and auto-trigger again if still below target
+            // This mirrors the nightly cron loop — keeps running until both modes are full
+            setTimeout(async () => {
+              try {
+                const r = await fetch(`${CF_BASE}/getCacheStatus`, {
+                  method: "POST", headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ adminKey: ADMIN_KEY }),
+                });
+                const d = await r.json();
+                const stillNeeded = Object.values(d.status || {}).some(m => m.needed > 0);
+                if (stillNeeded) {
+                  // Update cache display with latest counts
+                  setCache(prev2 => {
+                    const u = { ...prev2 };
+                    Object.entries(d.status || {}).forEach(([m, s]) => { u[m] = { ...u[m], current: s.current, needed: s.needed }; });
+                    return u;
+                  });
+                  // Re-trigger — will loop again until full
+                  setTimeout(() => fillAllCache(), 2000);
+                }
+              } catch(_) {}
+            }, 5000);
             return { ...prev, active: false, count: current, stalePolls: stale };
           }
           return { ...prev, count: current, stalePolls: stale };
