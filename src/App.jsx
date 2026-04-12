@@ -317,7 +317,7 @@ function PaywallModal({ user, onSuccess, onClose, subject }) {
             Unlock Full Access
           </h2>
           <p style={{ color: "var(--text-secondary)", fontSize: 14, lineHeight: 1.6 }}>
-            You have used all 4 free Mock Exams. Unlock unlimited access for CUET {subject === "GAT" ? "GAT + English" : "English"} 2026.
+            You have used all 4 free Mock Exams. Unlock unlimited access for all CUET subjects 2026.
           </p>
         </div>
         <div style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 10, padding: "16px 20px", marginBottom: 24 }}>
@@ -375,7 +375,7 @@ function PaywallModal({ user, onSuccess, onClose, subject }) {
 const SUBJECTS = [
   { name: "English (101)",               live: true  },
   { name: "General Aptitude Test (GAT)", live: true  }, // GAT is live
-  { name: "Economics",                   live: false },
+  { name: "Economics (118)",             live: false }, // flip to true after cache filled + reviewed
 ];
 
 function AuthScreen({ onLogin, showToast }) {
@@ -1057,12 +1057,15 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
   const [checking,    setChecking]    = useState(false);
   const isMobile = useMobile();
 
-  const testsUsed    = userData?.testsUsed    || 0;
-  const gatTestsUsed = userData?.gatTestsUsed || 0;
+  const testsUsed     = userData?.testsUsed     || 0;
+  const gatTestsUsed  = userData?.gatTestsUsed  || 0;
+  const econTestsUsed = userData?.econTestsUsed || 0;
   const unlocked     = userData?.unlocked     || false;
   // Show tests left for the active subject
   const testsLeft = activeSubject === "GAT"
     ? Math.max(0, FREE_LIMIT - gatTestsUsed)
+    : activeSubject === "Economics"
+    ? Math.max(0, FREE_LIMIT - econTestsUsed)
     : Math.max(0, FREE_LIMIT - testsUsed);
   const scores    = testHistory.map(t => t.accuracy || 0);
   const avgScore  = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
@@ -1085,10 +1088,12 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
 
   // Labels are identical for both subjects — subject tab already provides context
   const ALL_MODES = {
-    QuickPractice: { label: "Quick Practice", icon: "⚡", desc: "15 questions · All topics", free: true,  subject: "English" },
-    Mock:          { label: "Mock Exam",       icon: "📝", desc: "50 questions · 60 min · NTA standard marking", free: false, subject: "English" },
-    GAT_QP:        { label: "Quick Practice",  icon: "⚡", desc: "15 questions · All aptitude topics", free: true,  subject: "GAT" },
-    GAT_Mock:      { label: "Mock Exam",       icon: "📝", desc: "50 questions · 60 min · General Aptitude", free: false, subject: "GAT" },
+    QuickPractice:  { label: "Quick Practice",          icon: "⚡", desc: "15 questions · All topics · Lifetime Free",              free: true,  subject: "English" },
+    Mock:           { label: "Mock Exam",                icon: "📝", desc: "50 questions · 60 min · NTA standard marking",           free: false, subject: "English" },
+    GAT_QP:         { label: "Quick Practice",           icon: "⚡", desc: "15 questions · All aptitude topics · Always Free",       free: true,  subject: "GAT" },
+    GAT_Mock:       { label: "Mock Exam",                icon: "📝", desc: "50 questions · 60 min · General Aptitude",              free: false, subject: "GAT" },
+    Economics_QP:   { label: "Quick Practice",           icon: "⚡", desc: "15 questions · All topics · Always Free",               free: true,  subject: "Economics" },
+    Economics_Mock: { label: "Mock Exam",                icon: "📝", desc: "50 questions · 60 min · Micro · Macro · Indian Economy", free: false, subject: "Economics" },
   };
 
   // Filter mode tiles by active subject
@@ -1123,14 +1128,16 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
         });
         const d = await r.json();
         if (!d.allowed) {
-          logEvent("paywall_triggered", { user_id: user?.uid, tests_used: mode === "GAT_Mock" ? gatTestsUsed : testsUsed });
+          logEvent("paywall_triggered", { user_id: user?.uid, tests_used: mode === "GAT_Mock" ? gatTestsUsed : mode === "Economics_Mock" ? econTestsUsed : testsUsed });
           setShowPaywall(true); return;
         }
       } else {
         // localStorage fallback — check appropriate counter
-        const effectiveCount   = mode === "GAT_Mock"
-          ? (gatTestsUsed || parseInt(localStorage.getItem("cuet_gat_tests_used") || "0"))
-          : (testsUsed || parseInt(localStorage.getItem("cuet_tests_used") || "0"));
+        const effectiveCount = mode === "GAT_Mock"
+          ? (gatTestsUsed  || parseInt(localStorage.getItem("cuet_gat_tests_used")  || "0"))
+          : mode === "Economics_Mock"
+          ? (econTestsUsed || parseInt(localStorage.getItem("cuet_econ_tests_used") || "0"))
+          : (testsUsed     || parseInt(localStorage.getItem("cuet_tests_used")      || "0"));
         const effectiveUnlocked = unlocked || localStorage.getItem("cuet_unlocked") === "true";
         if (!effectiveUnlocked && effectiveCount >= FREE_LIMIT) {
           logEvent("paywall_triggered", { user_id: user?.uid, tests_used: effectiveCount });
@@ -1140,8 +1147,10 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
       onBeginTest({ mode, subject: activeSubject });
     } catch(_) {
       const effectiveCount = mode === "GAT_Mock"
-        ? (gatTestsUsed || parseInt(localStorage.getItem("cuet_gat_tests_used") || "0"))
-        : (testsUsed || parseInt(localStorage.getItem("cuet_tests_used") || "0"));
+        ? (gatTestsUsed  || parseInt(localStorage.getItem("cuet_gat_tests_used")  || "0"))
+        : mode === "Economics_Mock"
+        ? (econTestsUsed || parseInt(localStorage.getItem("cuet_econ_tests_used") || "0"))
+        : (testsUsed     || parseInt(localStorage.getItem("cuet_tests_used")      || "0"));
       if (!unlocked && effectiveCount >= FREE_LIMIT) {
         setShowPaywall(true); return;
       }
@@ -1159,12 +1168,16 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
   }
 
   // Section label and subject badge
-  const subjectBadge = activeSubject === "GAT" ? "GAT (501)" : "English (101)";
+  const subjectBadge = activeSubject === "GAT" ? "GAT (501)" : activeSubject === "Economics" ? "Economics (118)" : "English (101)";
   const sectionLabel = activeSubject === "GAT"
     ? "Your Practice Summary — CUET GAT (501) 2026"
+    : activeSubject === "Economics"
+    ? "Your Practice Summary — CUET Economics (118) 2026"
     : "Your Practice Summary — CUET English (101) 2026";
   const newTestLabel = activeSubject === "GAT"
     ? "CUET GAT · Section III (501)"
+    : activeSubject === "Economics"
+    ? "CUET Economics · Section II (118)"
     : "CUET English · Section IA (101)";
 
   return (
@@ -1196,7 +1209,7 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 12, marginBottom: 36 }}>
           {[
-            { label: "Tests Taken",  val: activeSubject === "GAT" ? gatTestsUsed : testsUsed, sub: unlocked ? "Unlimited" : `${testsLeft} free left` },
+            { label: "Tests Taken",  val: activeSubject === "GAT" ? gatTestsUsed : activeSubject === "Economics" ? econTestsUsed : testsUsed, sub: unlocked ? "Unlimited" : `${testsLeft} free left` },
             { label: "Avg. Score",   val: avgScore != null ? `${avgScore}%` : "—", sub: "across all tests" },
             { label: "Best Score",   val: bestScore != null ? `${bestScore}%` : "—", sub: "personal best" },
             { label: "Access",       val: unlocked ? "Pro" : "Free", sub: unlocked ? "Unlimited till 30 Jun" : `${testsLeft} of 4 Mock Exams free` },
@@ -1219,8 +1232,8 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {liveSubjects.map(s => {
-                const key = s.name.includes("GAT") ? "GAT" : "English";
-                const label = s.name.includes("GAT") ? "GAT (501)" : "English (101)";
+                const key = s.name.includes("GAT") ? "GAT" : s.name.includes("Economics") ? "Economics" : "English";
+                const label = s.name.includes("GAT") ? "GAT (501)" : s.name.includes("Economics") ? "Economics (118)" : "English (101)";
                 const isActive = activeSubject === key;
                 return (
                   <button key={key} onClick={() => handleSubjectChange(key)} style={{
@@ -1339,7 +1352,7 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
               <tbody>
                 {testHistory.map((t, i) => {
                   const p = t.accuracy || 0;
-                  const modeLabel = { Mock: "Eng Mock", QuickPractice: "Eng QP", GAT_Mock: "GAT Mock", GAT_QP: "GAT QP" }[t.mode] || t.mode || "Mock";
+                  const modeLabel = { Mock: "Eng Mock", QuickPractice: "Eng QP", GAT_Mock: "GAT Mock", GAT_QP: "GAT QP", Economics_Mock: "Eco Mock", Economics_QP: "Eco QP" }[t.mode] || t.mode || "Mock";
                   return (
                     <tr key={i} style={{ borderBottom: i < testHistory.length - 1 ? "1px solid var(--border)" : "none" }}>
                       <td style={{ padding: "12px 14px", color: "var(--text-secondary)" }}>{fmtDate(t.completedAt)}</td>
@@ -1378,7 +1391,7 @@ function GeneratingScreen({ config }) {
               {config?.mode === "GAT_QP" ? "GAT Quick Practice" : config?.mode === "GAT_Mock" ? "GAT Mock Exam" : config?.mode === "QuickPractice" ? "Quick Practice" : "Mock Exam"}
             </span>
             <span className="pill pill-navy">
-              {config?.subject === "GAT" ? "GAT 501" : "English 101"}
+              {config?.subject === "GAT" ? "GAT 501" : config?.subject === "Economics" ? "Economics 118" : "English 101"}
             </span>
             {(config?.mode === "QuickPractice" || config?.mode === "GAT_QP")
               ? <span className="pill pill-green">15Q · Always Free</span>
@@ -1398,7 +1411,7 @@ function GeneratingScreen({ config }) {
 
 // ── EXAM SCREEN ───────────────────────────────────────────────────────────────
 function ExamScreen({ questions, config, user, onSubmit, showToast }) {
-  const isTimed    = config?.mode !== "QuickPractice" && config?.mode !== "GAT_QP"; // free modes: no timer
+  const isTimed    = config?.mode !== "QuickPractice" && config?.mode !== "GAT_QP" && config?.mode !== "Economics_QP"; // free modes: no timer
   const [current,   setCurrent]   = useState(0);
   const [answers,   setAnswers]   = useState({});
   const [marked,    setMarked]    = useState(new Set());
@@ -1465,7 +1478,7 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
       </div>
 
       <div className="section-bar">
-        <span>{config?.subject === "GAT" ? "Section III — General Aptitude Test (GAT)" : "Section I — Languages (English)"}</span>
+        <span>{config?.subject === "GAT" ? "Section III — General Aptitude Test (GAT)" : config?.subject === "Economics" ? "Section II — Domain (Economics 118)" : "Section I — Languages (English)"}</span>
         <span style={{ marginLeft: "auto" }}>Q {current + 1} of {questions.length}</span>
         <span className="pill pill-navy" style={{ marginLeft: 8 }}>{Object.keys(answers).length} answered</span>
       </div>
@@ -1613,8 +1626,9 @@ function ResultsScreen({ questions, answers, config, user, testHistory, onNewTes
   const weakest = topicRows[0] || null;
 
   // ── Historical average from testHistory ────────────────────────────────────
-  const isGAT = config?.subject === "GAT" || config?.mode?.startsWith("GAT");
-  const modeFilter = isGAT ? ["GAT_Mock","GAT_QP"] : ["Mock","QuickPractice"];
+  const isGAT  = config?.subject === "GAT"       || config?.mode?.startsWith("GAT");
+  const isEcon = config?.subject === "Economics" || config?.mode?.startsWith("Economics");
+  const modeFilter = isGAT ? ["GAT_Mock","GAT_QP"] : isEcon ? ["Economics_Mock","Economics_QP"] : ["Mock","QuickPractice"];
   const pastTests  = (testHistory || []).filter(t => modeFilter.includes(t.mode));
   const histAvg    = pastTests.length > 1
     ? Math.round(pastTests.reduce((s, t) => s + (t.accuracy || 0), 0) / pastTests.length)
@@ -1627,10 +1641,16 @@ function ResultsScreen({ questions, answers, config, user, testHistory, onNewTes
       try {
         if (!CF_BASE) { setAnalysis({ summary: "Review your answers below to identify improvement areas.", actions: ["Focus on your weakest topic first."] }); return; }
         const token = await getAuthToken();
-        const subjectName = isGAT ? "GAT (General Aptitude Test)" : "CUET English (101)";
+        const subjectName = isGAT ? "GAT (General Aptitude Test)" : isEcon ? "Economics (118)" : "CUET English (101)";
+        const subjectContext = isEcon
+          ? "Focus on Microeconomics, Macroeconomics, Indian Economic Development, and Statistics for Economics."
+          : isGAT
+          ? "Focus on Quantitative Aptitude, Logical Reasoning, and General Knowledge."
+          : "Focus on Reading Comprehension, Vocabulary, and Grammar.";
         const weakStr = weakest ? `Weakest topic: ${weakest.topic} at ${weakest.accuracy}% accuracy (${weakest.correct}/${weakest.attempted} correct).` : "";
         const prompt = `You are a CUET ${subjectName} expert analysing a student's test result.
 Score: ${pct}% | Correct: ${correct}/${questions.length} | Wrong: ${wrong} | Skipped: ${unanswered} | Mode: ${config?.mode}
+${subjectContext}
 ${weakStr}
 
 Return ONLY a JSON object — no markdown, no preamble:
@@ -1671,7 +1691,7 @@ Begin with { — nothing before it.`;
       const token = await getAuthToken();
       const res = await fetch(\`\${CF_BASE}/generateQuestions\`, {
         method: "POST", headers: authHeaders(token),
-        body: JSON.stringify({ uid: user?.uid, config: { mode: "TopicPractice", focusTopic: topic, focusSubject: isGAT ? "GAT" : "English" } }),
+        body: JSON.stringify({ uid: user?.uid, config: { mode: "TopicPractice", focusTopic: topic, focusSubject: isGAT ? "GAT" : isEcon ? "Economics" : "English" } }),
       });
       const d = await res.json();
       if (d.questions && d.questions.length >= 8) {
@@ -1691,7 +1711,7 @@ Begin with { — nothing before it.`;
       <div className="nta-header">
         <span className="nta-logo">Vantiq <span>CUET</span></span>
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <span className="pill pill-indigo" style={{ fontSize:11 }}>{isGAT ? "GAT" : "English"}</span>
+          <span className="pill pill-indigo" style={{ fontSize:11 }}>{isGAT ? "GAT" : isEcon ? "Economics" : "English"}</span>
           <span className="pill pill-navy" style={{ fontSize:11 }}>{config?.mode === "GAT_QP" || config?.mode === "QuickPractice" ? "Quick Practice" : "Mock Exam"}</span>
         </div>
       </div>
@@ -2253,7 +2273,7 @@ export default function App() {
     logEvent("test_started", { user_id: user?.uid, mode: config.mode, subject: config.subject });
     try {
       const qs = await generateQuestions(config, user?.uid);
-      const required = (config.mode === "Mock" || config.mode === "GAT_Mock") ? 50 : 15;
+      const required = (config.mode === "Mock" || config.mode === "GAT_Mock" || config.mode === "Economics_Mock") ? 50 : 15;
       if (!qs || qs.length !== required) throw new Error(`Incomplete test paper (${qs?.length ?? 0}/${required} questions). Please try again.`);
       setQuestions(qs); setAnswers({}); setScreen("exam");
       examStartedAt.current = Date.now();
@@ -2261,6 +2281,9 @@ export default function App() {
       if (config.mode === "GAT_Mock") {
         setUserData(p => ({ ...p, gatTestsUsed: (p?.gatTestsUsed || 0) + 1 }));
         try { localStorage.setItem("cuet_gat_tests_used", String((parseInt(localStorage.getItem("cuet_gat_tests_used") || "0")) + 1)); } catch(_) {}
+      } else if (config.mode === "Economics_Mock") {
+        setUserData(p => ({ ...p, econTestsUsed: (p?.econTestsUsed || 0) + 1 }));
+        try { localStorage.setItem("cuet_econ_tests_used", String((parseInt(localStorage.getItem("cuet_econ_tests_used") || "0")) + 1)); } catch(_) {}
       } else if (config.mode === "Mock") {
         incrementLocalTestCount();
         setUserData(p => ({ ...p, testsUsed: (p?.testsUsed || 0) + 1 }));
@@ -2290,7 +2313,7 @@ export default function App() {
     // Prevents accidentally opening an exam from consuming a free test
     const answeredCount = Object.keys(submittedAnswers).length;
     const elapsedSecs   = examStartedAt.current ? Math.floor((Date.now() - examStartedAt.current) / 1000) : 999;
-    const isMockMode    = testConfig?.mode === "Mock" || testConfig?.mode === "GAT_Mock";
+    const isMockMode    = testConfig?.mode === "Mock" || testConfig?.mode === "GAT_Mock" || testConfig?.mode === "Economics_Mock";
     if (isMockMode && answeredCount === 0 && elapsedSecs < 60) {
       // Return credit: CF decrements the correct counter server-side (secure)
       try {
@@ -2305,6 +2328,9 @@ export default function App() {
         if (testConfig?.mode === "GAT_Mock") {
           setUserData(p => ({ ...p, gatTestsUsed: Math.max(0, (p?.gatTestsUsed || 1) - 1) }));
           try { localStorage.setItem("cuet_gat_tests_used", String(Math.max(0, parseInt(localStorage.getItem("cuet_gat_tests_used") || "1") - 1))); } catch(_) {}
+        } else if (testConfig?.mode === "Economics_Mock") {
+          setUserData(p => ({ ...p, econTestsUsed: Math.max(0, (p?.econTestsUsed || 1) - 1) }));
+          try { localStorage.setItem("cuet_econ_tests_used", String(Math.max(0, parseInt(localStorage.getItem("cuet_econ_tests_used") || "1") - 1))); } catch(_) {}
         } else {
           setUserData(p => ({ ...p, testsUsed: Math.max(0, (p?.testsUsed || 1) - 1) }));
           decrementLocalTestCount();

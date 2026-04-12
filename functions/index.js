@@ -29,17 +29,19 @@ const UNLOCK_AMOUNT    = 19900;
 // Mock: 120 sets target, auto-fill triggers at 100 (fills ~20 sets before students notice a gap)
 // QuickPractice: 200 sets target, auto-fill triggers at 160 (higher usage — free forever)
 const CACHE_CONFIG = {
-  Mock:          { size: 120, autoFillThreshold: 100 },
-  QuickPractice: { size: 200, autoFillThreshold: 160 },
-  GAT_Mock:      { size: 80,  autoFillThreshold: 60  }, // start smaller — scale after traffic data
-  GAT_QP:        { size: 150, autoFillThreshold: 120 },
+  Mock:            { size: 120, autoFillThreshold: 100 },
+  QuickPractice:   { size: 200, autoFillThreshold: 160 },
+  GAT_Mock:        { size: 80,  autoFillThreshold: 60  },
+  GAT_QP:          { size: 150, autoFillThreshold: 120 },
+  Economics_Mock:  { size: 40,  autoFillThreshold: 30  },
+  Economics_QP:    { size: 150, autoFillThreshold: 120 },
 };
 // Legacy alias used in a few places — now derived per-mode where needed
 function cacheSizeFor(mode) { return CACHE_CONFIG[mode]?.size || 120; }
 function autoFillThresholdFor(mode) { return CACHE_CONFIG[mode]?.autoFillThreshold || 100; }
 const CACHE_TTL_MS     = 7 * 24 * 60 * 60 * 1000;
 const DAILY_TEST_LIMIT = 15;
-const MODES            = ["Mock", "QuickPractice", "GAT_Mock", "GAT_QP"];  // Mock first — highest priority
+const MODES = ["Mock", "QuickPractice", "GAT_Mock", "GAT_QP", "Economics_Mock", "Economics_QP"];
 
 // ── CUET Exam Intelligence Layer ──────────────────────────────────────────────
 // Researched from official NTA CUET UG papers (2022–2025) and syllabus.
@@ -319,6 +321,116 @@ const CUET_EXAM_INTELLIGENCE = {
           StaticGK:             "Easy-Moderate (factual recall, scoring section)",
           CurrentAffairs:       "Easy-Moderate (event recall, no analysis required)",
         },
+      },
+    },
+    Economics_118: {
+      officialCode: "118",
+      version: "1.0",
+      lastResearched: "2026-04-12",
+      examPattern: {
+        totalQuestions: 50, duration: 60,
+        marking: { correct: 5, wrong: -1, unanswered: 0 },
+      },
+      topics: {
+        Microeconomics: {
+          questions: 13,
+          subTopics: {
+            DemandSupply:    "3-4q", Elasticity:      "2q",
+            ConsumerTheory:  "2q",   ProductionCosts: "2-3q",
+            MarketStructures:"3-4q", FactorMarkets:   "0-1q",
+          },
+          caseStudyFormat: {
+            questionsPerBlock: "4-5",
+            typicalScenario: "demand-supply data or equilibrium shift (60-80 words)",
+            platformRule: "Embed scenario as passage text — all 4 questions reference it",
+          },
+          examTrends: [
+            "2025: Microeconomics had MORE questions than Macroeconomics",
+            "Perfect competition: 5 very easy theoretical questions — reliable scoring section",
+            "AFC rectangular hyperbola property numerical — appeared 2025",
+            "Case study on demand-supply equilibrium: in every shift every year",
+            "Cardinal utility (MU/TU): direct formula, not conceptual depth",
+          ],
+          qualityRules: [
+            "All 4 options must use plausible economic values — not random numbers",
+            "Numericals: round numbers only, solvable in 60-90 seconds mentally",
+            "Never test sub-theorems beyond NCERT Class 12 Microeconomics",
+          ],
+        },
+        Macroeconomics: {
+          questions: 12,
+          subTopics: {
+            NationalIncome:"3-4q", MoneyBanking:"2-3q",
+            FiscalPolicy:  "2q",   BalanceOfPayments:"1-2q", IncomeFlow:"1-2q",
+          },
+          caseStudyFormat: {
+            questionsPerBlock: "3-5",
+            typicalScenario: "national income data (NNP, depreciation, taxes) or money supply data (60-70 words)",
+          },
+          examTrends: [
+            "NNPfc = NNPmp - Net Indirect Taxes; NNPmp = GNPmp - Depreciation",
+            "Stock vs Flow: every paper has at least 2 — Money supply (stock), GDP (flow)",
+            "Revenue deficit numerical appeared in 2025",
+            "M1=currency+DD+OD; M3=M1+time deposits with banks",
+            "BoP always balances — autonomous vs accommodating transactions",
+          ],
+          qualityRules: [
+            "Numericals: provide ALL required data — student must not invent figures",
+            "All numerical answers must be whole numbers — no decimal answers",
+          ],
+        },
+        IndianEconomicDevelopment: {
+          questions: 15,
+          subTopics: {
+            EconomicPlanning:    "3-4q", PovertyUnemployment: "2-3q",
+            AgricultureIndia:    "2-3q", IndustryIndia:       "2q",
+            TradeGlobalisation:  "2-3q", HumanDevelopment:    "1-2q",
+          },
+          currentDataContext: true,
+          examTrends: [
+            "LPG Reforms of 1991: MOST tested topic — every paper, every year",
+            "NITI Aayog replaced Planning Commission on January 1, 2015",
+            "Green Revolution: HYV seeds, Punjab/Haryana, wheat, Norman Borlaug",
+            "Disguised unemployment in agriculture: India-specific, always appears",
+            "MGNREGA: 100 days, Ministry of Rural Development — standard question",
+            "HDI: published by UNDP annually in Human Development Report",
+          ],
+          qualityRules: [
+            "LPG questions: always state the year (1991) explicitly",
+            "All statistics from recognised sources: RBI, MOSPI, UNDP, Census",
+            "Never require knowledge beyond NCERT Class 12 Indian Econ Dev",
+          ],
+        },
+        StatisticsForEconomics: {
+          questions: 10,
+          subTopics: {
+            MeasuresCentralTendency: "3-4q", MeasuresDispersion: "2q",
+            Correlation:             "1-2q", IndexNumbers:        "2q",
+            DataPresentation:        "1q",
+          },
+          examTrends: [
+            "Arithmetic Mean: appears in EVERY paper — embed small data set (4-6 values)",
+            "Median: odd/even data sets — average of n/2 and n/2+1 terms for even",
+            "Index numbers: CPI concept (base year=100) + simple weighted index",
+            "Correlation: r=0.9 means strong positive — direction + magnitude",
+            "All data in question text — no image files, no external charts",
+          ],
+          qualityRules: [
+            "Data sets: 4-6 values only — calculable in 60-90 seconds without calculator",
+            "All answers: whole numbers or simple decimals (1-2 places max)",
+            "No formula beyond NCERT Class 11 Statistics for Economics syllabus",
+          ],
+        },
+      },
+      difficultyCalibration: {
+        overall: "Easy-Moderate (rated easiest domain subject in CUET 2025)",
+        bySection: {
+          Microeconomics:            "Easy-Moderate (Perfect competition = easy; elasticity = moderate)",
+          Macroeconomics:            "Moderate (numericals require care; definitions are easy)",
+          IndianEconomicDevelopment: "Easy (mostly recall + NCERT application)",
+          StatisticsForEconomics:    "Moderate (calculation-based, formula application)",
+        },
+        paperNote: "2025 paper was 'lengthy' not 'difficult' — time management over complexity",
       },
     },
   },

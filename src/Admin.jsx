@@ -11,6 +11,7 @@ import {
   getFirestore,
   collection,
   getDocs,
+  getDoc,
   query,
   orderBy,
   limit,
@@ -39,10 +40,12 @@ const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || "";
 
 // ─── Cache config ─────────────────────────────────────────────────────────────
 const CACHE_CONFIG = {
-  Mock:          { size: 120, threshold: 100, label: "Mock Cache" },
-  QuickPractice: { size: 200, threshold: 160, label: "QP Cache" },
-  GAT_Mock:      { size: 80,  threshold: 60,  label: "GAT Mock Cache" },
-  GAT_QP:        { size: 150, threshold: 120, label: "GAT QP Cache" },
+  Mock:            { size: 120, threshold: 100, label: "Mock Cache" },
+  QuickPractice:   { size: 200, threshold: 160, label: "QP Cache" },
+  GAT_Mock:        { size: 80,  threshold: 60,  label: "GAT Mock Cache" },
+  GAT_QP:          { size: 150, threshold: 120, label: "GAT QP Cache" },
+  Economics_Mock:  { size: 40,  threshold: 30,  label: "Economics Mock Cache" },
+  Economics_QP:    { size: 150, threshold: 120, label: "Economics QP Cache" },
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -603,7 +606,16 @@ export default function AdminDashboard() {
   const [intelLoad, setIntelLoad] = useState(false);
   const [gatCALoad,   setGatCALoad]   = useState(false);  // refreshing GAT CA context
   const [gatCAResult, setGatCAResult] = useState(null);   // last GAT CA refresh result
+  const [econDataLoad,   setEconDataLoad]   = useState(false);
+  const [econDataResult, setEconDataResult] = useState(null);
   const [intelGenLoad, setIntelGenLoad] = useState(false);
+
+  const [usageData,     setUsageData]     = useState(null);
+  const [usageLoading,  setUsageLoading]  = useState(false);
+  const [usageTab,      setUsageTab]      = useState("today");
+  const [balanceData,   setBalanceData]   = useState(null);
+  const [balanceInput,  setBalanceInput]  = useState("");
+  const [savingBalance, setSavingBalance] = useState(false);
 
   // ── Cache state ─────────────────────────────────────────────────────────────
   const [cacheStatus, setCacheStatus] = useState(null);
@@ -937,7 +949,9 @@ export default function AdminDashboard() {
       (status.Mock?.current ?? 0) < CACHE_CONFIG.Mock.threshold ||
       (status.QuickPractice?.current ?? 0) < CACHE_CONFIG.QuickPractice.threshold ||
       (status.GAT_Mock?.current ?? 0) < CACHE_CONFIG.GAT_Mock.threshold ||
-      (status.GAT_QP?.current ?? 0) < CACHE_CONFIG.GAT_QP.threshold;
+      (status.GAT_QP?.current ?? 0) < CACHE_CONFIG.GAT_QP.threshold ||
+      (status.Economics_Mock?.current ?? 0) < CACHE_CONFIG.Economics_Mock.threshold ||
+      (status.Economics_QP?.current ?? 0) < CACHE_CONFIG.Economics_QP.threshold;
     if (needsFill) {
       addLog("Cache below threshold — auto-fill starting in 1.5s", "warn");
       setTimeout(fillAllCache, 1500);
@@ -1045,6 +1059,93 @@ export default function AdminDashboard() {
       addLog("GAT CA refresh failed: " + e.message, "error");
     } finally {
       setGatCALoad(false);
+    }
+  };
+
+  const runEconDataRefresh = async () => {
+    if (econDataLoad) return;
+    setEconDataLoad(true);
+    addLog("Refreshing Economics data — fetching latest Indian economy data...");
+    try {
+      const data = await cfFetch("refreshEconomicsCurrentData", {});
+      setEconDataResult(data);
+      addLog(`Economics data refreshed — v${data.refreshVersion}, ${data.cacheInvalidated} cache sets cleared`, "success");
+    } catch (e) {
+      addLog("Economics data refresh failed: " + e.message, "error");
+    } finally {
+      setEconDataLoad(false);
+    }
+  };
+
+  const clearAndRebuildCache = async (subject) => {
+    if (!window.confirm(`Clear ALL cached ${subject} question sets and trigger a fresh rebuild?\nStudents will see "tests preparing" for ~2 minutes.`)) return;
+    addLog(`Clearing and rebuilding ${subject} cache...`);
+    try {
+      const data = await cfFetch("clearAndRebuildSubjectCache", { subject });
+      addLog(`${subject} cache rebuilt — ${data.deletedSets} sets cleared. Nightly cron will auto-fill.`, "success");
+      await loadCacheStatus();
+    } catch (e) {
+      addLog(`${subject} cache rebuild failed: ` + e.message, "error");
+    }
+  };
+
+  const loadApiUsage = async () => {
+    setUsageLoading(true);
+    try {
+      const makeDayStr = (offset) => {
+        const d = new Date(); d.setDate(d.getDate() - offset);
+        return d.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+      };
+      const todayStr = makeDayStr(0);
+      const todaySnap = await getDoc(doc(db, "anthropicUsage", todayStr));
+      const todayData = todaySnap.exists() ? todaySnap.data() : null;
+
+      const sumDays = async (n) => {
+        const snaps = await Promise.all(
+          Array.from({ length: n }, (_, i) => getDoc(doc(db, "anthropicUsage", makeDayStr(i))))
+        );
+        return snaps.reduce((acc, snap) => {
+          if (!snap.exists()) return acc;
+          const d = snap.data();
+          return {
+            totalInputTokens:  (acc.totalInputTokens  || 0) + (d.totalInputTokens  || 0),
+            totalOutputTokens: (acc.totalOutputTokens || 0) + (d.totalOutputTokens || 0),
+            totalCalls:        (acc.totalCalls        || 0) + (d.totalCalls        || 0),
+            totalCostUSD:      (acc.totalCostUSD      || 0) + (d.totalCostUSD      || 0),
+          };
+        }, {});
+      };
+
+      const [weekData, monthData] = await Promise.all([sumDays(7), sumDays(30)]);
+      setUsageData({ today: todayData, week: weekData, month: monthData });
+
+      const balSnap = await getDoc(doc(db, "platformConfig", "anthropicBalance"));
+      if (balSnap.exists()) setBalanceData(balSnap.data());
+    } catch (e) {
+      addLog("Usage data load failed: " + e.message, "error");
+    } finally {
+      setUsageLoading(false);
+    }
+  };
+
+  const saveBalanceRefill = async () => {
+    const amt = parseFloat(balanceInput);
+    if (!amt || amt <= 0) return;
+    setSavingBalance(true);
+    try {
+      const entry = {
+        balanceUSD: amt,
+        refilledAt: new Date().toISOString(),
+        refilledAtDisplay: new Date().toLocaleDateString("en-IN", { day:"2-digit", month:"short", year:"numeric", timeZone:"Asia/Kolkata" }),
+      };
+      await setDoc(doc(db, "platformConfig", "anthropicBalance"), entry);
+      setBalanceData(entry);
+      setBalanceInput("");
+      addLog(`Balance recorded: $${amt.toFixed(2)}`, "success");
+    } catch (e) {
+      addLog("Balance save failed: " + e.message, "error");
+    } finally {
+      setSavingBalance(false);
     }
   };
 
@@ -1184,14 +1285,18 @@ export default function AdminDashboard() {
   // Cache status values
   const mockCurrent   = cacheStatus?.Mock?.current ?? "—";
   const qpCurrent     = cacheStatus?.QuickPractice?.current ?? "—";
-  const gatMockCurrent = cacheStatus?.GAT_Mock?.current ?? "—";
-  const gatQPCurrent   = cacheStatus?.GAT_QP?.current ?? "—";
+  const gatMockCurrent  = cacheStatus?.GAT_Mock?.current ?? "—";
+  const gatQPCurrent    = cacheStatus?.GAT_QP?.current   ?? "—";
+  const econMockCurrent = cacheStatus?.Economics_Mock?.current ?? "—";
+  const econQPCurrent   = cacheStatus?.Economics_QP?.current  ?? "—";
   const cacheHealthy =
     cacheStatus &&
     mockCurrent >= CACHE_CONFIG.Mock.threshold &&
     qpCurrent >= CACHE_CONFIG.QuickPractice.threshold &&
-    (gatMockCurrent === "—" || gatMockCurrent >= CACHE_CONFIG.GAT_Mock.threshold) &&
-    (gatQPCurrent === "—" || gatQPCurrent >= CACHE_CONFIG.GAT_QP.threshold);
+    (gatMockCurrent  === "—" || gatMockCurrent  >= CACHE_CONFIG.GAT_Mock.threshold) &&
+    (gatQPCurrent    === "—" || gatQPCurrent    >= CACHE_CONFIG.GAT_QP.threshold) &&
+    (econMockCurrent === "—" || econMockCurrent >= CACHE_CONFIG.Economics_Mock.threshold) &&
+    (econQPCurrent   === "—" || econQPCurrent   >= CACHE_CONFIG.Economics_QP.threshold);
   const cacheWarning =
     cacheStatus &&
     !cacheHealthy &&
@@ -1460,6 +1565,16 @@ export default function AdminDashboard() {
           label="GAT QP"
           value={gatQPCurrent === "—" ? "—" : `${gatQPCurrent}/${CACHE_CONFIG.GAT_QP.size}`}
           color={gatQPCurrent === "—" || gatQPCurrent >= CACHE_CONFIG.GAT_QP.threshold ? "#059669" : "#D97706"}
+        />
+        <StatusPill
+          label="Eco Mock"
+          value={econMockCurrent === "—" ? "—" : `${econMockCurrent}/${CACHE_CONFIG.Economics_Mock.size}`}
+          color={econMockCurrent === "—" || econMockCurrent >= CACHE_CONFIG.Economics_Mock.threshold ? "#059669" : "#D97706"}
+        />
+        <StatusPill
+          label="Eco QP"
+          value={econQPCurrent === "—" ? "—" : `${econQPCurrent}/${CACHE_CONFIG.Economics_QP.size}`}
+          color={econQPCurrent === "—" || econQPCurrent >= CACHE_CONFIG.Economics_QP.threshold ? "#059669" : "#D97706"}
         />
         <StatusPill
           label="Revenue"
@@ -1975,6 +2090,12 @@ export default function AdminDashboard() {
                 <button onClick={() => fillMode("GAT_QP")} style={{ ...S.btnSmall("primary"), background:"#EA580C" }}>
                   {filling && fillProgress?.targetMode==="GAT_QP" ? "⏳…" : "⚡ GAT QP"}
                 </button>
+                <button onClick={() => fillMode("Economics_Mock")} style={{ ...S.btnSmall("primary"), background:"#0891B2" }}>
+                  {filling && fillProgress?.targetMode==="Economics_Mock" ? "⏳…" : "⚡ Eco Mock"}
+                </button>
+                <button onClick={() => fillMode("Economics_QP")} style={{ ...S.btnSmall("primary"), background:"#0E7490" }}>
+                  {filling && fillProgress?.targetMode==="Economics_QP" ? "⏳…" : "⚡ Eco QP"}
+                </button>
                 <button onClick={() => fillMode("Mock")} style={S.btnSmall()} disabled={filling}>
                   Eng Mock
                 </button>
@@ -1994,10 +2115,17 @@ export default function AdminDashboard() {
                 current={cacheStatus?.[mode]?.current ?? 0}
               />
             ))}
-            <div style={{ padding: "10px 14px" }}>
+            <div style={{ padding: "10px 14px", display:"flex", gap:6, flexWrap:"wrap", borderTop:"1px solid #F1F5F9" }}>
               <button onClick={loadCacheStatus} style={S.btnSmall()}>
-                Refresh Cache Status
+                ↻ Refresh Status
               </button>
+              {["English","GAT","Economics"].map(subj => (
+                <button key={subj} onClick={() => clearAndRebuildCache(subj)}
+                  style={{ ...S.btnSmall(), color:"#DC2626", borderColor:"#FCA5A5" }}
+                  title={`Clear all ${subj} cached sets and trigger fresh rebuild`}>
+                  ↺ Rebuild {subj}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -2204,11 +2332,110 @@ export default function AdminDashboard() {
             )}
           </div>
 
+          {/* Claude API Usage Monitor */}
+          <div style={S.card}>
+            <div style={S.cardHeader}>
+              <span style={S.cardTitle}>Claude API Usage</span>
+              <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+                {["today","week","month"].map(t => (
+                  <button key={t} onClick={() => setUsageTab(t)} style={{
+                    ...S.btnSmall(), padding:"3px 10px",
+                    background: usageTab === t ? "#0F2747" : "transparent",
+                    color: usageTab === t ? "#fff" : "inherit",
+                    borderColor: usageTab === t ? "#0F2747" : undefined,
+                  }}>
+                    {t.charAt(0).toUpperCase() + t.slice(1)}
+                  </button>
+                ))}
+                <button onClick={loadApiUsage} style={S.btnSmall()} disabled={usageLoading}>
+                  {usageLoading ? <span style={S.spinner} /> : "↻ Load"}
+                </button>
+              </div>
+            </div>
+            <div style={{ padding: "14px 16px" }}>
+              {!usageData ? (
+                <div style={{ fontSize:12, color:"#94A3B8", marginBottom:12 }}>
+                  Click ↻ Load to fetch usage data from Firestore.
+                </div>
+              ) : (() => {
+                const d = usageData[usageTab] || {};
+                const inT  = (d.totalInputTokens  || 0).toLocaleString("en-IN");
+                const outT = (d.totalOutputTokens || 0).toLocaleString("en-IN");
+                const cost = (d.totalCostUSD || 0).toFixed(4);
+                const calls = (d.totalCalls || 0).toLocaleString("en-IN");
+                return (
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))", gap:10, marginBottom:14 }}>
+                    {[
+                      { label:"API Calls",       val: calls },
+                      { label:"Input Tokens",    val: inT },
+                      { label:"Output Tokens",   val: outT },
+                      { label:"Est. Cost (USD)", val: `$${cost}` },
+                    ].map(s => (
+                      <div key={s.label} style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:8, padding:"10px 12px" }}>
+                        <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:18, fontWeight:700, color:"#0F2747" }}>{s.val}</div>
+                        <div style={{ fontSize:11, color:"#94A3B8", marginTop:2 }}>{s.label} · {usageTab}</div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+              <div style={{ borderTop:"1px solid #E2E8F0", paddingTop:12 }}>
+                <div style={{ fontSize:11, fontWeight:600, color:"#64748B", textTransform:"uppercase", letterSpacing:".05em", marginBottom:8 }}>
+                  Prepaid Balance Tracker
+                </div>
+                {balanceData ? (
+                  <div style={{ display:"flex", gap:20, marginBottom:10 }}>
+                    <div>
+                      <div style={{ fontSize:11, color:"#94A3B8" }}>Last refill</div>
+                      <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:15, fontWeight:700, color:"#059669" }}>
+                        ${balanceData.balanceUSD?.toFixed(2)}
+                      </div>
+                      <div style={{ fontSize:10, color:"#94A3B8" }}>{balanceData.refilledAtDisplay}</div>
+                    </div>
+                    {usageData?.month && (
+                      <div>
+                        <div style={{ fontSize:11, color:"#94A3B8" }}>Est. remaining</div>
+                        <div style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:15, fontWeight:700,
+                          color:(balanceData.balanceUSD-(usageData.month.totalCostUSD||0))<10?"#DC2626":"#0F2747" }}>
+                          ${Math.max(0,balanceData.balanceUSD-(usageData.month.totalCostUSD||0)).toFixed(2)}
+                        </div>
+                        <div style={{ fontSize:10, color:"#94A3B8" }}>after 30-day spend</div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ fontSize:11, color:"#94A3B8", marginBottom:8 }}>No refill recorded yet.</div>
+                )}
+                {usageData?.month && balanceData && (balanceData.balanceUSD-(usageData.month.totalCostUSD||0))<10 && (
+                  <div style={{ background:"#FEF2F2", border:"1px solid #FCA5A5", borderRadius:6, padding:"6px 10px", fontSize:11, color:"#DC2626", fontWeight:600, marginBottom:10 }}>
+                    ⚠ Estimated remaining below $10 — refill at console.anthropic.com
+                  </div>
+                )}
+                <div style={{ display:"flex", gap:6, alignItems:"center", flexWrap:"wrap" }}>
+                  <input type="number" step="0.01" min="0" placeholder="e.g. 50.00"
+                    value={balanceInput} onChange={e => setBalanceInput(e.target.value)}
+                    style={{ width:110, padding:"5px 8px", border:"1px solid #E2E8F0", borderRadius:6, fontSize:12, fontFamily:"'JetBrains Mono',monospace" }}
+                  />
+                  <button onClick={saveBalanceRefill} style={S.btnSmall("primary")} disabled={savingBalance || !balanceInput}>
+                    {savingBalance ? "Saving…" : "Record Refill ($)"}
+                  </button>
+                  <a href="https://console.anthropic.com/settings/billing" target="_blank" rel="noopener noreferrer"
+                    style={{ fontSize:11, color:"#4338CA", textDecoration:"none" }}>
+                    → Anthropic Console ↗
+                  </a>
+                </div>
+                <div style={{ fontSize:10, color:"#CBD5E1", marginTop:6 }}>
+                  Estimates: Haiku $0.80/$4.00 · Sonnet $3.00/$15.00 per million tokens. Actual billing may vary.
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Intelligence */}
           <div style={S.card}>
             <div style={S.cardHeader}>
               <span style={S.cardTitle}>CUET Intelligence</span>
-              <div style={{ display: "flex", gap: 6 }}>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 <button
                   onClick={() => updateIntelligence("English")}
                   style={S.btnSmall()}
@@ -2224,15 +2451,23 @@ export default function AdminDashboard() {
                 >
                   {gatCALoad ? "Fetching..." : "↺ Refresh GAT CA"}
                 </button>
+                <button
+                  onClick={runEconDataRefresh}
+                  style={{ ...S.btnSmall(), background: econDataLoad ? "#94A3B8" : "#0891B2", color: "#fff" }}
+                  disabled={econDataLoad}
+                  title="Fetches latest Indian economy data via web search and refreshes Economics data context in Firestore"
+                >
+                  {econDataLoad ? "Fetching..." : "↺ Refresh Econ Data"}
+                </button>
               </div>
             </div>
             <div style={{ padding: 14 }}>
               {/* Coverage pills */}
-              <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+              <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
                 {[
-                  { label: "English 101", color: "#059669" },
-                  { label: "GAT 501", color: "#059669" },
-                  { label: "Economics — coming", color: "#D97706" },
+                  { label: "English 101",                    color: "#059669" },
+                  { label: "GAT 501",                        color: "#059669" },
+                  { label: "Economics 118 — ready to launch", color: "#0891B2" },
                 ].map((c) => (
                   <span
                     key={c.label}
@@ -2255,8 +2490,13 @@ export default function AdminDashboard() {
                 ))}
               </div>
               {gatCAResult && (
-                <div style={{ fontSize: 11, color: "#059669", fontWeight: 600, marginBottom: 10, padding: "6px 10px", background: "#ECFDF5", borderRadius: 6 }}>
+                <div style={{ fontSize: 11, color: "#059669", fontWeight: 600, marginBottom: 8, padding: "6px 10px", background: "#ECFDF5", borderRadius: 6 }}>
                   GAT CA: v{gatCAResult.refreshVersion} · {gatCAResult.contextLength} chars · {gatCAResult.cacheInvalidated} sets cleared
+                </div>
+              )}
+              {econDataResult && (
+                <div style={{ fontSize: 11, color: "#0891B2", fontWeight: 600, marginBottom: 10, padding: "6px 10px", background: "#ECFEFF", borderRadius: 6 }}>
+                  Econ Data: v{econDataResult.refreshVersion} · {econDataResult.contextLength} chars · {econDataResult.cacheInvalidated} sets cleared
                 </div>
               )}
               {!intel || intel.length === 0 ? (
