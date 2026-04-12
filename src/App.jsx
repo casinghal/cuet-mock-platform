@@ -376,7 +376,7 @@ function PaywallModal({ user, onSuccess, onClose, subject }) {
 const SUBJECTS = [
   { name: "English (101)",               live: true  },
   { name: "General Aptitude Test (GAT)", live: true  }, // GAT is live
-  { name: "Economics (118)",             live: false }, // flip to true after cache filled + reviewed
+  { name: "Economics (118)",             live: true  }, // LIVE — Economics IED engine deployed
 ];
 
 function AuthScreen({ onLogin, showToast }) {
