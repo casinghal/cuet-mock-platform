@@ -40,12 +40,12 @@ const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || "";
 
 // ─── Cache config ─────────────────────────────────────────────────────────────
 const CACHE_CONFIG = {
-  Mock:            { size: 30,  threshold: 20,  label: "Mock Cache" },
-  QuickPractice:   { size: 40,  threshold: 28,  label: "QP Cache" },
-  GAT_Mock:        { size: 30,  threshold: 20,  label: "GAT Mock Cache" },
-  GAT_QP:          { size: 40,  threshold: 28,  label: "GAT QP Cache" },
-  Economics_Mock:  { size: 30,  threshold: 20,  label: "Economics Mock Cache" },
-  Economics_QP:    { size: 40,  threshold: 28,  label: "Economics QP Cache" },
+  Mock:            { size: 20,  threshold: 12,  label: "Mock Cache" },
+  QuickPractice:   { size: 30,  threshold: 20,  label: "QP Cache" },
+  GAT_Mock:        { size: 20,  threshold: 12,  label: "GAT Mock Cache" },
+  GAT_QP:          { size: 30,  threshold: 20,  label: "GAT QP Cache" },
+  Economics_Mock:  { size: 20,  threshold: 12,  label: "Economics Mock Cache" },
+  Economics_QP:    { size: 30,  threshold: 20,  label: "Economics QP Cache" },
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
