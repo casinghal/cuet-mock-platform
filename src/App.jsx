@@ -1716,7 +1716,7 @@ function ResultsScreen({ questions, answers, config, user, testHistory, onNewTes
         const token = await getAuthToken();
         const subjectName = isGAT ? "GAT (General Aptitude Test)" : isEcon ? "Economics (118)" : "CUET English (101)";
         const subjectContext = isEcon
-          ? "Focus on Microeconomics, Macroeconomics, Indian Economic Development, and Statistics for Economics."
+          ? "Focus on Microeconomics (Course I), Macroeconomics (Course II), and Indian Economic Development (Course III — new in 2026). IED covers Development Policies 1947-90, Economic Reforms 1991 (LPG), Current Challenges, and India-China-Pakistan comparison."
           : isGAT
           ? "Focus on Quantitative Aptitude, Logical Reasoning, and General Knowledge."
           : "Focus on Reading Comprehension, Vocabulary, and Grammar.";
