@@ -394,7 +394,7 @@ function AuthScreen({ onLogin, showToast }) {
     "The platform reads the syllabus. You take the test.",
     "Economics 2026 has a brand-new IED section. We cover it. No one else does yet.",
     "Indian Economic Development is new in CUET 2026 — no past papers. We built the questions.",
-    "IED questions built from NCERT + Sandeep Garg + 2025-26 govt data. Refreshed weekly.",
+    "IED questions built from NCERT + 2025-26 govt data. Refreshed weekly.",
   ];
   const [hookIdx,   setHookIdx]   = useState(0);
   const [hookText,  setHookText]  = useState("");
@@ -1057,7 +1057,7 @@ function GoogleIcon() {
 function IEDDisclaimerBanner() {
   const LINES = [
     "India's 1st mock tests for the new Indian Economic Development section — built from NCERT + 2025-26 govt data.",
-    "No past CUET papers exist for IED. Our questions are crafted from NCERT Class 11 + Sandeep Garg framework.",
+    "No past CUET papers exist for IED. Our questions are crafted from the NCERT Class 11 curriculum.",
     "IED is brand new in CUET 2026. We refresh our question bank every week as new data and updates emerge.",
     "If you studied IED for CBSE boards, you're already ahead. Our questions match that exact curriculum.",
   ];
