@@ -1566,7 +1566,7 @@ function ResultsScreen({ questions, answers, config, user, onNewTest, onReview }
           return;
         }
         const token = await getAuthToken();
-        const isGAT = testConfig?.subject === "GAT" || testConfig?.mode?.startsWith("GAT");
+        const isGAT = config?.subject === "GAT" || config?.mode?.startsWith("GAT");
         const subjectName = isGAT ? "GAT (General Aptitude Test)" : "CUET English (101)";
         const weakTopicStr = topicRows[0] ? `Weakest topic: ${topicRows[0].topic} at ${topicRows[0].accuracy}% accuracy.` : "";
         const prompt = `You are a CUET ${subjectName} expert. Give a concise 3-4 sentence performance analysis for a student who scored ${pct}% (${correct}/${questions.length} correct, ${wrong} wrong, ${unanswered} unanswered) in ${config?.mode} mode. ${weakTopicStr} Give specific actionable advice. Be encouraging but honest. Do not mention AI or any generation tool.`;
