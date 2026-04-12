@@ -893,12 +893,6 @@ function AuthScreen({ onLogin, showToast }) {
             <span className="hook-caret" />
           </div>
 
-          {/* Heading — always shown */}
-          <h2 style={{ ...S.authHeading, marginBottom: isMobile ? 4 : undefined }}>Try a Free Mock Test Now</h2>
-          <p style={{ ...S.authSub, marginBottom: isMobile ? 14 : undefined }}>
-            No coaching. No content. Just the real exam — simulated.
-          </p>
-
           {/* Recency strip — desktop only (mobile hero already shows it) */}
           {!isMobile && (
           <div className="recency-pop" style={{ display:"flex", alignItems:"center", gap:8, marginBottom:16, padding:"7px 12px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:8 }}>
