@@ -1871,12 +1871,14 @@ Begin with { — nothing before it.`;
         <div className="card" style={{ marginBottom:12, padding:"14px 16px" }}>
           <div style={{ fontSize:10, fontWeight:700, letterSpacing:".07em", textTransform:"uppercase", color:"var(--text-muted)", marginBottom:10 }}>Topic Accuracy — Weakest First</div>
           {topicRows.map((r, i) => (
-            <div key={i} style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
-              <div style={{ fontSize:11, color: i===0 ? "#DC2626" : "var(--text-sec)", fontWeight: i===0 ? 700 : 400, width:isMobile?110:150, flexShrink:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.topic}</div>
-              <div style={{ flex:1, height:6, background:"#E2E8F0", borderRadius:3, overflow:"hidden" }}>
+            <div key={i} style={{ marginBottom: 10 }}>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4, gap:8 }}>
+                <div style={{ fontSize:11, color: i===0 ? "#DC2626" : "var(--navy)", fontWeight: i===0 ? 700 : 500, lineHeight:1.4 }}>{r.topic}</div>
+                <div style={{ fontFamily:"var(--font-mono)", fontSize:11, fontWeight:700, color:barColor(r.accuracy), flexShrink:0 }}>{r.accuracy}%</div>
+              </div>
+              <div style={{ height:5, background:"#E2E8F0", borderRadius:3, overflow:"hidden" }}>
                 <div style={{ height:"100%", width:`${r.accuracy}%`, background:barColor(r.accuracy), borderRadius:3, transition:"width .6s ease" }} />
               </div>
-              <div style={{ fontFamily:"var(--font-mono)", fontSize:11, fontWeight:700, color:barColor(r.accuracy), width:32, textAlign:"right", flexShrink:0 }}>{r.accuracy}%</div>
             </div>
           ))}
         </div>
