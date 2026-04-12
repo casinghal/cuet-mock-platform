@@ -1645,13 +1645,19 @@ function ResultsScreen({ questions, answers, config, user, testHistory, onNewTes
           : "Focus on Reading Comprehension, Vocabulary, and Grammar.";
         const weakStr = weakest ? `Weakest topic: ${weakest.topic} at ${weakest.accuracy}% accuracy (${weakest.correct}/${weakest.attempted} correct).` : "";
         const prompt = `You are a CUET ${subjectName} expert analysing a student's test result.
-Score: ${pct}% | Correct: ${correct}/${questions.length} | Wrong: ${wrong} | Skipped: ${unanswered} | Mode: ${config?.mode}
+
+SCORING DATA (NTA system: +5 correct, -1 wrong, 0 skipped):
+- NTA points scored: ${totalScore} out of ${maxScore} possible (${pct}%)
+- Questions correct: ${correct} out of ${questions.length} attempted (raw accuracy: ${Math.round(correct / questions.length * 100)}%)
+- Questions wrong: ${wrong} | Questions skipped: ${unanswered} | Mode: ${config?.mode}
 ${subjectContext}
 ${weakStr}
 
+CRITICAL: The ${pct}% score comes from NTA points (${totalScore}/${maxScore}), NOT from questions correct (${correct}/${questions.length}). Do NOT write "${pct}% (${correct}/${questions.length} correct)" — that is factually wrong. State them separately.
+
 Return ONLY a JSON object — no markdown, no preamble:
 {
-  "summary": "One honest sentence on overall performance — specific, not generic. Mention the score.",
+  "summary": "One honest sentence. State the NTA score (${totalScore}/${maxScore} points = ${pct}%) and separately note that ${correct} out of ${questions.length} questions were correct. Do not conflate the two.",
   "actions": [
     "Action 1: start with a verb (Revise/Review/Practice). Specific to weakest topic.",
     "Action 2: start with a verb. About reviewing wrong answers or second-weakest area.",
