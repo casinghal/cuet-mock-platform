@@ -3012,7 +3012,7 @@ exports.clearAndRebuildSubjectCache = functions
     setCORS(res);
     if (req.method === "OPTIONS") { res.status(204).send(""); return; }
     if (req.method !== "POST")    { res.status(405).json({ error: "Method not allowed" }); return; }
-    const decoded = await verifyToken(req, res); if (!decoded) return;
+    if (!verifyAdminKey(req, res)) return;
     const subject = req.body?.subject || "all"; // "English" | "GAT" | "Economics" | "all"
     try {
       const cacheRef = db.collection("questionSets");
