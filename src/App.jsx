@@ -1550,7 +1550,7 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
         <span className="pill pill-navy" style={{ marginLeft: 8 }}>{Object.keys(answers).length} answered</span>
       </div>
 
-      <div style={{ flex: 1, display: "flex", overflow: "hidden", flexDirection: "column" }}>
+      <div style={{ flex: 1, display: "flex", overflow: "hidden", flexDirection: isMobile ? "column" : "row" }}>
         <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? "20px 16px" : "28px 32px" }}>
           {q.passage && (
             <div style={{ borderLeft: "4px solid var(--indigo)", background: "#F5F7FF", borderRadius: "0 8px 8px 0", padding: isMobile ? "12px 14px" : "16px 20px", marginBottom: 20, fontSize: isMobile ? 13 : 13.5, lineHeight: 1.8, color: "var(--text-primary)", overflowWrap: "break-word", wordBreak: "break-word" }}>
