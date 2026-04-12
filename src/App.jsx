@@ -1694,6 +1694,7 @@ function ResultsScreen({ questions, answers, config, user, testHistory, onNewTes
     }
   });
   const topicRows = Object.entries(topicStats)
+    .filter(([, s]) => s.att > 0)   // ← only show topics the student actually attempted
     .map(([t, s]) => ({ topic: t, attempted: s.att, correct: s.cor, accuracy: s.att > 0 ? Math.round((s.cor / s.att) * 100) : 0 }))
     .sort((a, b) => a.accuracy - b.accuracy);
   const weakest = topicRows[0] || null;

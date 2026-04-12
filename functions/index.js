@@ -621,35 +621,43 @@ function buildGATMockBatch(batchNum, caContext) {
     case 1: return `You are an NTA CUET GAT (General Aptitude Test 501) question paper generator.
 Generate exactly 12 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
 JSON schema: ${schema}
-Topic distribution (MANDATORY — 12 questions):
-- Number System / Basic Arithmetic: 3 questions (divisibility, HCF, LCM, remainder)
-- Percentage: 3 questions (successive change, CP/SP applications)
-- Ratio, Proportion, and Variation: 3 questions
-- Profit and Loss: 3 questions (discount, markup, profit%)
-Rules: correct is 0-indexed (0=A,1=B,2=C,3=D). passage = null for all. Difficulty: CUET standard. Explanation: 2-3 sentences.
+Topic distribution (MANDATORY — 12 questions). topic field = exact name shown below:
+  "Number System": 3 questions (divisibility, HCF/LCM, remainder theorem, digit patterns)
+  "Percentages": 3 questions (successive change, population growth, percentage of percentage)
+  "Ratio & Proportion": 3 questions (mixture/alligation, income/expenditure ratio, proportion)
+  "Profit & Loss": 3 questions (discount, markup, successive transactions — each a different business type)
+DIVERSITY MANDATE: Vary entities across ALL questions — use farmer/student/company/investor/municipality, NOT only shopkeeper. Each question must use different number magnitudes and a different context. No two questions should follow the same template.
+topic field = the specific name above (e.g. "Profit & Loss", "Percentages"). NOT "Quantitative Aptitude".
+Rules: correct is 0-indexed. passage = null. Difficulty: CUET standard. Explanation: 2-3 sentences.
 Return ONLY the JSON object. Begin with { — nothing before it.`;
 
     // ── Batch 2: Quantitative Part 2 — request 9, slice to 7 ────────────────
     case 2: return `You are an NTA CUET GAT (General Aptitude Test 501) question paper generator.
 Generate exactly 9 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
 JSON schema: ${schema}
-Topic distribution (MANDATORY — 9 questions):
-- Time, Speed, and Distance: 3 questions (trains, boats optional)
-- Mensuration / Geometry: 3 questions (area, perimeter, circles, triangles)
-- Time and Work: 2 questions
-- Data Interpretation: 1 question (embed small table in question text as: 'Year|Sales: 2022|500, 2023|650, 2024|800')
-Rules: correct is 0-indexed. passage = null. No trigonometry. Difficulty: CUET standard. Explanation: 2-3 sentences.
+Topic distribution (MANDATORY — 9 questions). topic field = exact name shown below:
+  "Time, Speed & Distance": 3 questions (one train, one boat/stream, one general motion — all different setups)
+  "Mensuration": 3 questions (one area/perimeter, one volume/surface area, one circle/sector — different shapes)
+  "Time & Work": 2 questions (pipe-cistern for one, workers for the other)
+  "Data Interpretation": 1 question (embed small table/data in question text as row: 'Category|Value: A|X, B|Y, C|Z')
+DIVERSITY MANDATE: Every question uses a different domain/context. No two Time-Speed questions may use trains of the same length range. Vary: units, entity types, calculation path.
+topic field = the specific name above. NOT "Quantitative Aptitude".
+Rules: correct is 0-indexed. passage = null. No trigonometry. Explanation: 2-3 sentences.
 Return ONLY the JSON object. Begin with { — nothing before it.`;
 
     // ── Batch 3: Reasoning Part 1 — request 12, slice to 10 ─────────────────
     case 3: return `You are an NTA CUET GAT (General Aptitude Test 501) question paper generator.
 Generate exactly 12 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
 JSON schema: ${schema}
-Topic distribution (MANDATORY — 12 questions):
-- Number Series / Missing Number: 4 questions (include at least 2 difference-of-difference patterns)
-- Analogy and Classification: 3 questions (word-pair analogy or odd-one-out)
-- Blood Relations: 3 questions (max 3 generations, state gender explicitly in question)
-- Logical Venn Diagram: 2 questions (3-circle sets, meaningful intersections)
+Topic distribution (MANDATORY — 12 questions). topic field = exact name shown below:
+  "Number Series": 4 questions — use 4 DIFFERENT series patterns:
+    one: arithmetic (constant difference), one: geometric (constant ratio),
+    one: difference-of-differences (second-level pattern), one: mixed (alternating two sequences)
+  "Analogy": 3 questions (one word-pair, one number-pair, one letter-pair — each different analogy type)
+  "Blood Relations": 3 questions (use different family scenarios — siblings/cousins/uncle-nephew/grandparent — never the same)
+  "Logical Venn Diagram": 2 questions (3-circle Venn — use different category types: professions/animals/cities for each)
+DIVERSITY MANDATE: Each Number Series must have a genuinely different sequence rule. Blood Relations must not repeat the same family structure. Analogy questions must not all be "state:capital" or "animal:sound" type.
+topic field = the specific name above. NOT "Logical Reasoning".
 Rules: correct is 0-indexed. passage = null. No image-dependent questions. Explanation: 2-3 sentences.
 Return ONLY the JSON object. Begin with { — nothing before it.`;
 
@@ -657,12 +665,14 @@ Return ONLY the JSON object. Begin with { — nothing before it.`;
     case 4: return `You are an NTA CUET GAT (General Aptitude Test 501) question paper generator.
 Generate exactly 9 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
 JSON schema: ${schema}
-Topic distribution (MANDATORY — 9 questions):
-- Coding-Decoding: 2 questions (letter shift OR symbol substitution — not both)
-- Direction Sense: 2 questions (4-directional navigation, no diagonal, state starting point)
-- Calendar and Clocks: 2 questions (provide anchor day in question)
-- Alphabet Series: 1 question
-- Seating Arrangement: 2 questions (linear, 5 people, solvable from stated clues)
+Topic distribution (MANDATORY — 9 questions). topic field = exact name shown below:
+  "Coding-Decoding": 2 questions — one letter-shift (A→D, B→E pattern), one symbol-substitution; DIFFERENT cipher systems
+  "Direction Sense": 2 questions — one ending with final direction, one ending with distance; use different starting positions
+  "Calendar & Clocks": 2 questions — one calendar (day-of-week), one clock (angle between hands at given time)
+  "Alphabet Series": 1 question (pattern in letter sequences — not a repeat of Number Series format)
+  "Seating Arrangement": 2 questions (linear only, 5-6 people, all clues stated, unique arrangement for each)
+DIVERSITY MANDATE: The two Coding-Decoding questions must use completely different encoding logic. Both Seating Arrangement questions must have different constraint types (facing/not facing, left/right relationships).
+topic field = the specific name above. NOT "Logical Reasoning".
 Rules: correct is 0-indexed. passage = null. No image-dependent questions. Explanation: 2-3 sentences.
 Return ONLY the JSON object. Begin with { — nothing before it.`;
 
@@ -670,14 +680,16 @@ Return ONLY the JSON object. Begin with { — nothing before it.`;
     case 5: return `You are an NTA CUET GAT (General Aptitude Test 501) question paper generator.
 Generate exactly 12 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
 JSON schema: ${schema}
-Topic distribution (MANDATORY — 12 questions):
-- Awards and Honours (India): 2 questions (Padma awards, Sahitya Akademi, sports awards)
-- Books and Authors: 2 questions (confirmed real books by Indian or internationally known authors)
-- Indian History and National Movement: 2 questions (freedom movement, treaties, major events)
-- Indian Geography: 2 questions (rivers, national parks, tiger reserves, states/UTs)
-- Science and Technology: 2 questions (ISRO missions, DRDO, space milestones — confirmed facts only)
-- Indian Polity and Constitution: 2 questions (Articles, commissions, national institutions)
-Rules: correct is 0-indexed. passage = null. All 4 options must be plausible real names/dates. Explanation: 2-3 sentences.
+Topic distribution (MANDATORY — 12 questions). topic field = exact name shown below:
+  "Awards & Honours": 2 questions (Padma Vibhushan/Padma Bhushan/Padma Shri, Sahitya Akademi, or sports awards — different award categories)
+  "Books & Authors": 2 questions (confirmed real books — one fiction, one non-fiction or political memoir; both Indian or internationally known authors)
+  "Indian History": 2 questions (different eras — one pre-independence, one post-independence event)
+  "Indian Geography": 2 questions (different domains — one physical/river geography, one wildlife/national park)
+  "Science & Technology": 2 questions (one ISRO mission with confirmed launch year, one DRDO or biotech — no guessing)
+  "Indian Polity & Constitution": 2 questions (different Articles/Amendments — one Fundamental Rights, one DPSP or institutional)
+DIVERSITY MANDATE: All 4 options for each GK question must be plausible — no obviously invented distractors. No two questions in the same sub-topic may test the same person/event/place.
+topic field = the specific name above (e.g., "Awards & Honours"). NOT "General Knowledge" or "GK".
+Rules: correct is 0-indexed. passage = null. Confirmed facts only. Explanation: 2-3 sentences.
 Return ONLY the JSON object. Begin with { — nothing before it.`;
 
     // ── Batch 6: Current Affairs — request 8, slice to 6 ────────────────────
@@ -707,17 +719,38 @@ function buildGATQPPrompt() {
 ${buildGATIntelligenceBrief("GAT_QP")}
 Generate exactly 15 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
 JSON schema: ${schema}
-Topic distribution (MANDATORY — exact counts):
-- Quantitative Aptitude: 5 questions (mix of: percentage, profit-loss, ratio, number system — easy-moderate only)
-- Logical Reasoning: 5 questions (mix of: number series, analogy, blood relations, coding — no complex seating arrangements)
-- General Knowledge: 5 questions (India-first static GK — awards, books/authors, ISRO, Indian history — factual recall)
-Rules:
-1. correct is 0-indexed (0=A,1=B,2=C,3=D)
-2. passage = null for all questions
-3. No trigonometry, SI, CI in quant
-4. No image-dependent reasoning questions
-5. Difficulty: easy-moderate — suitable for first-time GAT students
-6. Explanation: 1-2 sentences stating why correct and why top distractor is wrong
+
+MANDATORY TOPIC DISTRIBUTION (exact counts — topic field MUST be the specific sub-topic name listed below):
+Quantitative Aptitude — 5 questions:
+  "Percentages": 1 question (successive change or percentage of a percentage — NOT a shopkeeper/profit scenario)
+  "Profit & Loss": 1 question (cost price / selling price / discount — one scenario only)
+  "Ratio & Proportion": 1 question (mixture, alligation, or ratio change)
+  "Number System": 1 question (HCF/LCM, divisibility, or digit sum)
+  "Time, Speed & Distance": 1 question (train/boat/river — state all givens explicitly)
+
+Logical Reasoning — 5 questions:
+  "Number Series": 1 question (include the full sequence and ask for next/missing term)
+  "Analogy": 1 question (word-pair or number-pair analogy)
+  "Blood Relations": 1 question (max 2 generations, state gender — no ambiguous pronouns)
+  "Coding-Decoding": 1 question (letter shift or symbol substitution)
+  "Direction Sense": 1 question (4 cardinal directions only, state starting point)
+
+General Knowledge — 5 questions:
+  "Awards & Honours": 1 question (Padma awards or Sahitya Akademi — confirmed real recipient)
+  "Books & Authors": 1 question (confirmed real book by Indian or internationally known author)
+  "Indian History": 1 question (freedom movement, treaty, or major event — specific year/name)
+  "Indian Geography": 1 question (river, national park, tiger reserve, or state capital)
+  "Science & Technology": 1 question (ISRO mission, DRDO, or space milestone — confirmed fact only)
+
+DIVERSITY MANDATE — STRICTLY ENFORCED:
+  Each question must use a completely unique scenario, context, and surface format.
+  Quantitative: vary entity types (farmer/student/company/city — NOT always shopkeeper).
+  Vary number ranges — do NOT use the same magnitude twice (e.g., not all ₹100-₹200 scenarios).
+  Logical: each question type uses a completely different structure than the others.
+  GK: options must all be plausible real names — no obviously wrong distractors.
+  NO TWO QUESTIONS may follow the same word-problem template.
+
+Rules: correct is 0-indexed (0=A,1=B,2=C,3=D). passage = null for all. Difficulty: easy-moderate.
 Return ONLY the JSON object. Begin with { — nothing before it.`;
 }
 
@@ -1000,34 +1033,33 @@ function buildEconomicsMockBatch(batchNum, econContext) {
 ${buildEconomicsIntelligenceBrief(1)}
 Generate exactly 23 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
 JSON schema: ${schema}
-MANDATORY TOPIC DISTRIBUTION — 23 questions:
+MANDATORY TOPIC DISTRIBUTION — 23 questions. topic field = specific sub-topic name (NOT "Microeconomics"):
 
 UNIT I — Consumer Theory and Demand (6 questions, passage=null):
-- Consumer equilibrium: utility approach, 1-commodity (MU=P) and 2-commodity (MUx/Px = MUy/Py): 2 questions
-- Law of Demand: factors, movement vs shift, inverse relationship: 1 question
-- Price Elasticity of Demand: measurement (percentage method or total expenditure method), factors: 2 questions
-- Income Elasticity or Cross Elasticity of Demand: 1 question
+- topic "Consumer Equilibrium": 2 questions — one 1-commodity (MU=P), one 2-commodity (MUx/Px = MUy/Py) — use DIFFERENT income levels and prices in each
+- topic "Law of Demand": 1 question — choose from factors / movement vs shift / exceptions
+- topic "Price Elasticity of Demand": 2 questions — one percentage method, one total expenditure method — different goods (luxury vs necessity)
+- topic "Income Elasticity of Demand" OR "Cross Elasticity of Demand": 1 question
 
 UNIT II — Production and Costs (6 questions, passage=null):
-- Production function, TP/MP/AP relationships and shapes of curves: 2 questions
-- Cost concepts: AFC (rectangular hyperbola), AVC, ATC, MC relationships: 2 questions (include 1 numerical with AFC×Q = TFC)
-- Revenue: TR, AR, MR and Producer Equilibrium (MC=MR): 2 questions
+- topic "Production Function": 2 questions — one TP/MP/AP relationship, one law of variable proportions — DIFFERENT input combinations
+- topic "Cost Curves": 2 questions — one AFC (AFC×Q = TFC = constant numerical), one ATC/AVC/MC relationship — use completely different TFC values
+- topic "Producer Equilibrium": 2 questions — one TR-TC approach, one MC=MR approach — different output scenarios
 
-UNIT III — Perfect Competition ONLY (5 questions, passage=null):
-⚠ MONOPOLY AND OTHER MARKET STRUCTURES REMOVED FROM 2026 SYLLABUS — DO NOT GENERATE THEM.
-- Features of perfect competition, AR=MR=Price, price-taking behaviour: 2 questions
-- Price determination under perfect competition, equilibrium: 1 question
-- Supply: determinants, supply curve, price elasticity of supply: 2 questions
+UNIT III — Perfect Competition (5 questions, passage=null):
+⚠ MONOPOLY REMOVED FROM 2026 — DO NOT GENERATE.
+- topic "Perfect Competition Features": 2 questions — AR=MR=Price, price-taking — ask from DIFFERENT angles (seller vs industry vs AR curve)
+- topic "Equilibrium Under Perfect Competition": 1 question (price determination, equilibrium condition)
+- topic "Price Elasticity of Supply": 2 questions — one determinant, one measurement — different time horizons
 
-UNIT IV — Market Equilibrium + Applications (6 questions):
-- Case Study Block: Write ONE scenario (60-80 words describing a market — demand/supply shift or equilibrium change). Set passage field = this scenario text for ALL 4 case study questions.
-  - Case study question 1: equilibrium price and quantity determination
-  - Case study question 2: effect of a supply or demand shift
-  - Case study question 3: excess demand or excess supply analysis
-  - Case study question 4: welfare or efficiency implication
-- Price Ceiling (maximum price) and Price Floor/MSP (minimum price support) — 2026 addition (passage=null): 2 questions
+UNIT IV — Market Equilibrium (6 questions):
+- Case Study Block: Write ONE scenario (60-80 words, a UNIQUE market — choose from: agricultural commodity / manufactured good / housing / foreign exchange / labour). passage = this scenario for ALL 4 case study questions.
+  - topic "Market Equilibrium": Q1 equilibrium price and quantity, Q2 demand/supply shift effect, Q3 excess demand/supply, Q4 welfare/efficiency
+- topic "Price Ceiling": 1 question (maximum price — effect, examples)
+- topic "Price Floor": 1 question (minimum price / MSP — effect, examples)
 
-Rules: correct is 0-indexed (0=A,1=B,2=C,3=D). Round numbers only. No monopoly/monopolistic/oligopoly. Explanation: 2-3 sentences.
+DIVERSITY MANDATE: All numerical questions must use different cost/price values. No two demand questions should involve the same type of good. Vary: consumer income levels, production scales, market types in case study.
+Rules: correct is 0-indexed. Round numbers only. No monopoly/oligopoly. Explanation: 2-3 sentences.
 Return ONLY the JSON object. Begin with { — nothing before it.`;
 
     case 2: return `You are an NTA CUET Economics (118) question paper generator for CUET 2026.
@@ -1269,11 +1301,15 @@ JSON schema:
 {"questions":[{"question":"...","options":["A","B","C","D"],"correct":0,"topic":"Reading Comprehension","passage":"short passage text or null","explanation":"1-2 sentences"}]}
 
 Topic distribution (MANDATORY — exactly these counts):
-- Reading Comprehension: 5 questions (1 short passage, 120-150 words, factual or narrative)
-- Synonyms and Antonyms: 3 questions (passage = null)
-- Sentence Rearrangement: 3 questions (passage = null)
-- Choosing Correct Word: 2 questions (passage = null)
-- Grammar and Vocabulary: 2 questions (passage = null)
+- Reading Comprehension: 5 questions (1 short passage, 120-150 words). topic = "Reading Comprehension"
+- Synonyms and Antonyms: 3 questions (passage = null). topic = "Synonyms & Antonyms"
+- Sentence Rearrangement: 3 questions (passage = null). topic = "Sentence Rearrangement"
+- Choosing Correct Word: 2 questions (passage = null). topic = "Choosing Correct Word"
+- Grammar and Vocabulary: 2 questions (passage = null). topic = "Grammar & Vocabulary"
+
+PASSAGE DIVERSITY: Write a short passage (120-150 words) on a UNIQUE factual or narrative topic — never generic. Rotate topics: wildlife conservation / Indian classical arts / space mission / historical trade route / women in science / sustainable farming / folk traditions / urban transport innovation.
+SYNONYM/ANTONYM DIVERSITY: Choose words from across difficulty levels — include at least one advanced word (B2-C1 level). Embed words in context sentences.
+SENTENCE REARRANGEMENT: Each P/Q/R/S set must cover a completely different domain and sentence structure type.
 
 Rules:
 1. correct is 0-indexed (0=A,1=B,2=C,3=D)
@@ -1300,8 +1336,12 @@ function buildMockBatch(batchNum) {
 Generate exactly 12 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
 JSON schema: ${schema}
 Topic distribution (MANDATORY):
-- Reading Comprehension: 8 questions — write ONE factual passage (science/geography/history, exactly 250-300 words). All 8 RC questions must use IDENTICAL passage text.
+- Reading Comprehension: 8 questions — write ONE factual passage (exactly 250-300 words). All 8 RC questions must use IDENTICAL passage text.
 - Synonyms and Antonyms: 4 questions (passage = null)
+PASSAGE DIVERSITY: Choose a UNIQUE factual topic from this list — rotate across test papers:
+  environmental science / space exploration / Indian archaeology / public health policy / climate technology / digital revolution / ocean science / urban planning / agricultural innovation
+  Do NOT write about generic "importance of education" or "benefits of exercise" topics.
+SYNONYM/ANTONYM DIVERSITY: Test advanced vocabulary (B2-C1 level). Use underlined words naturally embedded in a sentence, not isolated words. topic = "Synonyms & Antonyms".
 Rules: correct is 0-indexed (0=A,1=B,2=C,3=D). Difficulty: challenging — NTA exam standard. Explanation: 2-3 sentences.
 Return ONLY the JSON object. Begin with { — nothing before it.`,
 
@@ -1310,9 +1350,13 @@ Return ONLY the JSON object. Begin with { — nothing before it.`,
 Generate exactly 12 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
 JSON schema: ${schema}
 Topic distribution (MANDATORY):
-- Reading Comprehension: 9 questions — write ONE narrative passage (story or biographical excerpt, exactly 250-300 words). All 9 RC questions must use IDENTICAL passage text.
+- Reading Comprehension: 9 questions — write ONE narrative passage (exactly 250-300 words). All 9 RC questions must use IDENTICAL passage text.
 - Synonyms and Antonyms: 3 questions (passage = null)
-Rules: correct is 0-indexed (0=A,1=B,2=C,3=D). Difficulty: challenging — NTA exam standard. Explanation: 2-3 sentences.
+PASSAGE DIVERSITY: Choose a UNIQUE narrative from this list — rotate across test papers:
+  historical figure's defining moment / scientific discovery story / social movement account / indigenous community narrative / expedition/exploration account / invention backstory / migration experience / conservation success story
+  Do NOT write generic "a student who worked hard" or "a farmer who was poor" narratives.
+SYNONYM/ANTONYM DIVERSITY: Test words from narrative/literary register (e.g., resilience, perseverance, arduous, lament). topic = "Synonyms & Antonyms".
+Rules: correct is 0-indexed. Difficulty: challenging — NTA exam standard. Explanation: 2-3 sentences.
 Return ONLY the JSON object. Begin with { — nothing before it.`,
 
     3: `You are an NTA CUET English (101) question paper generator.
@@ -1320,9 +1364,13 @@ Return ONLY the JSON object. Begin with { — nothing before it.`,
 Generate exactly 12 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
 JSON schema: ${schema}
 Topic distribution (MANDATORY):
-- Reading Comprehension: 8 questions — write ONE literary/philosophical passage (critical prose, exactly 250-300 words). All 8 RC questions must use IDENTICAL passage text.
+- Reading Comprehension: 8 questions — write ONE literary/philosophical passage (exactly 250-300 words). All 8 RC questions must use IDENTICAL passage text.
 - Synonyms and Antonyms: 4 questions (passage = null)
-Rules: correct is 0-indexed (0=A,1=B,2=C,3=D). Difficulty: challenging — NTA exam standard. Explanation: 2-3 sentences.
+PASSAGE DIVERSITY: Choose a UNIQUE literary/philosophical theme — rotate across test papers:
+  human nature and social behaviour / art and its role in society / technology and ethics / cultural identity / memory and loss / justice and morality / creativity and innovation / solitude and reflection
+  Prose must be critical in tone — NOT a story, NOT a biography. Think essay-style.
+SYNONYM/ANTONYM DIVERSITY: Test academic vocabulary (perspicacious, ephemeral, pragmatic, equivocal). topic = "Synonyms & Antonyms".
+Rules: correct is 0-indexed. Difficulty: challenging — NTA exam standard. Explanation: 2-3 sentences.
 Return ONLY the JSON object. Begin with { — nothing before it.`,
 
     4: `You are an NTA CUET English (101) question paper generator.
@@ -1330,10 +1378,15 @@ Return ONLY the JSON object. Begin with { — nothing before it.`,
 Generate exactly 12 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
 JSON schema: ${schema}
 Topic distribution (MANDATORY):
-- Sentence Rearrangement: 8 questions — jumbled P/Q/R/S format, arrange in logical order (passage = null)
-- Grammar and Vocabulary: 3 questions — error spotting or correct usage (passage = null)
-- Synonyms and Antonyms: 1 question (passage = null)
-Rules: correct is 0-indexed (0=A,1=B,2=C,3=D). Difficulty: challenging — NTA exam standard. Explanation: 2-3 sentences.
+- Sentence Rearrangement: 8 questions — jumbled P/Q/R/S format (passage = null). topic = "Sentence Rearrangement"
+- Grammar and Vocabulary: 3 questions — error spotting or correct usage (passage = null). topic = "Grammar & Vocabulary"
+- Synonyms and Antonyms: 1 question (passage = null). topic = "Synonyms & Antonyms"
+SENTENCE REARRANGEMENT DIVERSITY: Each of the 8 P/Q/R/S sets must:
+  - Cover a completely different topic (science / history / culture / economy / environment / sport / technology / social issue)
+  - Use a different sentence structure type (cause-effect / chronological / problem-solution / comparison / definition-example)
+  - NOT repeat the same opening pattern ("The...", "In...", "A..." — vary the openers)
+GRAMMAR DIVERSITY: Test different error types across the 3 questions (subject-verb agreement / tense consistency / preposition use — one of each).
+Rules: correct is 0-indexed. Difficulty: challenging. Explanation: 2-3 sentences.
 Return ONLY the JSON object. Begin with { — nothing before it.`,
 
     5: `You are an NTA CUET English (101) question paper generator.
@@ -1341,9 +1394,13 @@ Return ONLY the JSON object. Begin with { — nothing before it.`,
 Generate exactly 12 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
 JSON schema: ${schema}
 Topic distribution (MANDATORY):
-- Choosing Correct Word: 8 questions — fill in the blank or cloze (passage = null)
-- Match the Following: 4 questions — word-meaning or phrase pairs (passage = null)
-Rules: correct is 0-indexed (0=A,1=B,2=C,3=D). Difficulty: challenging — NTA exam standard. Explanation: 2-3 sentences.
+- Choosing Correct Word: 8 questions — fill-in-blank or cloze (passage = null). topic = "Choosing Correct Word"
+- Match the Following: 4 questions — word-meaning or phrase-meaning pairs (passage = null). topic = "Match the Following"
+CLOZE DIVERSITY: The 8 fill-in-blank questions must span 4 different registers:
+  formal/academic (2q), literary/descriptive (2q), scientific/technical (2q), conversational/idiomatic (2q)
+  Sentences must be substantive (15+ words) — not short fill-in-one-word sentences.
+MATCH DIVERSITY: Use 2 word-meaning matches (advanced vocabulary) + 2 idiom/phrase-meaning matches. All 4 must be different word categories.
+Rules: correct is 0-indexed. Difficulty: challenging. Explanation: 2-3 sentences.
 Return ONLY the JSON object. Begin with { — nothing before it.`,
   };
 
@@ -1353,7 +1410,7 @@ Return ONLY the JSON object. Begin with { — nothing before it.`,
 // ── Quality Gate — validates every question before accepting the set ──────────
 function validateQuestionSet(questions, mode) {
   // Required question count per mode
-  const REQUIRED_COUNT = { Mock: 50, QuickPractice: 15, GAT_Mock: 50, GAT_QP: 15, TopicPractice: 10 }[mode] ?? 50;
+  const REQUIRED_COUNT = { Mock: 50, QuickPractice: 15, GAT_Mock: 50, GAT_QP: 15, Economics_Mock: 50, Economics_QP: 15, TopicPractice: 10 }[mode] ?? 50;
   const errors = [];
 
   if (questions.length !== REQUIRED_COUNT) {
