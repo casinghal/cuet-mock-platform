@@ -1,4 +1,5 @@
 // GAT sequential model — 6 batches, mirrors English architecture
+// v2.1 — Economics IED engine + refreshEconomicsCurrentData + clearAndRebuildSubjectCache
 /**
  * Firebase Cloud Functions — Vantiq CUET Platform
  * TWO-TIER ARCHITECTURE:
