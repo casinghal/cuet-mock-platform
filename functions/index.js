@@ -323,114 +323,170 @@ const CUET_EXAM_INTELLIGENCE = {
         },
       },
     },
+    // ─── Economics_118 — CUET 2026 REVISED SYLLABUS ──────────────────────────
+    // CRITICAL 2026 CHANGE: 3 Courses. Statistics for Economics REMOVED.
+    // Course I: Microeconomics | Course II: Macroeconomics | Course III: IED (NEW)
+    // Source: Official NTA syllabus PDF December 2025 (Economics/Business Economics – 309)
     Economics_118: {
       officialCode: "118",
-      version: "1.0",
+      version: "2.0",
       lastResearched: "2026-04-12",
+      syllabusYear: 2026,
+      criticalNote: "IED is brand new in 2026 — no past CUET papers exist. Built from NCERT Class 11 + current govt data.",
       examPattern: {
         totalQuestions: 50, duration: 60,
         marking: { correct: 5, wrong: -1, unanswered: 0 },
+        courses: 3, // Course I: Micro, Course II: Macro, Course III: IED (NEW 2026)
       },
       topics: {
-        Microeconomics: {
-          questions: 13,
-          subTopics: {
-            DemandSupply:    "3-4q", Elasticity:      "2q",
-            ConsumerTheory:  "2q",   ProductionCosts: "2-3q",
-            MarketStructures:"3-4q", FactorMarkets:   "0-1q",
-          },
-          caseStudyFormat: {
-            questionsPerBlock: "4-5",
-            typicalScenario: "demand-supply data or equilibrium shift (60-80 words)",
-            platformRule: "Embed scenario as passage text — all 4 questions reference it",
+        Microeconomics_CourseI: {
+          questions: 20, // Increased from 2025 — Micro now dominates
+          units: {
+            "Unit I: Consumer Theory + Demand": "Consumer equilibrium via utility approach (one/two commodity), demand curve, elasticity of demand — PED measurement (percentage, total expenditure methods)",
+            "Unit II: Production and Costs": "Short-run/long-run production function, TP/MP/AP curve shapes, fixed+variable costs, AFC/AVC/ATC/MC curves, revenue concepts, Producer equilibrium (MC=MR)",
+            "Unit III: Perfect Competition ONLY": "MONOPOLY, MONOPOLISTIC COMPETITION, OLIGOPOLY REMOVED FROM 2026 SYLLABUS. ONLY Perfect Competition: features, profit maximisation, price determination, supply curve, price elasticity of supply",
+            "Unit IV: Market Equilibrium + Applications": "Market equilibrium, excess demand/supply, Price ceiling (max price), Price flooring/MSP (min price) — NEWLY ADDED 2026. FAT Theory (Food Availability Decline) — BRAND NEW CONCEPT added to 2026 syllabus",
           },
           examTrends: [
-            "2025: Microeconomics had MORE questions than Macroeconomics",
-            "Perfect competition: 5 very easy theoretical questions — reliable scoring section",
-            "AFC rectangular hyperbola property numerical — appeared 2025",
-            "Case study on demand-supply equilibrium: in every shift every year",
-            "Cardinal utility (MU/TU): direct formula, not conceptual depth",
+            "MONOPOLY IS REMOVED — never generate questions on monopoly, monopolistic competition, or oligopoly",
+            "Perfect Competition now covers all market structure questions — AR=MR=P=D horizontal, price-taking behaviour",
+            "FAT Theory is brand new — Food Availability Decline (Amartya Sen) — questions on causes of famines vs food availability",
+            "Price Ceiling and Price Floor (MSP) are new applications added — test impact on surplus/shortage",
+            "Case study block: one demand-supply scenario (60-80 words) → 4 questions from it — appears in every shift",
+            "AFC rectangular hyperbola property: AFC × Q = TFC = constant — frequently tested numerical",
+            "Consumer equilibrium: utility approach both 1-commodity (MU=P) and 2-commodity (MUx/Px = MUy/Py = MU money)",
           ],
           qualityRules: [
-            "All 4 options must use plausible economic values — not random numbers",
-            "Numericals: round numbers only, solvable in 60-90 seconds mentally",
-            "Never test sub-theorems beyond NCERT Class 12 Microeconomics",
+            "NEVER generate questions on Monopoly, Monopolistic Competition, or Oligopoly — removed from 2026",
+            "All numerical options: plausible values, round numbers, solvable in 60-90 seconds",
+            "Case study passage: 60-80 words describing a market situation — all 4 questions must reference it",
           ],
         },
-        Macroeconomics: {
-          questions: 12,
-          subTopics: {
-            NationalIncome:"3-4q", MoneyBanking:"2-3q",
-            FiscalPolicy:  "2q",   BalanceOfPayments:"1-2q", IncomeFlow:"1-2q",
-          },
-          caseStudyFormat: {
-            questionsPerBlock: "3-5",
-            typicalScenario: "national income data (NNP, depreciation, taxes) or money supply data (60-70 words)",
+        Macroeconomics_CourseII: {
+          questions: 18,
+          units: {
+            "Unit I: National Income Accounting": "Circular flow, GDP/GNP/NNP/NDP at market price and factor cost, Value Added/Expenditure/Income methods, Private Income/Personal Income/Disposable Income (NEWLY ADDED 2026)",
+            "Unit II: Money and Banking": "Functions of money, M1/M2/M3 aggregates, money creation and money multiplier, RBI functions, CRR/SLR/Repo/Reverse Repo policy tools",
+            "Unit III: Determination of Income and Employment": "AD and components, equilibrium in 2-sector model, excess/deficient demand, multiplier mechanism, fiscal/monetary corrective measures",
+            "Unit IV: Government Budget and Economy": "Revenue+capital receipts/expenditure, balanced/surplus/deficit budget, revenue deficit/fiscal deficit/primary deficit definitions and numericals",
+            "Unit V: Open Economy": "BoP accounts (current+capital account), autonomous+accommodating transactions, fixed/flexible/managed float exchange rates, BoP always balances",
           },
           examTrends: [
-            "NNPfc = NNPmp - Net Indirect Taxes; NNPmp = GNPmp - Depreciation",
-            "Stock vs Flow: every paper has at least 2 — Money supply (stock), GDP (flow)",
-            "Revenue deficit numerical appeared in 2025",
-            "M1=currency+DD+OD; M3=M1+time deposits with banks",
-            "BoP always balances — autonomous vs accommodating transactions",
+            "Private Income, Personal Income, Disposable Income added to 2026 — new National Income calculations",
+            "NNPfc = NNPmp − Net Indirect Taxes | NNPmp = GNPmp − Depreciation — formula questions every paper",
+            "Stock vs Flow: Money supply (STOCK), GDP (FLOW) — 2+ questions every paper",
+            "Revenue deficit numerical with case study: appeared in 2025 and expected in 2026",
+            "M1 = Currency with public + Demand Deposits + OD with RBI | M3 = M1 + Time deposits",
+            "Multiplier = 1/(1-MPC) = 1/MPS — straightforward numerical with round numbers",
+            "BoP: always balances — current account + capital account + errors = 0 in theory",
           ],
           qualityRules: [
-            "Numericals: provide ALL required data — student must not invent figures",
-            "All numerical answers must be whole numbers — no decimal answers",
+            "National income numericals: provide ALL required data in question — student must not invent",
+            "All numerical answers must be whole numbers — no decimal answers in options",
+            "Government deficit numericals: revenue deficit = revenue expenditure − revenue receipts",
           ],
         },
-        IndianEconomicDevelopment: {
-          questions: 15,
-          subTopics: {
-            EconomicPlanning:    "3-4q", PovertyUnemployment: "2-3q",
-            AgricultureIndia:    "2-3q", IndustryIndia:       "2q",
-            TradeGlobalisation:  "2-3q", HumanDevelopment:    "1-2q",
+        IndianEconomicDevelopment_CourseIII: {
+          questions: 12, // NEW SECTION in 2026 — no past papers. Conservative count.
+          noPastPapers: true, // IMPORTANT: calibrate from NCERT Class 11 + current data only
+          source: "NCERT Class 11 'Indian Economic Development' textbook — Chapters 1-10 (Old NCERT Chapter 8 = Comparison with Neighbours)",
+          units: {
+            "Unit I: Development Policies 1947-90": {
+              ncertChapters: "Ch 1 (Eve of Independence) + Ch 2 (India 1950-90)",
+              keyFacts: [
+                "Eve of Independence: per capita income very low, literacy ~18%, life expectancy ~32 years, agrarian economy",
+                "Hindu Rate of Growth: ~3.5% GDP growth under Planning Commission era",
+                "Five Year Plans: First FYP (1951-56) agriculture+irrigation; Second FYP (Mahalanobis, 1956-61) heavy industry; Third FYP (1961-66) 'Gadgil Yojana'",
+                "IPR 1956: Industrial Policy Resolution — called 'Economic Constitution of India'; gave public sector strategic role; Schedule A (state monopoly), Schedule B (mixed), Schedule C (private)",
+                "Green Revolution: 1960s-70s; HYV seeds; Norman Borlaug; Punjab, Haryana, UP wheat; increase in foodgrain production; mechanisation",
+                "FERA: Foreign Exchange Regulation Act — restricted foreign exchange; replaced by FEMA in 2000",
+                "Import Substitution: pre-1991 strategy; high tariffs; protect domestic industry; led to inefficiency",
+                "Land Reforms: Zamindari abolition; land ceiling; tenancy reforms",
+              ],
+            },
+            "Unit II: Economic Reforms since 1991": {
+              ncertChapters: "Ch 3 (LPG — Liberalisation, Privatisation, Globalisation: An Appraisal)",
+              keyFacts: [
+                "Trigger: BoP crisis 1990-91; Gulf War → oil price surge → NRI remittances fell; fiscal deficit 8.5% of GDP; India pledged gold to Bank of England",
+                "IMF + World Bank provided $7 billion loan — conditionality: implement structural adjustment",
+                "PM Narasimha Rao + Finance Minister Dr. Manmohan Singh introduced NEP 1991",
+                "Three pillars: Liberalisation (L) + Privatisation (P) + Globalisation (G) = LPG policy",
+                "Liberalisation: Industrial licensing abolished (retained for only 4: defence equipment, atomic energy, railway transport, alcohol beverages); 715 items freed from quantitative import restrictions; FERA → FEMA",
+                "Privatisation: Public sector reserved industries reduced from 17 to 4; Disinvestment of PSUs; token privatisation = 5-10% equity divestment",
+                "Globalisation: Rupee partially convertible (1994); FDI allowed in many sectors; India joined WTO as founding member (1995); SEZs established",
+                "GST: July 1, 2017 — replaced multiple indirect taxes; one nation one tax",
+                "Appraisal: GDP growth improved; FDI increased; but critics say: widened inequality, neglected agriculture, informal sector not covered",
+              ],
+            },
+            "Unit III: Current Challenges": {
+              ncertChapters: "Ch 4 (Poverty) + Ch 5 (Human Capital) + Ch 6 (Rural Dev) + Ch 7 (Employment) + Ch 8 (Infrastructure) + Ch 9 (Environment)",
+              keyFacts: [
+                "HDI 2025: India ranked 130 out of 193 countries (UNDP HDR 2025 'A Matter of Choice: People and Possibilities in the Age of AI'). HDI value 0.685. Medium human development category.",
+                "HDI = measure of health (life expectancy) + education (mean+expected years schooling) + income (GNI per capita). Published by UNDP annually since 1990. Introduced by Mahbub ul Haq and Amartya Sen.",
+                "Multidimensional Poverty (MPI): India declined from 55.3% (2005-06) to ~11.3% (2022-23) — NITI Aayog data. 135 million escaped poverty 2015-21.",
+                "MGNREGA: Mahatma Gandhi National Rural Employment Guarantee Act 2005. Guarantees 100 days unskilled wage employment per rural household per year. Ministry of Rural Development.",
+                "Types of unemployment: Structural (skill mismatch), Cyclical (business cycle), Seasonal (agriculture), Frictional (between jobs), Disguised (marginal productivity = 0 — common in Indian agriculture)",
+                "Human Capital Formation: education + skill training → productive workers → economic growth. Role of NCERT, AICTE, UGC, IITs/IIMs in enhancing human capital.",
+                "Rural Development: NABARD provides agricultural credit. Cooperative movement: Amul (dairy) as model. Crop diversification and organic farming as alternatives.",
+                "Infrastructure: Physical (roads, ports, electricity, communication) vs Economic (banking, insurance, energy) infrastructure. India: highway expansion, digital infrastructure, renewable energy growth.",
+                "Sustainable Development: meeting present needs without compromising future generations' ability (Brundtland Commission 1987). Rio Earth Summit 1992 — Agenda 21.",
+                "Female labour force participation 2025: 41.7% (HDR 2025) vs 76.1% for men — large gender gap.",
+                "India's GDP growth FY26 projected at 7.4% (Economic Survey 2026). Services = 53.6% of GDP.",
+              ],
+            },
+            "Unit IV: Comparison with Neighbours": {
+              ncertChapters: "Ch 10 (Comparative Development Experiences of India and its Neighbours)",
+              keyFacts: [
+                "India, China, Pakistan: all started development journey around same time — India+Pakistan (1947), China PRC (1949)",
+                "Till 1980s: all three had SIMILAR growth rates and per capita incomes",
+                "China's decisive break: 1978 Deng Xiaoping reforms — Open Door Policy, SEZs (Shenzhen first), dual pricing, township+village enterprises (TVEs), State-Owned Enterprises competed in market",
+                "China: command economy → market economy reforms. WTO member 2001. Fastest-growing major economy for 3 decades.",
+                "Pakistan: similar to India initially (mixed economy, FYPs, import substitution). Military interventions disrupted policy. Denationalisation 1977-88. Green Revolution-based agriculture.",
+                "One Child Policy: China introduced 1980 → ended 2015 (two-child policy); 2021 (three-child policy). Result: aging population, sex ratio imbalance, very low population growth (-0.01% annual)",
+                "India overtook China as most populous nation in 2023.",
+                "Population growth rates: India ~0.68% | China ~-0.01% | Pakistan ~1.89% (highest among three)",
+                "HDI rankings (2025): China ~75 (High category) | India 130 (Medium) | Pakistan ~164 (Low category)",
+                "Economic growth comparison (annual GDP): India ~7% | China ~5% (slowing) | Pakistan ~2-3% (struggling)",
+                "Development strategies: India = democracy + planning + LPG 1991 + mixed. China = one-party + command → market. Pakistan = mixed + military interventions + agricultural base.",
+                "Great Leap Forward (China, 1958-62): failed rapid industrialisation; caused famine. Cultural Revolution (1966-76): economic disruption.",
+                "CPEC: China-Pakistan Economic Corridor, $62 billion infrastructure investment linking Xinjiang to Gwadar port",
+                "Comparison indicators on CUET: use fixed NCERT textbook data where possible; HDI ranks use 2025 HDR data which is verifiable",
+              ],
+              cautionNote: "Unit IV has ZERO past CUET paper precedent. Questions must be directly factual — from NCERT Ch 10 + verifiable current data. Never ask about debatable political topics.",
+            },
           },
-          currentDataContext: true,
           examTrends: [
-            "LPG Reforms of 1991: MOST tested topic — every paper, every year",
-            "NITI Aayog replaced Planning Commission on January 1, 2015",
-            "Green Revolution: HYV seeds, Punjab/Haryana, wheat, Norman Borlaug",
-            "Disguised unemployment in agriculture: India-specific, always appears",
-            "MGNREGA: 100 days, Ministry of Rural Development — standard question",
-            "HDI: published by UNDP annually in Human Development Report",
+            "LPG Reforms 1991 is confirmed highest-frequency IED topic from boards exams and coaching predictions",
+            "Comparison with Neighbours flagged as 'Top 5 expected topic for CUET 2026' by coaching platforms",
+            "NITI Aayog replaced Planning Commission on January 1, 2015 — standard recall question",
+            "HDI: India rank 130 (2025 HDR) — current affairs angle NTA may test",
+            "Disguised unemployment in agriculture — India-specific, always expected",
+            "Unit IV (Comparison) question style: likely to be factual comparison MCQs — 'Which country among India/China/Pakistan has highest HDI?' type",
           ],
           qualityRules: [
-            "LPG questions: always state the year (1991) explicitly",
-            "All statistics from recognised sources: RBI, MOSPI, UNDP, Census",
-            "Never require knowledge beyond NCERT Class 12 Indian Econ Dev",
-          ],
-        },
-        StatisticsForEconomics: {
-          questions: 10,
-          subTopics: {
-            MeasuresCentralTendency: "3-4q", MeasuresDispersion: "2q",
-            Correlation:             "1-2q", IndexNumbers:        "2q",
-            DataPresentation:        "1q",
-          },
-          examTrends: [
-            "Arithmetic Mean: appears in EVERY paper — embed small data set (4-6 values)",
-            "Median: odd/even data sets — average of n/2 and n/2+1 terms for even",
-            "Index numbers: CPI concept (base year=100) + simple weighted index",
-            "Correlation: r=0.9 means strong positive — direction + magnitude",
-            "All data in question text — no image files, no external charts",
-          ],
-          qualityRules: [
-            "Data sets: 4-6 values only — calculable in 60-90 seconds without calculator",
-            "All answers: whole numbers or simple decimals (1-2 places max)",
-            "No formula beyond NCERT Class 11 Statistics for Economics syllabus",
+            "Unit I: stick to NCERT Chapter 1+2 facts only — verified historical data",
+            "Unit II: LPG facts must be exact — year (1991), PM, FM, trigger (BoP crisis), gold pledge",
+            "Unit III: use current HDI rank 130 (2025 HDR) — this is verifiable and may be tested",
+            "Unit IV: only ask about India/China/Pakistan comparison — no other countries. Use NCERT Ch 10 as primary source.",
+            "Unit IV: NEVER generate questions on war, military operations, political disputes, or contested territories",
           ],
         },
       },
+      questionDistribution: {
+        note: "No 2026 papers exist — conservative estimate from coaching predictions",
+        Microeconomics_CourseI:              20,
+        Macroeconomics_CourseII:             18,
+        IndianEconomicDevelopment_CourseIII: 12,
+        total:                               50,
+      },
       difficultyCalibration: {
-        overall: "Easy-Moderate (rated easiest domain subject in CUET 2025)",
+        overall: "Easy-Moderate — IED and basic Micro/Macro are easy; Macro numericals moderate",
         bySection: {
-          Microeconomics:            "Easy-Moderate (Perfect competition = easy; elasticity = moderate)",
-          Macroeconomics:            "Moderate (numericals require care; definitions are easy)",
-          IndianEconomicDevelopment: "Easy (mostly recall + NCERT application)",
-          StatisticsForEconomics:    "Moderate (calculation-based, formula application)",
+          Microeconomics_CourseI:              "Easy-Moderate (Perfect Comp definitions easy; cost numericals moderate)",
+          Macroeconomics_CourseII:             "Moderate (national income numericals require care; money/banking moderate)",
+          IndianEconomicDevelopment_CourseIII: "Easy (mostly NCERT recall + definition; no complex calculations)",
         },
-        paperNote: "2025 paper was 'lengthy' not 'difficult' — time management over complexity",
+        paperNote: "2025 paper was 'easy' — 2026 may be moderate as IED is new. IED Unit IV is most uncertain.",
       },
     },
   },
@@ -662,6 +718,454 @@ Rules:
 5. Difficulty: easy-moderate — suitable for first-time GAT students
 6. Explanation: 1-2 sentences stating why correct and why top distractor is wrong
 Return ONLY the JSON object. Begin with { — nothing before it.`;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ECONOMICS (118) ENGINE — CUET 2026 REVISED SYLLABUS
+// 3 Courses: Microeconomics (20q) + Macroeconomics (18q) + IED (12q) = 50
+// Statistics for Economics REMOVED from 2026 syllabus — not generated.
+// IED (Course III) is BRAND NEW in 2026 — no past CUET papers exist.
+// ══════════════════════════════════════════════════════════════════════════════
+
+// Fallback Indian Economy context — used when refreshEconomicsCurrentData hasn't run
+// or when the Firestore read fails. Hardcoded verified facts only.
+const FALLBACK_ECON_CONTEXT =
+`INDIAN ECONOMIC DEVELOPMENT — COMPREHENSIVE FALLBACK CONTEXT
+Source: NCERT Class 11 Indian Economic Development (Sandeep Garg framework) + verified current data
+
+═══ IED UNIT I: DEVELOPMENT POLICIES 1947-90 ═══
+
+EVE OF INDEPENDENCE (Ch 1 — Sandeep Garg):
+- Battle of Plassey 1757 — foundation of British Empire in India; British used India as "feeder economy"
+- 85% population rural and agricultural; not self-sufficient in food despite large agrarian workforce
+- Low per capita income, low literacy (~18%), low life expectancy (~32 years)
+- Zamindari System: landlords (zamindars) collected "lagaan" (rent) — did nothing for agriculture improvement
+- Commercialisation of Agriculture: Farmers shifted from food crops to cash crops (cotton, jute) for British industries → led to famines
+- Drain of Wealth: Dadabhai Naoroji's thesis — British extracted India's wealth without return
+- "Great Divide" in demographic history = 1921 (mortality rate began declining for first time)
+
+INDIAN ECONOMY 1950-1990 (Ch 2 — Sandeep Garg):
+- India adopted MIXED ECONOMY: best features of socialist economy (public sector, planning) + capitalist economy (private property, democracy)
+- Planning Commission established 1950; Prime Minister as Chairman; planning period = 5 years ("Five Year Plans")
+- First FYP (1951-56): agriculture + infrastructure focus — priority to agriculture after Partition disruption
+- Second FYP (1956-61): Mahalanobis Model — heavy industry focus; called "architect of Indian planning"
+  * P.C. Mahalanobis founded Indian Statistical Institute (ISI), Calcutta; published journal "Sankhya"; died June 28, 1972
+- IPR 1956 (Industrial Policy Resolution): called "Economic Constitution of India"; gave public sector strategic role
+  * Schedule A: State monopoly (17 industries) | Schedule B: Mixed sector | Schedule C: Private sector
+- Third FYP (1961-66): "Gadgil Yojana"; hit by wars (1962 China, 1965 Pakistan) and droughts
+- Green Revolution (late 1960s onwards): HYV seeds, chemical fertilisers, irrigation; states: Punjab, Haryana, UP; crop: wheat mainly
+  * Norman Borlaug (American scientist) — father of Green Revolution; helped develop HYV wheat seeds
+  * Increased foodgrain production significantly; reduced dependence on food imports
+- Land Reforms: Zamindari abolition, land ceiling acts, tenancy reforms (post-independence)
+- Hindu Rate of Growth: ~3.5% GDP per year — slow but stable growth under planning
+
+═══ IED UNIT II: ECONOMIC REFORMS SINCE 1991 ═══
+
+TRIGGER OF 1991 CRISIS (Ch 3 — Sandeep Garg):
+- Gulf War (1990-91) → oil prices rose → import bill increased
+- NRI remittances fell (uncertainty during Gulf War)
+- Fiscal deficit reached 8.5% of GDP — unsustainable
+- Foreign exchange reserves critically low (~2 weeks import cover)
+- India pledged 67 tonnes of gold to Bank of England as collateral
+- IMF + World Bank provided $7 billion loan — with conditionality: structural adjustment reforms
+- PM P.V. Narasimha Rao + Finance Minister Dr. Manmohan Singh → New Economic Policy (NEP) July 1991
+
+TWO TYPES OF NEP MEASURES:
+1. Stabilisation Measures (short-term): correct BoP weakness; control inflation
+2. Structural Reform Measures (long-term): improve efficiency; increase international competitiveness
+
+THREE PILLARS — LPG:
+LIBERALISATION = removal of entry and growth restrictions on private sector:
+- Industrial licensing abolished (retained ONLY for 4 industries: defence equipment, atomic energy generation, railway transport, alcohol beverages)
+- 715 items freed from quantitative restrictions on imports
+- Custom duties reduced to improve international competitiveness
+- FERA (Foreign Exchange Regulation Act) replaced by FEMA (Foreign Exchange Management Act) in 2000
+- Financial sector: banks given more freedom; interest rates deregulated
+
+PRIVATISATION = transfer of ownership/management of public sector to private sector:
+- Public sector reserved industries reduced from 17 to 4 (defence, atomic energy, railway, + alcohol)
+- Disinvestment of PSUs (Public Sector Undertakings): government sells equity
+- Token privatisation: government disinvests 5-10% of equity to meet budget deficit
+- Strategic privatisation: change of ownership/management
+
+GLOBALISATION = integration of Indian economy with world economy:
+- Rupee made partially convertible on current account (1994)
+- FDI (Foreign Direct Investment) allowed in many sectors with higher limits
+- India became founding member of WTO (World Trade Organisation) in 1995 (replaced GATT)
+- SEZs (Special Economic Zones) established to boost exports
+- GST (Goods and Services Tax) introduced July 1, 2017 — "one nation, one tax"
+
+CRITICAL APPRAISAL OF LPG (important for CUET — both positive and negative):
+Positive: GDP growth improved from ~3.5% to 6-7%; FDI increased; exports rose; forex reserves strengthened
+Negative: widened inequality; neglected agriculture; informal sector excluded; jobless growth criticism
+
+═══ IED UNIT III: CURRENT CHALLENGES ═══
+
+POVERTY (Ch 4 — Sandeep Garg):
+- Relative Poverty: poverty compared to others (comparison)
+- Absolute Poverty: total number of people below poverty line
+- Poverty Line: based on caloric intake (2400 cal/day rural, 2100 cal/day urban — old method)
+- Tendulkar Committee (2009): revised poverty line methodology; widely used
+- NITI Aayog MPI 2022-23: multidimensional poverty ~11.3% (down from 55.3% in 2005-06)
+- 135 million Indians escaped multidimensional poverty between 2015-16 and 2019-21
+- Causes of poverty: low wages, lack of education, debt trap, gender inequality, bigger families
+- Key scheme: MGNREGA (Mahatma Gandhi National Rural Employment Guarantee Act 2005)
+  * Guarantees 100 days unskilled wage employment per rural household per year
+  * Ministry: Ministry of Rural Development
+  * Target: rural poor, especially during agricultural off-season
+
+HUMAN CAPITAL FORMATION (Ch 5 — Sandeep Garg):
+- Human Capital = stock of skill and productive knowledge embodied in people through education, training, health
+- Education makes people more productive → economic growth
+- Return on investment in education is higher in developing countries
+- India's Gross Enrolment Ratio (GER) improving
+- Role of institutions: NCERT, AICTE, UGC, IITs, IIMs, AIIMS
+- "Great Divide" connection: post-1921, investment in health improved life expectancy
+
+RURAL DEVELOPMENT (Ch 6 — Sandeep Garg):
+- Key issues: credit availability, marketing of produce, cooperatives
+- NABARD (National Bank for Agriculture and Rural Development): apex body for agricultural credit
+- Cooperatives: Amul (dairy cooperative, Gujarat) as successful example
+- Crop diversification: shifting from single crop to multiple crops
+- Organic farming: farming without synthetic chemicals; advantages (eco-friendly) and disadvantages (lower yield)
+- Agricultural Marketing reforms: regulated markets (mandis), MSP (Minimum Support Price), e-NAM
+
+EMPLOYMENT (Ch 7 — Sandeep Garg):
+- Workforce Participation Rate = Workforce / Total Population × 100
+- Labour Force = Workforce + Unemployed (seeking work)
+- Types of unemployment:
+  * Structural: skill mismatch between available jobs and worker skills
+  * Cyclical: due to economic downturns / business cycle
+  * Seasonal: during off-season (agriculture workers)
+  * Frictional: while changing jobs (search period)
+  * Disguised: marginal productivity = 0; extra workers contribute nothing; MOST COMMON IN INDIA (agriculture)
+- Informalisation: shift from formal (organised) to informal (unorganised) sector
+- ~90% of India's workers in informal sector
+- Female labour force participation 2025: 41.7% (HDR 2025) vs 76.1% for men
+
+INFRASTRUCTURE (Ch 8 — Sandeep Garg):
+- Physical Infrastructure: roads, ports, railways, airports, electricity, telecom
+- Economic Infrastructure: banking, insurance, energy sector
+- India's highway expansion: ~5,364 km high-speed corridors (Economic Survey 2026)
+- Golden Quadrilateral: connects Delhi, Mumbai, Chennai, Kolkata
+
+ENVIRONMENT AND SUSTAINABLE DEVELOPMENT (Ch 9 — Sandeep Garg):
+- Sustainable Development: "development that meets present needs without compromising future generations' ability to meet their needs" — Brundtland Commission 1987
+- Rio Earth Summit 1992 (UN Conference on Environment and Development): Agenda 21
+- Global warming, ozone depletion, biodiversity loss — key environmental challenges
+- CPCB (Central Pollution Control Board): controls water and air pollution in India; established 1974
+- Carbon credits, carbon tax — market-based approaches to pollution control
+- India's renewable energy: solar, wind; ambitious targets
+- India GDP growth FY26: 7.4% projected (Economic Survey 2026)
+
+HDI DATA (critical for CUET 2026):
+- Human Development Index (HDI): composite measure of health + education + income
+  * Introduced by Mahbub ul Haq and Amartya Sen in 1990 through UNDP
+  * Published annually in UNDP Human Development Report
+- India HDI 2025: rank 130 out of 193 countries (HDI value 0.685 — Medium Human Development)
+  * India HDI 2023: rank 133 (improved to 130 in 2025)
+  * Pakistan HDI: rank ~164 (Low Human Development)
+  * China HDI: rank ~75 (High Human Development)
+- India climbed 3 ranks: from 133 to 130 in 2025 HDR titled "A Matter of Choice: People and Possibilities in the Age of AI"
+
+═══ IED UNIT IV: COMPARISON WITH NEIGHBOURS ═══
+(Sandeep Garg Chapter 10 — highest priority CUET 2026 topic)
+
+THREE COUNTRIES COMPARED:
+- India: Independence August 15, 1947; democracy + secular constitution; mixed economy
+- China: PRC established October 1, 1949; one-party rule; command → market economy
+- Pakistan: Independence August 14, 1947; democracy (interrupted by military rule); mixed economy
+
+HISTORICAL SIMILARITIES (all three):
+- All started development journey around same time (late 1940s)
+- All adopted Five Year Plans initially
+- All had similar low per capita incomes in the 1950s
+- Till 1980s: ALL THREE had similar growth rates and per capita incomes
+- India and Pakistan adopted similar strategies: large public sector, public expenditure on social development
+
+CHINA'S DEVELOPMENT PATH:
+- 1949: PRC established; all land and enterprises brought under government control
+- 1958-62: Great Leap Forward — Mao's rapid industrialisation; FAILED; caused massive famine
+- 1966-76: Cultural Revolution — disrupted economy
+- 1978: Deng Xiaoping's Open Door Policy — DECISIVE BREAK:
+  * SEZs (Shenzhen first) established to attract foreign investors
+  * Dual pricing system: fixed government prices + market prices
+  * Township and Village Enterprises (TVEs): locally-owned, competed in markets
+  * State-Owned Enterprises (SOEs) made to face competition
+- 2001: China joined WTO
+- One-Child Policy: 1980 (introduced) → 2015 (ended; two-child policy) → 2021 (three-child policy)
+  Result: aging population, sex ratio imbalance, world's lowest population growth rate
+
+PAKISTAN'S DEVELOPMENT PATH:
+- Late 1950s-60s: regulated policy framework, import substitution industrialisation
+- Green Revolution: mechanisation, foodgrain production rose, changed agrarian structure
+- 1970s: Nationalisation of capital goods industries
+- Late 1970s-80s: denationalisation, private sector encouraged
+- Military rule periods disrupted economic policies
+- Received financial support from western nations + remittances from Middle-East workers
+- 1988: Reforms initiated but political instability continued
+- 1971: Civil war → East Pakistan became Bangladesh
+
+KEY COMPARISON DATA:
+Population (2025):
+  India: ~1.44 billion (overtook China in 2023 as world's most populous)
+  China: ~1.41 billion
+  Pakistan: ~240 million
+
+Population Growth Rate (annual):
+  India: ~0.68%
+  China: ~-0.01% (near zero due to One Child Policy legacy)
+  Pakistan: ~1.89% (highest among three)
+
+Sex Ratio (females per 1000 males — from NCERT data):
+  India: 938 (most skewed — patriarchal bias)
+  China: better than India
+  Pakistan: relatively better in ratio numbers
+
+GDP Growth (approximate 2025-26):
+  India: ~7% (fastest growing major economy)
+  China: ~5% (slowing)
+  Pakistan: ~2-3% (struggling with debt crisis)
+
+HDI Rankings (UNDP 2025):
+  China: ~75 (High human development)
+  India: 130 (Medium human development)
+  Pakistan: ~164 (Low human development)
+
+DEVELOPMENT STRATEGIES COMPARISON:
+  India: Democracy + Mixed Economy + Five Year Plans + LPG 1991 + public + private
+  China: One-party + Command Economy → market reforms (1978) + SEZs
+  Pakistan: Democracy (interrupted) + Mixed Economy + import substitution + agriculture base
+
+CPEC (China-Pakistan Economic Corridor):
+  $62 billion infrastructure investment linking China's Xinjiang to Pakistan's Gwadar port
+  Deepened China-Pakistan strategic relationship; criticism: debt burden on Pakistan
+
+FALLBACK INSTRUCTION: If uncertain about any specific data point → use confirmed NCERT Sandeep Garg Ch 10 facts only.`;
+
+
+// ── Economics Intelligence Briefs — per batch (150-200 tokens each) ──────────
+function buildEconomicsIntelligenceBrief(batchNum) {
+  const eco = CUET_EXAM_INTELLIGENCE.subjects.Economics_118;
+
+  switch (batchNum) {
+    case 1: // Microeconomics
+      return `ECONOMICS INTELLIGENCE — Course I Microeconomics (CUET 2026):
+CRITICAL: Monopoly/Monopolistic/Oligopoly REMOVED from 2026. ONLY Perfect Competition.
+New Unit IV additions: Price Ceiling, Price Floor (MSP), FAT Theory (Food Availability Decline — Amartya Sen).
+Case study block: write one demand-supply scenario (60-80 words) → 4 questions from it.
+AFC rectangular hyperbola (AFC×Q = TFC = constant) — frequently tested numerical.
+Consumer equilibrium utility approach: 1-commodity (MU=P) and 2-commodity (MUx/Px = MUy/Py).`;
+
+    case 2: // Macroeconomics
+      return `ECONOMICS INTELLIGENCE — Course II Macroeconomics (CUET 2026):
+New: Private Income, Personal Income, Disposable Income added to national income calculations.
+Stock vs Flow: Money supply = STOCK, GDP = FLOW — 2+ questions expected every paper.
+Key formula: NNPfc = NNPmp − Net Indirect Taxes | NNPmp = GNPmp − Depreciation.
+M1 = Currency+DD+OD with RBI | M3 = M1 + Time deposits with banks.
+Revenue deficit = Revenue expenditure − Revenue receipts. All numericals: whole number answers only.`;
+
+    case 3: // Indian Economic Development (IED) — NEW Section
+      return `ECONOMICS INTELLIGENCE — Course III IED (CUET 2026 — BRAND NEW SECTION):
+ZERO past CUET papers for IED. Build from NCERT Class 11 + verified current data only.
+Unit I (1947-90): Five Year Plans, IPR 1956, Green Revolution, import substitution era.
+Unit II (LPG 1991): highest-frequency IED topic — year, PM, FM, trigger (BoP crisis + gold pledge), IMF $7B, 715 items, 4 reserved industries.
+Unit III: HDI rank 130/193 (UNDP 2025), MGNREGA 100 days rural employment, disguised unemployment.
+Unit IV: India-China-Pakistan comparison — NCERT Ch 10 facts only. India most populous 2023. China One Child Policy 1980-2015. HDI: China>India>Pakistan.
+NEVER generate questions on wars, military conflicts, contested borders, or political disputes.`;
+
+    case "Economics_QP":
+      return `ECONOMICS INTELLIGENCE — Quick Practice (CUET 2026, all courses):
+Balanced across 3 Courses: Microeconomics (Course I), Macroeconomics (Course II), IED (Course III).
+Easy-Moderate difficulty — accessible for first-time students.
+IED questions: stick to Unit II (LPG 1991) and Unit III (HDI, poverty) — most predictable.`;
+
+    default: return "";
+  }
+}
+
+// ── Economics Mock — 3 sequential batches → exactly 50 questions ─────────────
+// Batch 1: Microeconomics 20q  (req 23 → take 20)  [Course I, all 4 units]
+// Batch 2: Macroeconomics 18q  (req 21 → take 18)  [Course II, all 5 units]
+// Batch 3: IED 12q             (req 14 → take 12)  [Course III, all 4 units]
+// Total: 20 + 18 + 12 = 50
+function buildEconomicsMockBatch(batchNum, econContext) {
+  const schema = '{"questions":[{"question":"...","options":["A","B","C","D"],"correct":0,"topic":"...","passage":null,"explanation":"2-3 sentences"}]}';
+  // passage: null for standalone MCQs OR 60-80 word scenario text for case study questions
+
+  switch (batchNum) {
+
+    case 1: return `You are an NTA CUET Economics (118) question paper generator for CUET 2026.
+${buildEconomicsIntelligenceBrief(1)}
+Generate exactly 23 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
+JSON schema: ${schema}
+MANDATORY TOPIC DISTRIBUTION — 23 questions:
+
+UNIT I — Consumer Theory and Demand (6 questions, passage=null):
+- Consumer equilibrium: utility approach, 1-commodity (MU=P) and 2-commodity (MUx/Px = MUy/Py): 2 questions
+- Law of Demand: factors, movement vs shift, inverse relationship: 1 question
+- Price Elasticity of Demand: measurement (percentage method or total expenditure method), factors: 2 questions
+- Income Elasticity or Cross Elasticity of Demand: 1 question
+
+UNIT II — Production and Costs (6 questions, passage=null):
+- Production function, TP/MP/AP relationships and shapes of curves: 2 questions
+- Cost concepts: AFC (rectangular hyperbola), AVC, ATC, MC relationships: 2 questions (include 1 numerical with AFC×Q = TFC)
+- Revenue: TR, AR, MR and Producer Equilibrium (MC=MR): 2 questions
+
+UNIT III — Perfect Competition ONLY (5 questions, passage=null):
+⚠ MONOPOLY AND OTHER MARKET STRUCTURES REMOVED FROM 2026 SYLLABUS — DO NOT GENERATE THEM.
+- Features of perfect competition, AR=MR=Price, price-taking behaviour: 2 questions
+- Price determination under perfect competition, equilibrium: 1 question
+- Supply: determinants, supply curve, price elasticity of supply: 2 questions
+
+UNIT IV — Market Equilibrium + Applications (6 questions):
+- Case Study Block: Write ONE scenario (60-80 words describing a market — demand/supply shift or equilibrium change). Set passage field = this scenario text for ALL 4 case study questions.
+  - Case study question 1: equilibrium price and quantity determination
+  - Case study question 2: effect of a supply or demand shift
+  - Case study question 3: excess demand or excess supply analysis
+  - Case study question 4: welfare or efficiency implication
+- Price Ceiling (maximum price) and Price Floor/MSP (minimum price support) — 2026 addition (passage=null): 2 questions
+
+Rules: correct is 0-indexed (0=A,1=B,2=C,3=D). Round numbers only. No monopoly/monopolistic/oligopoly. Explanation: 2-3 sentences.
+Return ONLY the JSON object. Begin with { — nothing before it.`;
+
+    case 2: return `You are an NTA CUET Economics (118) question paper generator for CUET 2026.
+${buildEconomicsIntelligenceBrief(2)}
+Generate exactly 21 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
+JSON schema: ${schema}
+MANDATORY TOPIC DISTRIBUTION — 21 questions, all passage=null unless case study:
+
+UNIT I — National Income Accounting (6 questions):
+- Case Study Block: Write ONE scenario (60-70 words with NNP, depreciation, and indirect tax data). Set passage field = scenario text for ALL 3 case study questions.
+  - Calculate NNPfc from given data
+  - Identify stock vs flow concept from scenario
+  - Private Income or Disposable Income calculation (2026 addition)
+- Circular flow of income, concepts of GDP/GNP/NNP/NDP (passage=null): 2 questions
+- Value Added Method or Expenditure Method of National Income (passage=null): 1 question
+
+UNIT II — Money and Banking (4 questions, passage=null):
+- Money supply aggregates: M1 = currency+DD+OD; M3 = M1 + time deposits with banks: 2 questions
+- Money multiplier and credit creation by commercial banks: 1 question
+- RBI functions and policy tools (CRR, SLR, Repo Rate, Reverse Repo): 1 question
+
+UNIT III — Determination of Income and Employment (4 questions, passage=null):
+- Aggregate Demand components and equilibrium in 2-sector model: 2 questions
+- Multiplier mechanism (Multiplier = 1/MPS) — include 1 numerical: 1 question
+- Excess demand/deficient demand: corrective measures (fiscal/monetary): 1 question
+
+UNIT IV — Government Budget (4 questions, passage=null):
+- Revenue deficit = Revenue expenditure − Revenue receipts (include 1 numerical): 2 questions
+- Fiscal deficit and Primary deficit: definitions and relationship: 1 question
+- Classification: revenue receipts vs capital receipts: 1 question
+
+UNIT V — Open Economy Macroeconomics (3 questions, passage=null):
+- BoP accounts: current account + capital account; BoP always balances: 2 questions
+- Exchange rate: fixed vs flexible vs managed float; determination: 1 question
+
+Rules: correct is 0-indexed. All numericals: whole number answers, provide all data in question. Explanation: 2-3 sentences.
+Return ONLY the JSON object. Begin with { — nothing before it.`;
+
+    case 3: {
+      // IED batch — injects current Indian economy data from Firestore if available
+      // Fallback is FALLBACK_ECON_CONTEXT (comprehensive Sandeep Garg + current data)
+      const econSection = econContext
+        ? "CURRENT INDIAN ECONOMY DATA (use these verified facts for Unit III questions — priority over fallback):\n" + econContext + "\n"
+        : "USE COMPREHENSIVE FALLBACK CONTEXT above — all facts are verified NCERT/Sandeep Garg + current data.\n";
+      return `You are an NTA CUET Economics (118) question paper generator for CUET 2026.
+${buildEconomicsIntelligenceBrief(3)}
+${econSection}
+CRITICAL CONTEXT: Course III (Indian Economic Development) is BRAND NEW in CUET 2026 — no past CUET papers.
+Build questions EXACTLY as CBSE Class 12 boards test this content (same source: NCERT + Sandeep Garg).
+The 2025-26 Sandeep Garg book explicitly includes CUET PYQs — this content alignment is intentional.
+Question style: definition-based, application-based, assertion-reason type, case-study scenario type.
+Generate exactly 14 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
+JSON schema: ${schema}
+MANDATORY TOPIC DISTRIBUTION — 14 questions, all passage=null:
+
+UNIT I — Indian Economy on Eve of Independence + 1950-1990 (3 questions):
+Choose 3 from the following high-priority topics (mix across Unit I chapters):
+- Battle of Plassey 1757 / British India economic exploitation / "feeder economy" concept
+- 85% rural population at independence / low literacy (~18%) / low life expectancy (~32 years)
+- Zamindari system: what zamindars collected (lagaan) / its impact on agriculture
+- Commercialisation of agriculture → shift from food crops to cash crops → famines
+- "Great Divide" in Indian demographic history = 1921 (mortality rate began declining)
+- Mixed economy adoption / Planning Commission established 1950 (PM as Chairman)
+- IPR 1956 (Industrial Policy Resolution): "Economic Constitution of India" / Schedule A (state monopoly, 17 industries)
+- Second FYP (Mahalanobis model, 1956-61): heavy industry focus / Mahalanobis = architect of Indian planning
+- Green Revolution: HYV seeds, Norman Borlaug, states (Punjab/Haryana), main crop (wheat)
+
+UNIT II — Economic Reforms since 1991 — LPG Policy (4 questions):
+⭐ HIGHEST PRIORITY IED TOPIC — most expected in CUET 2026 and CBSE boards. Be factually precise.
+Question 1 — TRIGGER: BoP crisis 1990-91, Gulf War raised oil prices, NRI remittances fell, fiscal deficit 8.5%, India pledged 67 tonnes gold to Bank of England, IMF+World Bank $7B loan
+Question 2 — LIBERALISATION: industrial licensing abolished (kept for only 4 industries), 715 items freed from import restrictions, FERA → FEMA (2000)
+Question 3 — PRIVATISATION: public sector reserved industries 17→4; disinvestment; token privatisation = 5-10% equity divestment; strategic privatisation = transfer of management
+Question 4 — GLOBALISATION OR APPRAISAL: WTO founding member (1995), Rupee partially convertible (1994), SEZs established, GST July 1 2017; OR critical appraisal: positive (GDP growth) vs negative (inequality, agricultural neglect)
+
+UNIT III — Current Challenges (4 questions):
+Focus on CBSE boards 2026 predicted high-value topics:
+Question 5 — POVERTY: Absolute vs Relative poverty definitions; OR MGNREGA (100 days, Ministry of Rural Development, unskilled wage employment); OR poverty line concept (Tendulkar Committee)
+Question 6 — UNEMPLOYMENT TYPES: Disguised unemployment (marginal productivity = 0, Indian agriculture) vs Seasonal vs Structural vs Frictional; OR employment formulas (Labour Force = Workforce + Unemployed)
+Question 7 — HUMAN CAPITAL: HDI composition (health/education/income); India HDI rank 130 out of 193 (UNDP 2025, "A Matter of Choice" report); HDI introduced by Mahbub ul Haq + Amartya Sen (UNDP, 1990)
+Question 8 — SUSTAINABLE DEVELOPMENT OR ENVIRONMENT: Brundtland Commission 1987 definition; Rio Summit 1992 (Agenda 21); OR CPCB (Central Pollution Control Board, established 1974) controls water + air pollution; OR Organic farming advantages + disadvantages
+
+UNIT IV — Development Experiences: India vs China vs Pakistan (3 questions):
+⭐ FLAGGED AS TOP-5 EXPECTED CUET 2026 TOPIC by coaching platforms. Sandeep Garg Ch 10.
+⚠ Only factual comparison questions from NCERT. No contested political topics, no military operations.
+Question 9 — HISTORICAL COMPARISON: All three started development at similar time (India+Pakistan 1947, China 1949); till 1980s all had similar growth rates; China's decisive break = Deng Xiaoping 1978 (Open Door Policy, SEZs, TVEs); OR Great Leap Forward 1958-62 = failed rapid industrialisation
+Question 10 — DEMOGRAPHIC COMPARISON: China One Child Policy (1980 introduced → 2015 ended → 2021 three-child); India overtook China as most populous nation in 2023; population growth rates: India ~0.68%, China ~-0.01%, Pakistan ~1.89% (highest)
+Question 11 — HDI/DEVELOPMENT COMPARISON: HDI 2025 rankings: China (~75, High) > India (130, Medium) > Pakistan (~164, Low); OR economic growth: India ~7%, China ~5%, Pakistan ~2-3%; OR sex ratio comparison
+
+Rules: correct is 0-indexed. All facts verifiable from NCERT Ch 10 + Sandeep Garg IED book + current data above. When uncertain → default to Unit II (LPG) instead. Explanation: 2-3 sentences citing the relevant concept, not naming AI or book.
+Return ONLY the JSON object. Begin with { — nothing before it.`;
+    }
+
+    default: throw new Error(`Unknown Economics batch: ${batchNum}`);
+  }
+}
+
+// ── Economics Quick Practice — 15-question balanced prompt ───────────────────
+function buildEconomicsQPPrompt() {
+  const schema = '{"questions":[{"question":"...","options":["A","B","C","D"],"correct":0,"topic":"...","passage":null,"explanation":"1-2 sentences"}]}';
+  return `You are an NTA CUET Economics (118) question generator for CUET 2026 quick practice.
+${buildEconomicsIntelligenceBrief("Economics_QP")}
+Generate exactly 15 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
+JSON schema: ${schema}
+MANDATORY TOPIC DISTRIBUTION (all passage=null):
+- Course I Microeconomics: 5 questions (consumer equilibrium, demand elasticity, cost concepts, perfect competition — NO monopoly)
+- Course II Macroeconomics: 5 questions (national income definitions, stock vs flow, money aggregates, govt deficit types)
+- Course III IED: 5 questions (LPG 1991 key facts, MGNREGA, HDI rank 130, India-China-Pakistan comparison basics)
+Rules: correct is 0-indexed. Easy-Moderate only. All numericals: provide data in question, round number answers. Explanation: 1-2 sentences.
+Return ONLY the JSON object. Begin with { — nothing before it.`;
+}
+
+// ── Anthropic API Pricing Constants — update if Anthropic changes pricing ─────
+const ANTHROPIC_PRICING = {
+  "claude-haiku-4-5-20251001": { inputPerM: 0.80,  outputPerM: 4.00  },
+  "claude-sonnet-4-6":         { inputPerM: 3.00,  outputPerM: 15.00 },
+  "claude-sonnet-4-20250514":  { inputPerM: 3.00,  outputPerM: 15.00 },
+};
+
+// ── Fire-and-forget Anthropic usage tracker ───────────────────────────────────
+// Writes daily aggregates to anthropicUsage/{YYYY-MM-DD}. Never blocks generation.
+function trackAnthropicUsage(inputTokens, outputTokens, model, mode) {
+  try {
+    const today   = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+    const pricing = ANTHROPIC_PRICING[model] || { inputPerM: 1.00, outputPerM: 5.00 };
+    const costUSD = (inputTokens * pricing.inputPerM + outputTokens * pricing.outputPerM) / 1_000_000;
+    const safeMode = (mode || "unknown").replace(/\./g, "_");
+    db.collection("anthropicUsage").doc(today).set({
+      totalInputTokens:  admin.firestore.FieldValue.increment(inputTokens),
+      totalOutputTokens: admin.firestore.FieldValue.increment(outputTokens),
+      totalCalls:        admin.firestore.FieldValue.increment(1),
+      totalCostUSD:      admin.firestore.FieldValue.increment(costUSD),
+      lastUpdated:       admin.firestore.FieldValue.serverTimestamp(),
+      [`byMode.${safeMode}.inputTokens`]:  admin.firestore.FieldValue.increment(inputTokens),
+      [`byMode.${safeMode}.outputTokens`]: admin.firestore.FieldValue.increment(outputTokens),
+      [`byMode.${safeMode}.costUSD`]:      admin.firestore.FieldValue.increment(costUSD),
+    }, { merge: true }).catch(e => functions.logger.warn("USAGE_TRACK_FAIL", { error: e.message }));
+  } catch (e) {
+    functions.logger.warn("USAGE_TRACK_EXCEPTION", { error: e.message });
+  }
 }
 
 // ── Anthropic call with web_search tool — for refreshGATCurrentAffairs ────────
@@ -942,6 +1446,46 @@ async function generateQuestionSet(mode, apiKey) {
           throw new Error(`GAT_BATCH_LOW: b1=${b1.length}/10 b2=${b2.length}/7 b3=${b3.length}/10 b4=${b4.length}/7 b5=${b5.length}/10 b6=${b6.length}/6`);
         }
         questions = [...b1, ...b2, ...b3, ...b4, ...b5, ...b6]; // exactly 50
+
+      } else if (mode === "Economics_QP") {
+        // ── Economics Quick Practice — single 15-question balanced batch ──────
+        questions = await callAnthropic(buildEconomicsQPPrompt(), 4000, apiKey);
+
+      } else if (mode === "Economics_Mock") {
+        // ── Economics Mock — 3 sequential batches → exactly 50 questions ─────
+        // Batch 1: Microeconomics  (req 23 → take 20) — Course I, all 4 units
+        // Batch 2: Macroeconomics  (req 21 → take 18) — Course II, all 5 units
+        // Batch 3: IED             (req 14 → take 12) — Course III (new 2026)
+        // Total: 20 + 18 + 12 = 50
+        let econContext = "";
+        try {
+          const econSnap = await db.collection("cuetIntelligence").doc("Economics_118").get();
+          if (econSnap.exists && econSnap.data()?.currentDataContext) {
+            econContext = econSnap.data().currentDataContext;
+          }
+        } catch (e) {
+          functions.logger.warn("ECON_CONTEXT_READ_FAILED", { attempt, error: e.message });
+        }
+        // Inject fallback if Firestore read failed or doc doesn't exist yet
+        if (!econContext) econContext = FALLBACK_ECON_CONTEXT;
+        functions.logger.info("ECON_MOCK_START", { attempt, contextLength: econContext.length });
+
+        const eb1raw = await callAnthropic(buildEconomicsMockBatch(1, econContext), 7000, apiKey);
+        const eb1 = Array.isArray(eb1raw) ? eb1raw.slice(0, 20) : [];
+
+        const eb2raw = await callAnthropic(buildEconomicsMockBatch(2, econContext), 6000, apiKey);
+        const eb2 = Array.isArray(eb2raw) ? eb2raw.slice(0, 18) : [];
+
+        const eb3raw = await callAnthropic(buildEconomicsMockBatch(3, econContext), 6000, apiKey);
+        const eb3 = Array.isArray(eb3raw) ? eb3raw.slice(0, 12) : [];
+
+        functions.logger.info("ECON_BATCH_COUNTS", { eb1: eb1.length, eb2: eb2.length, eb3: eb3.length });
+
+        // Generous minimums — allow retry if significantly short
+        if (eb1.length < 16 || eb2.length < 14 || eb3.length < 9) {
+          throw new Error(`ECON_BATCH_LOW: eb1=${eb1.length}/20 eb2=${eb2.length}/18 eb3=${eb3.length}/12`);
+        }
+        questions = [...eb1, ...eb2, ...eb3];
 
       } else if (mode === "QuickPractice") {
         // ── English Quick Practice ────────────────────────────────────────────
@@ -1233,7 +1777,7 @@ Return ONLY the JSON object. Begin with { — nothing before it.`;
     }
 
     // ── Free modes: always allowed, no limit checks ───────────────────────────
-    const isFreeMode = mode === "QuickPractice" || mode === "GAT_QP";
+    const isFreeMode = mode === "QuickPractice" || mode === "GAT_QP" || mode === "Economics_QP";
 
     if (!isFreeMode) {
       const isUnlocked = !!(userDoc.unlocked);
@@ -1244,6 +1788,12 @@ Return ONLY the JSON object. Begin with { — nothing before it.`;
         if (!isUnlocked && gatTestsUsed >= FREE_LIMIT) {
           res.status(402).json({ error: "free_limit_reached", paywall: true }); return;
         }
+      } else if (mode === "Economics_Mock") {
+        // ── Economics separate free pool (4 Eco Mocks free, independent of English + GAT) ──
+        const econTestsUsed = userDoc.econTestsUsed || 0;
+        if (!isUnlocked && econTestsUsed >= FREE_LIMIT) {
+          res.status(402).json({ error: "free_limit_reached", paywall: true }); return;
+        }
       } else {
         // ── English Mock free pool ─────────────────────────────────────────────
         const testsUsed = userDoc.testsUsed || 0;
@@ -1252,7 +1802,7 @@ Return ONLY the JSON object. Begin with { — nothing before it.`;
         }
       }
 
-      // Daily limit applies to paid users only (both English and GAT Mocks share the daily cap)
+      // Daily limit applies to paid users only (all Mock modes share the daily cap)
       if (isUnlocked) {
         const today      = todayIST();
         const dailyCount = (userDoc.dailyTests || {})[today] || 0;
@@ -1303,7 +1853,7 @@ Return ONLY the JSON object. Begin with { — nothing before it.`;
 
     // ── Increment counters per mode ───────────────────────────────────────────
     try {
-      if (mode === "QuickPractice" || mode === "GAT_QP") {
+      if (mode === "QuickPractice" || mode === "GAT_QP" || mode === "Economics_QP") {
         // Free modes — only track set usage, no test counter
         await db.collection("users").doc(uid).set({
           lastTestAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -1313,6 +1863,14 @@ Return ONLY the JSON object. Begin with { — nothing before it.`;
         // GAT separate free pool — increment gatTestsUsed
         await db.collection("users").doc(uid).set({
           gatTestsUsed: admin.firestore.FieldValue.increment(1),
+          lastTestAt: admin.firestore.FieldValue.serverTimestamp(),
+          usedCacheSetIds: admin.firestore.FieldValue.arrayUnion(setId),
+          [`dailyTests.${today}`]: admin.firestore.FieldValue.increment(1),
+        }, { merge: true });
+      } else if (mode === "Economics_Mock") {
+        // Economics separate free pool — increment econTestsUsed
+        await db.collection("users").doc(uid).set({
+          econTestsUsed: admin.firestore.FieldValue.increment(1),
           lastTestAt: admin.firestore.FieldValue.serverTimestamp(),
           usedCacheSetIds: admin.firestore.FieldValue.arrayUnion(setId),
           [`dailyTests.${today}`]: admin.firestore.FieldValue.increment(1),
@@ -1364,9 +1922,12 @@ exports.checkTestLimit = functions.runWith({ timeoutSeconds: 20, memory: "256MB"
     const dailyCount = (ud.dailyTests || {})[today] || 0;
     const dailyBlocked = isUnlocked && dailyCount >= DAILY_TEST_LIMIT;
 
-    // Free pool depends on mode — English and GAT are separate counters
+    // Free pool depends on mode — English, GAT, and Economics are separate counters
     const isGATMode      = mode === "GAT_Mock";
-    const testsUsed      = isGATMode ? (ud.gatTestsUsed || 0) : (ud.testsUsed || 0);
+    const isEconMode     = mode === "Economics_Mock";
+    const testsUsed      = isGATMode ? (ud.gatTestsUsed || 0)
+                         : isEconMode ? (ud.econTestsUsed || 0)
+                         : (ud.testsUsed || 0);
     const freemiumBlocked = !isUnlocked && testsUsed >= FREE_LIMIT;
     const allowed         = !freemiumBlocked && !dailyBlocked;
     const testsRemaining  = isUnlocked ? Math.max(0, DAILY_TEST_LIMIT - dailyCount) : Math.max(0, FREE_LIMIT - testsUsed);
@@ -1823,13 +2384,16 @@ exports.returnTestCredit = functions
     if (req.method !== "POST")    { res.status(405).json({ error: "Method not allowed" }); return; }
     const decoded = await verifyToken(req, res); if (!decoded) return;
     const uid  = decoded.uid;
-    const mode = req.body?.mode || "Mock"; // "Mock" or "GAT_Mock"
-    const isGAT = mode === "GAT_Mock";
+    const mode = req.body?.mode || "Mock"; // "Mock", "GAT_Mock", or "Economics_Mock"
+    const isGAT  = mode === "GAT_Mock";
+    const isEcon = mode === "Economics_Mock";
     try {
       const snap = await db.collection("users").doc(uid).get();
       const ud   = snap.data() || {};
       if (ud.unlocked) { res.status(200).json({ returned: false, reason: "paid_user" }); return; }
-      const currentCount = isGAT ? (ud.gatTestsUsed || 0) : (ud.testsUsed || 0);
+      const currentCount = isGAT  ? (ud.gatTestsUsed  || 0)
+                         : isEcon ? (ud.econTestsUsed || 0)
+                         : (ud.testsUsed || 0);
       if (currentCount <= 0) { res.status(200).json({ returned: false, reason: "already_zero" }); return; }
       const today      = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
       const todayKey   = `graceReturns.${today}`;
@@ -1837,7 +2401,7 @@ exports.returnTestCredit = functions
       if (todayCount >= 3) {
         res.status(200).json({ returned: false, reason: "daily_grace_limit_reached" }); return;
       }
-      const counterField = isGAT ? "gatTestsUsed" : "testsUsed";
+      const counterField = isGAT ? "gatTestsUsed" : isEcon ? "econTestsUsed" : "testsUsed";
       await db.collection("users").doc(uid).set({
         [counterField]: admin.firestore.FieldValue.increment(-1),
         [todayKey]:     admin.firestore.FieldValue.increment(1),
@@ -2287,3 +2851,140 @@ exports.detectAnomalies = functions.runWith({ timeoutSeconds: 60, memory: "256MB
     res.status(500).json({ error: e.message });
   }
 });
+
+// ─── refreshEconomicsCurrentData ─────────────────────────────────────────────
+// Fetches latest Indian economy data using Anthropic web search.
+// Refreshes IED Unit III context (HDI, poverty, employment, govt schemes).
+// Run weekly before CUET exam (May 11-31 2026) to keep IED Unit III questions
+// aligned with latest government data NTA may include.
+// Cloud Scheduler: POST weekly to this endpoint
+// Command to create scheduler (run once):
+// gcloud scheduler jobs create http refreshEconomicsCurrentData \
+//   --schedule="0 6 */7 * *" \
+//   --uri="https://us-central1-vantiq-cuet.cloudfunctions.net/refreshEconomicsCurrentData" \
+//   --message-body='{"trigger":"scheduled"}' \
+//   --time-zone="Asia/Kolkata" --project=vantiq-cuet
+exports.refreshEconomicsCurrentData = functions
+  .runWith({ timeoutSeconds: 300, memory: "512MB" })
+  .https.onRequest(async (req, res) => {
+    setCORS(res);
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+    // Allow both scheduled (no auth header) and manual admin triggers
+    const isScheduled = req.body?.trigger === "scheduled";
+    if (!isScheduled) {
+      // Manual call — verify admin token
+      const authHeader = req.headers.authorization || "";
+      const cfg = functions.config();
+      const adminKey = cfg.admin?.key || process.env.ADMIN_KEY || "";
+      if (!authHeader.includes(adminKey) && authHeader !== `Bearer ${adminKey}`) {
+        // Check if it's a valid user token (admin triggering from UI)
+        const decoded = await verifyToken(req, res).catch(() => null);
+        if (!decoded) { res.status(401).json({ error: "Unauthorized" }); return; }
+      }
+    }
+    try {
+      const KEY = (functions.config().anthropic || {}).key || process.env.ANTHROPIC_KEY || "";
+      if (!KEY) { res.status(500).json({ error: "Missing Anthropic key" }); return; }
+
+      functions.logger.info("ECON_REFRESH_START");
+
+      const systemPrompt = `You are an Indian economics research expert. Fetch and summarize the latest verified data on Indian Economic Development topics for CUET 2026 exam preparation. Focus on topics from the official CUET 2026 IED syllabus. Return accurate, verifiable facts only — no speculation.`;
+
+      const userContent = `Search the web and fetch the latest verified data on these specific topics for CUET 2026 Indian Economic Development:
+
+1. HUMAN DEVELOPMENT: India's current HDI rank (UNDP 2025 report), HDI value, category. Compare with China and Pakistan's approximate rankings.
+
+2. POVERTY METRICS: Latest multidimensional poverty data from NITI Aayog or World Bank for India. MGNREGA current beneficiary count or budget allocation (Union Budget 2025-26).
+
+3. EMPLOYMENT: Latest PLFS (Periodic Labour Force Survey) data — unemployment rate, female LFPR. Any new government employment schemes announced.
+
+4. GDP AND GROWTH: India's GDP growth rate for FY2025-26 (Economic Survey or RBI projection). Comparison with China and Pakistan.
+
+5. RECENT POLICY UPDATES: Any new government policy or scheme in 2024-25 relevant to: poverty reduction, rural development, human capital formation, or environment/sustainable development that NTA might include in CUET 2026.
+
+6. INDIA-CHINA-PAKISTAN COMPARISON: Any updated comparison data on population, demographic indicators, or development metrics from 2024-2025 sources.
+
+Format your response as a structured fact sheet — use bullet points. State the source and year for each data point. Mark any uncertain data with [VERIFY].`;
+
+      const rawText = await callAnthropicWithSearch(systemPrompt, userContent, 2500, KEY);
+
+      // Store in Firestore — generateQuestionSet reads this as econContext
+      await db.collection("cuetIntelligence").doc("Economics_118").set({
+        currentDataContext: rawText,
+        refreshedAt:        admin.firestore.FieldValue.serverTimestamp(),
+        refreshVersion:     new Date().toISOString(),
+        contextLength:      rawText.length,
+      }, { merge: true });
+
+      // Clear Economics caches so next fills use fresh context
+      const cacheRef = db.collection("questionSets");
+      const econMockSnap = await cacheRef.where("mode", "==", "Economics_Mock").get();
+      const econQPSnap   = await cacheRef.where("mode", "==", "Economics_QP").get();
+      const batch = db.batch();
+      econMockSnap.docs.forEach(d => batch.delete(d.ref));
+      econQPSnap.docs.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+
+      functions.logger.info("ECON_REFRESH_COMPLETE", {
+        contextLength: rawText.length,
+        clearedMock: econMockSnap.size,
+        clearedQP: econQPSnap.size,
+      });
+
+      res.status(200).json({
+        success: true,
+        contextLength: rawText.length,
+        clearedMock: econMockSnap.size,
+        clearedQP: econQPSnap.size,
+        refreshedAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      functions.logger.error("ECON_REFRESH_FAILED", { error: e.message });
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+// ─── clearAndRebuildSubjectCache ─────────────────────────────────────────────
+// Admin tool: delete all cached question sets for a given subject and refill.
+// Use when: intelligence layer updated, syllabus changed, quality issues found.
+// subject: "English" | "GAT" | "Economics" | "all"
+exports.clearAndRebuildSubjectCache = functions
+  .runWith({ timeoutSeconds: 60, memory: "256MB" })
+  .https.onRequest(async (req, res) => {
+    setCORS(res);
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+    if (req.method !== "POST")    { res.status(405).json({ error: "Method not allowed" }); return; }
+    const decoded = await verifyToken(req, res); if (!decoded) return;
+    const subject = req.body?.subject || "all"; // "English" | "GAT" | "Economics" | "all"
+    try {
+      const cacheRef = db.collection("questionSets");
+      let deleted = 0;
+      const batch = db.batch();
+
+      if (subject === "Economics" || subject === "all") {
+        const econMockSnap = await cacheRef.where("mode", "==", "Economics_Mock").get();
+        const econQPSnap   = await cacheRef.where("mode", "==", "Economics_QP").get();
+        econMockSnap.docs.forEach(d => { batch.delete(d.ref); deleted++; });
+        econQPSnap.docs.forEach(d => { batch.delete(d.ref); deleted++; });
+      }
+      if (subject === "GAT" || subject === "all") {
+        const gatMockSnap = await cacheRef.where("mode", "==", "GAT_Mock").get();
+        const gatQPSnap   = await cacheRef.where("mode", "==", "GAT_QP").get();
+        gatMockSnap.docs.forEach(d => { batch.delete(d.ref); deleted++; });
+        gatQPSnap.docs.forEach(d => { batch.delete(d.ref); deleted++; });
+      }
+      if (subject === "English" || subject === "all") {
+        const engMockSnap = await cacheRef.where("mode", "==", "Mock").get();
+        const engQPSnap   = await cacheRef.where("mode", "==", "QuickPractice").get();
+        engMockSnap.docs.forEach(d => { batch.delete(d.ref); deleted++; });
+        engQPSnap.docs.forEach(d => { batch.delete(d.ref); deleted++; });
+      }
+
+      await batch.commit();
+      functions.logger.info("CACHE_CLEARED", { subject, deleted });
+      res.status(200).json({ success: true, subject, deleted, clearedAt: new Date().toISOString() });
+    } catch (e) {
+      functions.logger.error("CACHE_CLEAR_FAILED", { error: e.message, subject });
+      res.status(500).json({ error: e.message });
+    }
+  });

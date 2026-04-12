@@ -392,6 +392,9 @@ function AuthScreen({ onLogin, showToast }) {
     "Every question reflects the current NTA exam pattern.",
     "Built fresh for CUET 2026 — not last year's coaching material.",
     "The platform reads the syllabus. You take the test.",
+    "Economics 2026 has a brand-new IED section. We cover it. No one else does yet.",
+    "Indian Economic Development is new in CUET 2026 — no past papers. We built the questions.",
+    "IED questions built from NCERT + Sandeep Garg + 2025-26 govt data. Refreshed weekly.",
   ];
   const [hookIdx,   setHookIdx]   = useState(0);
   const [hookText,  setHookText]  = useState("");
@@ -1047,6 +1050,71 @@ function GoogleIcon() {
     </svg>
   );
 }
+
+// ── IED Disclaimer Banner — typewriter, shown on Economics dashboard tab ─────
+// Informs students that IED is new in 2026 with no past papers.
+// Also serves as a hook — "first platform to cover this section."
+function IEDDisclaimerBanner() {
+  const LINES = [
+    "India's 1st mock tests for the new Indian Economic Development section — built from NCERT + 2025-26 govt data.",
+    "No past CUET papers exist for IED. Our questions are crafted from NCERT Class 11 + Sandeep Garg framework.",
+    "IED is brand new in CUET 2026. We refresh our question bank every week as new data and updates emerge.",
+    "If you studied IED for CBSE boards, you're already ahead. Our questions match that exact curriculum.",
+  ];
+  const [idx,   setIdx]   = React.useState(0);
+  const [text,  setText]  = React.useState("");
+  const [phase, setPhase] = React.useState("typing");
+
+  React.useEffect(() => {
+    const full = LINES[idx];
+    let t;
+    if (phase === "typing") {
+      if (text.length < full.length) {
+        t = setTimeout(() => setText(full.slice(0, text.length + 1)), 28);
+      } else {
+        t = setTimeout(() => setPhase("pausing"), 3200);
+      }
+    } else if (phase === "pausing") {
+      t = setTimeout(() => setPhase("deleting"), 400);
+    } else {
+      if (text.length > 0) {
+        t = setTimeout(() => setText(text.slice(0, -1)), 14);
+      } else {
+        setIdx(i => (i + 1) % LINES.length);
+        setPhase("typing");
+      }
+    }
+    return () => clearTimeout(t);
+  }, [text, phase, idx]);
+
+  return (
+    <div style={{
+      padding: "10px 18px 10px 16px",
+      borderBottom: "1px solid rgba(99,102,241,0.14)",
+      background: "linear-gradient(90deg, rgba(99,102,241,0.06) 0%, rgba(99,102,241,0.02) 100%)",
+      borderLeft: "3px solid var(--indigo)",
+      display: "flex", alignItems: "flex-start", gap: 10,
+    }}>
+      <span style={{ fontSize: 14, lineHeight: 1, marginTop: 2, flexShrink: 0 }}>📘</span>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".09em", textTransform: "uppercase", color: "var(--indigo)", marginBottom: 3 }}>
+          New in CUET 2026 · Indian Economic Development
+        </div>
+        <div style={{ fontSize: 12, color: "var(--navy)", fontWeight: 500, lineHeight: 1.5, minHeight: 18 }}>
+          {text}<span style={{
+            display: "inline-block", width: 1.5, height: "1em",
+            background: "var(--indigo)", marginLeft: 1.5, verticalAlign: "text-bottom",
+            animation: "caretBlink 0.8s step-end infinite",
+          }} />
+        </div>
+      </div>
+      <div style={{ fontSize: 9, fontWeight: 700, color: "var(--success)", background: "#ECFDF5", border: "1px solid #A7F3D0", padding: "3px 8px", borderRadius: 20, flexShrink: 0, whiteSpace: "nowrap" }}>
+        Refreshed weekly
+      </div>
+    </div>
+  );
+}
+
 // ── DASHBOARD SCREEN ──────────────────────────────────────────────────────────
 function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, showToast, subjects, showPaywallOverride, setShowPaywallOverride }) {
   const [mode,          setMode]          = useState(null);   // null = no selection yet
@@ -1169,7 +1237,7 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
   }
 
   // Section label and subject badge
-  const subjectBadge = activeSubject === "GAT" ? "General Aptitude Test (501)" : activeSubject === "Economics" ? "Economics (218)" : "English (101)";
+  const subjectBadge = activeSubject === "GAT" ? "General Aptitude Test (501)" : activeSubject === "Economics" ? "Economics (118)" : "English (101)";
   const sectionLabel = activeSubject === "GAT"
     ? "Your Practice Summary — CUET GAT (501) 2026"
     : activeSubject === "Economics"
@@ -1228,6 +1296,9 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
 
         <div className="card" style={{ padding: 0, marginBottom: 20, overflow: "hidden" }}>
 
+          {/* ── IED Disclaimer Banner — shown only when Economics subject is active ── */}
+          {activeSubject === "Economics" && <IEDDisclaimerBanner />}
+
           {/* ── Card header ─────────────────────────────────────────── */}
           <div style={{ padding: "11px 18px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -1247,7 +1318,7 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
             <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 14 }}>
               {liveSubjects.map(s => {
                 const key   = s.name.includes("GAT") ? "GAT" : s.name.includes("Economics") ? "Economics" : "English";
-                const label = s.name.includes("GAT") ? "General Aptitude Test (501)" : s.name.includes("Economics") ? "Economics (218)" : "English (101)";
+                const label = s.name.includes("GAT") ? "General Aptitude Test (501)" : s.name.includes("Economics") ? "Economics (118)" : "English (101)";
                 const isActive = activeSubject === key;
                 return (
                   <button key={key} onClick={() => handleSubjectChange(key)} style={{
@@ -1263,9 +1334,9 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
                   </button>
                 );
               })}
-              {/* Economics coming soon chip */}
+              {/* Economics — muted chip while live:false */}
               <span style={{ padding: "5px 14px", borderRadius: 20, border: "1.5px solid #F1F5F9", background: "#F8FAFC", color: "#CBD5E1", fontWeight: 600, fontSize: 12, display: "flex", alignItems: "center", gap: 5 }}>
-                Economics (218) <span style={{ fontSize: 9, opacity: 0.6 }}>soon</span>
+                Economics (118) <span style={{ fontSize: 9, opacity: 0.6 }}>preparing</span>
               </span>
             </div>
 
