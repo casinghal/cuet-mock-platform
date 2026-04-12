@@ -1048,8 +1048,8 @@ function GoogleIcon() {
 }
 // ── DASHBOARD SCREEN ──────────────────────────────────────────────────────────
 function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, showToast, subjects, showPaywallOverride, setShowPaywallOverride }) {
-  const [mode,          setMode]          = useState("Mock");
-  const [activeSubject, setActiveSubject] = useState("English"); // "English" | "GAT"
+  const [mode,          setMode]          = useState(null);   // null = no selection yet
+  const [activeSubject, setActiveSubject] = useState(null);   // null = no selection yet
   // showPaywall can be triggered from inside (handleBegin gate) or outside (handleBeginTest 402 catch)
   const [showPaywallLocal, setShowPaywallLocal] = useState(false);
   const showPaywall    = showPaywallLocal || (showPaywallOverride ?? false);
@@ -1074,11 +1074,21 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
 
   useEffect(() => { logEvent("page_view", { page: "dashboard", user_id: user?.uid }); }, []);
 
+  // Auto-select subject if only one is live (no choice to make for Step 1)
+  useEffect(() => {
+    const live = (subjects || []).filter(s => s.live);
+    if (live.length === 1) {
+      const key = live[0].name.includes("GAT") ? "GAT" : "English";
+      setActiveSubject(key);
+    }
+  }, [subjects]);
+
+  // Labels are identical for both subjects — subject tab already provides context
   const ALL_MODES = {
-    QuickPractice: { label: "Quick Practice",     desc: "15 questions · All topics · Lifetime Free",   free: true,  subject: "English" },
-    Mock:          { label: "Mock Exam",           desc: "50 questions · 60 min · NTA standard marking", free: false, subject: "English" },
-    GAT_QP:        { label: "GAT Quick Practice",  desc: "15 questions · All aptitude topics · Always Free", free: true,  subject: "GAT" },
-    GAT_Mock:      { label: "GAT Mock Exam",       desc: "50 questions · 60 min · General Aptitude",    free: false, subject: "GAT" },
+    QuickPractice: { label: "Quick Practice", icon: "⚡", desc: "15 questions · All topics", free: true,  subject: "English" },
+    Mock:          { label: "Mock Exam",       icon: "📝", desc: "50 questions · 60 min · NTA standard marking", free: false, subject: "English" },
+    GAT_QP:        { label: "Quick Practice",  icon: "⚡", desc: "15 questions · All aptitude topics", free: true,  subject: "GAT" },
+    GAT_Mock:      { label: "Mock Exam",       icon: "📝", desc: "50 questions · 60 min · General Aptitude", free: false, subject: "GAT" },
   };
 
   // Filter mode tiles by active subject
@@ -1086,15 +1096,16 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
     Object.entries(ALL_MODES).filter(([, cfg]) => cfg.subject === activeSubject)
   );
 
-  // When subject changes, reset to the appropriate default mode
+  // When subject changes, reset mode — user must actively choose format
   function handleSubjectChange(subj) {
     setActiveSubject(subj);
-    setMode(subj === "GAT" ? "GAT_Mock" : "Mock");
+    setMode(null); // clear mode — no default
   }
 
-  const isCurrentModeFree = ALL_MODES[mode]?.free ?? false;
+  const isCurrentModeFree = mode ? (ALL_MODES[mode]?.free ?? false) : false;
 
   async function handleBegin() {
+    if (!activeSubject || !mode) return; // guard: both must be selected
     // Free modes: GAT_QP and QuickPractice — no limit check
     if (isCurrentModeFree) {
       onBeginTest({ mode, subject: activeSubject });
@@ -1163,9 +1174,11 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
       <div className="nta-header">
         <span className="nta-logo">Vantiq <span>CUET</span></span>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <span style={{ fontSize: 11, background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 4, padding: "3px 8px", color: "#fff", letterSpacing: ".03em" }}>
-            {subjectBadge}
-          </span>
+          {activeSubject && (
+            <span style={{ fontSize: 11, background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 4, padding: "3px 8px", color: "#fff", letterSpacing: ".03em" }}>
+              {activeSubject === "GAT" ? "GAT (501)" : "English (101)"}
+            </span>
+          )}
           <span style={{ fontSize: 13, opacity: 0.8 }}>{user?.displayName?.split(" ")[0]}</span>
           <button onClick={onLogout} style={{ background: "transparent", color: "#fff", fontSize: 12, opacity: 0.7, padding: "4px 8px", border: "1px solid rgba(255,255,255,.2)", borderRadius: 4, fontFamily: "var(--font-body)", cursor: "pointer" }}>
             Sign out
@@ -1176,9 +1189,9 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
       <div style={{ flex: 1, maxWidth: 900, margin: "0 auto", width: "100%", padding: isMobile ? "20px 16px" : "28px 24px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
           <h2 style={{ fontSize: 12, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--text-muted)", margin: 0 }}>
-            {sectionLabel}
+            Your Practice Summary
           </h2>
-          <span style={{ fontSize: 11, color: "var(--success)", fontWeight: 600 }}>● Quick Practice: Lifetime Free</span>
+          <span style={{ fontSize: 11, color: "var(--success)", fontWeight: 600 }}>⚡ Quick Practice: Always Free</span>
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 12, marginBottom: 36 }}>
@@ -1196,69 +1209,103 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
           ))}
         </div>
 
-        <div className="card" style={{ padding: "24px 28px", marginBottom: 28 }}>
-          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 4 }}>
-            <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--navy)", margin: 0 }}>New Test Paper</h3>
-            <span style={{ fontSize: 11, background: "#EEF2FF", color: "var(--indigo)", fontWeight: 600, padding: "3px 10px", borderRadius: 20, border: "1px solid #C7D2FE" }}>
-              {newTestLabel}
-            </span>
-          </div>
-          <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: showSubjectTabs ? 16 : 24 }}>
-            {showSubjectTabs ? "Choose a subject and format, then begin." : "Choose a format and begin."}
-          </p>
+        <div className="card" style={{ padding: isMobile ? "18px 16px" : "24px 28px", marginBottom: 28 }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--navy)", marginBottom: 20 }}>New Test Paper</h3>
 
-          {/* Subject tab bar — only visible when 2+ subjects are live */}
-          {showSubjectTabs && (
-            <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+          {/* ── STEP 1: Subject ─────────────────────────────────────── */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 8 }}>
+              Step 1 — Choose Subject
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {liveSubjects.map(s => {
                 const key = s.name.includes("GAT") ? "GAT" : "English";
                 const label = s.name.includes("GAT") ? "GAT (501)" : "English (101)";
+                const isActive = activeSubject === key;
                 return (
                   <button key={key} onClick={() => handleSubjectChange(key)} style={{
-                    padding: "8px 18px", borderRadius: 8, cursor: "pointer",
-                    border: `2px solid ${activeSubject === key ? "var(--navy)" : "var(--border)"}`,
-                    background: activeSubject === key ? "var(--navy)" : "#fff",
-                    color: activeSubject === key ? "#fff" : "var(--navy)",
+                    flex: "1 1 120px", padding: "10px 16px", borderRadius: 9, cursor: "pointer",
+                    border: `2px solid ${isActive ? "var(--navy)" : "var(--border)"}`,
+                    background: isActive ? "var(--navy)" : "#fff",
+                    color: isActive ? "#fff" : "var(--navy)",
                     fontWeight: 600, fontSize: 13, fontFamily: "var(--font-body)",
-                    transition: "all .15s",
+                    transition: "all .15s", display: "flex", alignItems: "center", gap: 7,
+                    justifyContent: "center",
                   }}>
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: isActive ? "#6EE7B7" : "#6EE7B7", display: "inline-block", flexShrink: 0 }} />
                     {label}
                   </button>
                 );
               })}
             </div>
-          )}
-
-          <div style={{ marginBottom: 20 }}>
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              {Object.entries(MODES).map(([k, cfg]) => (
-                <div key={k} onClick={() => setMode(k)} style={{
-                  border: `2px solid ${mode === k ? "var(--navy)" : "var(--border)"}`,
-                  borderRadius: 10, padding: "12px 18px", cursor: "pointer",
-                  flex: "1 1 140px",
-                  background: mode === k ? "#EEF2FF" : "#fff",
-                  boxShadow: mode === k ? "0 2px 8px rgba(67,56,202,.12)" : "none",
-                  transition: "all .15s", position: "relative",
-                }}>
-                  {cfg.free && (
-                    <div style={{
-                      position: "absolute", top: -10, right: 10,
-                      background: "var(--success)", color: "#fff",
-                      fontSize: 9, fontWeight: 700, padding: "2px 7px",
-                      borderRadius: 20, letterSpacing: ".04em", textTransform: "uppercase",
-                    }}>Always Free</div>
-                  )}
-                  <div style={{ fontWeight: 600, fontSize: 13, color: "var(--navy)", marginBottom: 4 }}>{cfg.label}</div>
-                  <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>{cfg.desc}</div>
-                </div>
-              ))}
-            </div>
           </div>
 
-          <button className="btn-primary full" onClick={handleBegin} disabled={checking && !isCurrentModeFree}>
+          {/* ── STEP 2: Format — only shown after subject chosen ─────── */}
+          {activeSubject ? (
+            <>
+              <div style={{ height: 1, background: "var(--border)", margin: "4px 0 16px" }} />
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 8 }}>
+                  Step 2 — Choose Format
+                </div>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  {Object.entries(MODES).map(([k, cfg]) => {
+                    const isSelected = mode === k;
+                    return (
+                      <div key={k} onClick={() => setMode(k)} style={{
+                        flex: "1 1 140px", border: `2px solid ${isSelected ? "var(--indigo)" : "var(--border)"}`,
+                        borderRadius: 10, padding: "14px 16px", cursor: "pointer",
+                        background: isSelected ? "#EEF2FF" : "#fff",
+                        boxShadow: isSelected ? "0 0 0 3px rgba(67,56,202,0.1)" : "none",
+                        transition: "all .15s", position: "relative",
+                      }}>
+                        <div style={{ fontSize: 20, marginBottom: 6 }}>{cfg.icon}</div>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: "var(--navy)", marginBottom: 3 }}>{cfg.label}</div>
+                        <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: cfg.free ? 6 : 0 }}>{cfg.desc}</div>
+                        {cfg.free && (
+                          <span style={{ display: "inline-block", background: "#DCFCE7", color: "var(--success)", fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 20, letterSpacing: ".04em", textTransform: "uppercase" }}>
+                            Always Free
+                          </span>
+                        )}
+                        {!cfg.free && !unlocked && (
+                          <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
+                            {testsLeft > 0 ? `${testsLeft} free · ₹199 unlimited` : "Free limit reached · ₹199 to unlock"}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          ) : (
+            /* No subject selected yet */
+            <div style={{ border: "1.5px dashed var(--border)", borderRadius: 10, padding: "20px 16px", textAlign: "center", color: "var(--text-muted)", fontSize: 12, marginBottom: 16 }}>
+              Select a subject above to see available formats
+            </div>
+          )}
+
+          {/* ── Divider + CTA ───────────────────────────────────────── */}
+          <div style={{ height: 1, background: "var(--border)", margin: "4px 0 14px" }} />
+          <button
+            className="btn-primary full"
+            onClick={handleBegin}
+            disabled={!activeSubject || !mode || (checking && !isCurrentModeFree)}
+            style={{ opacity: (!activeSubject || !mode) ? 0.45 : 1, cursor: (!activeSubject || !mode) ? "not-allowed" : "pointer" }}
+          >
             {checking ? "Checking..." : "Begin Test →"}
           </button>
-          {isCurrentModeFree ? (
+
+          {/* Hint text — progressive */}
+          {!activeSubject ? (
+            <p style={{ textAlign: "center", marginTop: 10, fontSize: 12, color: "var(--text-muted)" }}>
+              Choose a subject to get started
+            </p>
+          ) : !mode ? (
+            <p style={{ textAlign: "center", marginTop: 10, fontSize: 12, color: "var(--text-muted)" }}>
+              Now pick a format above
+            </p>
+          ) : isCurrentModeFree ? (
             <p style={{ textAlign: "center", marginTop: 10, fontSize: 12, color: "var(--success)", fontWeight: 600 }}>
               ✓ Quick Practice is always free — no limits, ever.
             </p>
@@ -1268,7 +1315,7 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
             </p>
           ) : (
             <p style={{ textAlign: "center", marginTop: 10, fontSize: 12, color: "var(--text-muted)" }}>
-              {Math.max(0, 15 - ((userData?.dailyTests || {})[new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" })] || 0))} mock tests remaining today
+              Unlimited access active
             </p>
           )}
         </div>
