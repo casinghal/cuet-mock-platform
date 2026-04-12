@@ -92,8 +92,9 @@ jobs:
             echo "    Mock: $MOCK_NOW/120 (needed: $MOCK_NEEDED) | QP: $QP_NOW/200 (needed: $QP_NEEDED)"
 
             # Trigger fill — responds immediately, runs in background
-            WARM=$(curl -s -w "
-%{http_code}" -X POST "$CF_BASE/triggerCacheWarm"               -H "x-admin-key: $ADMIN_KEY" -H "Content-Type: application/json"               -d '{}' --max-time 30)
+            WARM=$(curl -s -w "\n%{http_code}" -X POST "$CF_BASE/triggerCacheWarm" \
+              -H "x-admin-key: $ADMIN_KEY" -H "Content-Type: application/json" \
+              -d '{}' --max-time 30)
             HTTP=$(echo "$WARM" | tail -1)
             BODY=$(echo "$WARM" | head -n -1)
             echo "    Trigger HTTP: $HTTP"
