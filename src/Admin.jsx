@@ -469,6 +469,118 @@ function CacheBar({ mode, config, current }) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
+// ─── Cache Command Centre ─────────────────────────────────────────────────────
+function CacheCommandCentre({ cacheStatus, filling, fillProgress, fillMode, fillAllCache, stopFill }) {
+  const modes = [
+    { key: "Mock",          label: "Eng Mock",  color: "#4338CA", bg: "#EEF2FF" },
+    { key: "QuickPractice", label: "Eng QP",    color: "#059669", bg: "#ECFDF5" },
+    { key: "GAT_Mock",      label: "GAT Mock",  color: "#DC2626", bg: "#FEF2F2" },
+    { key: "GAT_QP",        label: "GAT QP",    color: "#D97706", bg: "#FEF3C7" },
+  ];
+  const activeMode = fillProgress?.targetMode || (filling && !fillProgress?.targetMode ? "All" : null);
+  const elapsed = fillProgress?.elapsed ?? 0;
+  const elapsedStr = elapsed >= 60 ? `${Math.floor(elapsed/60)}m ${elapsed%60}s` : `${elapsed}s`;
+
+  const getNeeded = (key) => cacheStatus?.[key]?.needed ?? 0;
+  const getCurrent = (key) => {
+    if (filling && fillProgress) {
+      if (key === "Mock" || key === "GAT_Mock") return fillProgress.mock ?? cacheStatus?.[key]?.current ?? 0;
+      if (key === "QuickPractice" || key === "GAT_QP") return fillProgress.qp ?? cacheStatus?.[key]?.current ?? 0;
+    }
+    return cacheStatus?.[key]?.current ?? 0;
+  };
+
+  return (
+    <div style={{ background:"#fff", borderBottom:"2px solid #E2E8F0" }}>
+      {/* Header */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"9px 20px 7px", borderBottom:"1px solid #F1F5F9" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          <span style={{ fontSize:10, fontWeight:800, letterSpacing:".1em", textTransform:"uppercase", color:"#0F2747" }}>Cache Engine</span>
+          {filling ? (
+            <span style={{ display:"inline-flex", alignItems:"center", gap:5, background:"#F0FDF4", border:"1px solid #BBF7D0", color:"#059669", fontSize:10, fontWeight:700, padding:"2px 9px", borderRadius:20 }}>
+              <span style={{ width:6, height:6, borderRadius:"50%", background:"#059669", display:"inline-block", animation:"pulse 1.2s ease-in-out infinite" }}/>
+              GENERATING{activeMode && activeMode!=="All" ? ` · ${activeMode}` : ""} · {elapsedStr} elapsed
+            </span>
+          ) : (
+            <span style={{ fontSize:10, color:"#94A3B8", background:"#F8FAFC", border:"1px solid #E2E8F0", padding:"2px 8px", borderRadius:20 }}>IDLE</span>
+          )}
+        </div>
+        <div style={{ display:"flex", gap:5 }}>
+          {filling ? (
+            <button onClick={stopFill} style={{ background:"#FEF2F2", border:"1px solid #FECACA", color:"#DC2626", borderRadius:6, padding:"3px 10px", fontSize:10, fontWeight:700, cursor:"pointer" }}>
+              ⏹ Stop
+            </button>
+          ) : null}
+          <button onClick={fillAllCache} disabled={filling} style={{ background: filling?"#F1F5F9":"#0F2747", border:"none", color: filling?"#94A3B8":"#fff", borderRadius:6, padding:"3px 10px", fontSize:10, fontWeight:700, cursor: filling?"not-allowed":"pointer" }}>
+            ▶ Fill All
+          </button>
+        </div>
+      </div>
+
+      {/* 4-mode grid */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)" }}>
+        {modes.map((m, i) => {
+          const total   = CACHE_CONFIG[m.key]?.size ?? 100;
+          const current = getCurrent(m.key);
+          const needed  = getNeeded(m.key);
+          const pct     = total > 0 ? Math.round((current / total) * 100) : 0;
+          const isFull  = needed === 0 && current > 0;
+          const isCrit  = !isFull && pct < 30;
+          const isActive= filling && (activeMode === m.key || activeMode === "All");
+          const barColor= isFull?"#059669": isActive?m.color: isCrit?"#DC2626":"#CBD5E1";
+          const status  = isFull?"FULL": isActive?"FILLING": isCrit?"LOW": "OK";
+          const sBg     = isFull?"#ECFDF5": isActive?m.bg: isCrit?"#FEF2F2":"#F8FAFC";
+          const sCol    = isFull?"#059669": isActive?m.color: isCrit?"#DC2626":"#64748B";
+          return (
+            <div key={m.key} style={{ padding:"10px 14px", borderRight: i<3?"1px solid #F1F5F9":"none", background: isActive?`${m.bg}88`:"#fff", transition:"background .3s" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5 }}>
+                <span style={{ fontSize:11, fontWeight:700, color:"#0F2747" }}>{m.label}</span>
+                <span style={{ fontSize:9, fontWeight:800, letterSpacing:".06em", textTransform:"uppercase", background:sBg, color:sCol, padding:"1px 6px", borderRadius:10 }}>{status}</span>
+              </div>
+              <div style={{ display:"flex", alignItems:"baseline", gap:3, marginBottom:5 }}>
+                <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:24, fontWeight:800, color:barColor, lineHeight:1 }}>{cacheStatus ? current : "—"}</span>
+                <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11, color:"#94A3B8" }}>/ {total}</span>
+                <span style={{ fontSize:10, color:"#94A3B8", marginLeft:2 }}>{pct}%</span>
+              </div>
+              <div style={{ height:4, background:"#F1F5F9", borderRadius:3, overflow:"hidden", marginBottom:5 }}>
+                <div style={{ height:"100%", borderRadius:3, background:barColor, width:`${pct}%`, transition:"width 1.5s ease" }}/>
+              </div>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:7 }}>
+                <span style={{ fontSize:9, color:"#94A3B8" }}>{needed>0 ? `${needed} to go` : "✓ at target"}</span>
+                {isActive && elapsed>0 && <span style={{ fontSize:9, color:m.color, fontWeight:600 }}>{elapsedStr}</span>}
+              </div>
+              <button onClick={() => fillMode(m.key)} disabled={filling || isFull}
+                style={{ width:"100%", background: (filling||isFull)?"#F8FAFC":m.bg, border:`1px solid ${(filling||isFull)?"#E2E8F0":barColor+"55"}`, color:(filling||isFull)?"#94A3B8":m.color, borderRadius:5, padding:"4px 0", fontSize:10, fontWeight:700, cursor:(filling||isFull)?"not-allowed":"pointer", textTransform:"uppercase", letterSpacing:".05em" }}>
+                {isActive ? "▶ Running…" : isFull ? "✓ Full" : "▶ Fill Now"}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Detail bar when filling */}
+      {filling && fillProgress && !fillProgress.locked && (
+        <div style={{ padding:"7px 20px", background:"#F8FAFF", borderTop:"1px solid #E2E8F0", display:"flex", alignItems:"center", gap:20, flexWrap:"wrap" }}>
+          <span style={{ fontSize:11, color:"#64748B" }}>Elapsed: <strong style={{ fontFamily:"'JetBrains Mono',monospace", color:"#0F2747" }}>{elapsedStr}</strong></span>
+          {fillProgress.mock !== undefined && <span style={{ fontSize:11, color:"#64748B" }}>Mock: <strong style={{ fontFamily:"'JetBrains Mono',monospace", color:"#4338CA" }}>{fillProgress.mock}/{fillProgress.mockTarget ?? CACHE_CONFIG.Mock.size}</strong></span>}
+          {fillProgress.qp  !== undefined && <span style={{ fontSize:11, color:"#64748B" }}>QP: <strong style={{ fontFamily:"'JetBrains Mono',monospace", color:"#059669" }}>{fillProgress.qp}/{fillProgress.qpTarget ?? CACHE_CONFIG.QuickPractice.size}</strong></span>}
+          <div style={{ flex:1, minWidth:120, height:4, background:"#E2E8F0", borderRadius:3, overflow:"hidden" }}>
+            <div style={{ height:"100%", background:"linear-gradient(90deg,#4338CA,#059669)", borderRadius:3,
+              width:`${Math.round(((fillProgress.mock??0)+(fillProgress.qp??0))/((fillProgress.mockTarget??120)+(fillProgress.qpTarget??200))*100)}%`,
+              transition:"width 2s ease" }}/>
+          </div>
+          <span style={{ fontSize:10, color:"#94A3B8" }}>updates every 15s</span>
+        </div>
+      )}
+      {filling && fillProgress?.locked && (
+        <div style={{ padding:"6px 20px", background:"#FFFBEB", borderTop:"1px solid #FDE68A", fontSize:11, color:"#92400E", display:"flex", gap:8 }}>
+          <span>⏳</span><span>External fill in progress — monitoring. Cache counts refresh every 15s.</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminDashboard() {
   // ── Auth state ──────────────────────────────────────────────────────────────
   const [password, setPassword] = useState("");
@@ -484,7 +596,8 @@ export default function AdminDashboard() {
   const [feedback, setFeedback] = useState([]);
   const [ratings, setRatings] = useState([]);
   const [userBreakdown, setUserBreakdown] = useState([]);
-  const [liveUsers, setLiveUsers] = useState(0);
+  const [liveUsers,    setLiveUsers]    = useState(0);
+  const [onlineUsers,  setOnlineUsers]  = useState([]); // array: {uid, email, screen, lastSeen}
   const [insights, setInsights] = useState(null);
   const [intel, setIntel] = useState(null);
   const [intelLoad, setIntelLoad] = useState(false);
@@ -638,7 +751,7 @@ export default function AdminDashboard() {
         addLog("Ratings load: " + e.message, "warn");
       }
 
-      // Presence (live users)
+      // Presence (live users with email resolution)
       try {
         const pQ = query(collection(db, "presence"));
         const pSnap = await getDocs(pQ);
@@ -648,8 +761,19 @@ export default function AdminDashboard() {
           return ls && ls > fiveMinsAgo;
         });
         setLiveUsers(live.length);
+        // Build online user list with emails from users collection
+        const userEmailMap = {};
+        users.forEach(u => { userEmailMap[u.id] = u.email || u.displayName || u.id.slice(0,10); });
+        const onlineList = live.map(d => ({
+          uid: d.id,
+          email: d.data().email || userEmailMap[d.id] || d.id.slice(0,10),
+          screen: d.data().screen || "—",
+          lastSeen: d.data().lastSeen?.toDate ? d.data().lastSeen.toDate() : null,
+        })).sort((a,b) => (b.lastSeen || 0) - (a.lastSeen || 0));
+        setOnlineUsers(onlineList);
       } catch (e) {
         setLiveUsers(0);
+        setOnlineUsers([]);
       }
 
       // Intelligence
@@ -798,6 +922,14 @@ export default function AdminDashboard() {
   }, [filling, loadCacheStatus, addLog]);
 
   // ── Auto-fill check on load ──────────────────────────────────────────────────
+  // ── Stop active fill ──────────────────────────────────────────────────────────
+  const stopFill = useCallback(() => {
+    clearInterval(fillPollRef.current);
+    setFilling(false);
+    setFillProgress(null);
+    addLog("Fill manually stopped by admin", "warn");
+  }, [addLog]);
+
   const checkAndFill = useCallback(async () => {
     const status = await loadCacheStatus(true); // silent on auto-check
     if (!status) return;
@@ -823,14 +955,29 @@ export default function AdminDashboard() {
     }
   }, [authed, fbUser, fbLoading]);
 
-  // ── Auto-refresh status bar every 60s ───────────────────────────────────────
+  // ── Auto-refresh every 60s — full dashboard data ──────────────────────────
+  // If fill is active: only refresh cache status + presence (lightweight, won't disrupt fill)
+  // If fill is idle: full loadData so KPIs, students, tests all update
+  const [nextRefreshIn, setNextRefreshIn] = useState(60);
+  const refreshCountdownRef = useRef(null);
+
   useEffect(() => {
     if (!authed) return;
     statusPollRef.current = setInterval(() => {
-      loadCacheStatus();
+      // Don't reset fill polling — just refresh data around it
+      loadCacheStatus(true);
+      if (!filling) loadData();
+      setNextRefreshIn(60);
     }, 60000);
-    return () => clearInterval(statusPollRef.current);
-  }, [authed, loadCacheStatus]);
+    // Countdown ticker
+    refreshCountdownRef.current = setInterval(() => {
+      setNextRefreshIn(n => n > 0 ? n - 1 : 60);
+    }, 1000);
+    return () => {
+      clearInterval(statusPollRef.current);
+      clearInterval(refreshCountdownRef.current);
+    };
+  }, [authed, loadCacheStatus, loadData, filling]);
 
   // ── Cleanup on unmount ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -1145,6 +1292,14 @@ export default function AdminDashboard() {
         ::-webkit-scrollbar-track { background: #F1F5F9; }
         ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 4px; }
         button:hover { opacity: 0.88; }
+        @keyframes pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.6; transform: scale(0.9); }
+        }
+        @keyframes shimmer {
+          0% { background-position: -200% 0; }
+          100% { background-position: 200% 0; }
+        }
         @media (max-width: 900px) {
           .kpi-grid { grid-template-columns: repeat(3,1fr) !important; }
           .live-section { grid-template-columns: 1fr !important; }
@@ -1317,31 +1472,26 @@ export default function AdminDashboard() {
           color="#059669"
         />
         <span style={{ marginLeft: "auto", ...S.lastRefresh }}>
-          {lastRefresh ? `↻ ${lastRefresh.toLocaleTimeString("en-IN")}` : ""}
+          {lastRefresh ? (
+            <span style={{ display:"flex", alignItems:"center", gap:6 }}>
+              <span>↻ {lastRefresh.toLocaleTimeString("en-IN")}</span>
+              <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:10, background:"#EEF2FF", color:"#4338CA", borderRadius:10, padding:"1px 7px", fontWeight:700 }}>
+                next in {nextRefreshIn}s
+              </span>
+            </span>
+          ) : ""}
         </span>
       </div>
 
-      {/* ── FILL PROGRESS STRIP ── */}
-      {filling && fillProgress && (
-        <div style={S.fillStrip}>
-          <div style={S.fillDot} />
-          {fillProgress.locked ? (
-            <span>Fill lock active — another run in progress</span>
-          ) : (
-            <span>
-              Filling cache · Mock{" "}
-              <strong style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-                {fillProgress.mock ?? "…"}/{fillProgress.mockTarget}
-              </strong>{" "}
-              · QP{" "}
-              <strong style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-                {fillProgress.qp ?? "…"}/{fillProgress.qpTarget}
-              </strong>{" "}
-              · {fillProgress.elapsed ?? 0}s elapsed
-            </span>
-          )}
-        </div>
-      )}
+      {/* ── CACHE COMMAND CENTRE ── */}
+      <CacheCommandCentre
+        cacheStatus={cacheStatus}
+        filling={filling}
+        fillProgress={fillProgress}
+        fillMode={fillMode}
+        fillAllCache={fillAllCache}
+        stopFill={stopFill}
+      />
 
       {/* ── ZONE 2: COMMAND ROW ── */}
       <div style={S.commandRow}>
@@ -1352,24 +1502,7 @@ export default function AdminDashboard() {
           <button onClick={runHealthCheck} style={S.btnSmall()}>
             {healthLoad ? <span style={S.spinner} /> : "Run Health Check"}
           </button>
-          {/* Individual mode fills — each bypasses lock and targets only that mode */}
-          <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
-            <button onClick={() => fillMode("GAT_Mock")} style={{ ...S.btnSmall("primary"), background:"#DC2626", borderColor:"#DC2626" }} title="Force fill GAT Mock — overrides lock">
-              {filling && fillProgress?.targetMode==="GAT_Mock" ? "⏳ GAT Mock…" : "⚡ GAT Mock"}
-            </button>
-            <button onClick={() => fillMode("GAT_QP")} style={{ ...S.btnSmall("primary"), background:"#EA580C", borderColor:"#EA580C" }} title="Force fill GAT QP — overrides lock">
-              {filling && fillProgress?.targetMode==="GAT_QP" ? "⏳ GAT QP…" : "⚡ GAT QP"}
-            </button>
-            <button onClick={() => fillMode("Mock")} style={S.btnSmall()} disabled={filling} title="Fill English Mock">
-              {filling && fillProgress?.targetMode==="Mock" ? "⏳ Eng Mock…" : "Eng Mock"}
-            </button>
-            <button onClick={() => fillMode("QuickPractice")} style={S.btnSmall()} disabled={filling} title="Fill English QP">
-              {filling && fillProgress?.targetMode==="QuickPractice" ? "⏳ Eng QP…" : "Eng QP"}
-            </button>
-            <button onClick={fillAllCache} style={S.btnSmall("primary")} disabled={filling} title="Fill all 4 modes sequentially">
-              {filling && !fillProgress?.targetMode ? "Filling All…" : "Fill All"}
-            </button>
-          </div>
+          {/* Fill controls moved to Cache Command Centre above */}
           <a
             href="https://console.firebase.google.com/project/vantiq-cuet/functions/logs"
             target="_blank"
@@ -1421,7 +1554,7 @@ export default function AdminDashboard() {
         <KpiTile
           value={liveUsers || "0"}
           label="Online Now"
-          sub="last 5 min"
+          sub={onlineUsers.length > 0 ? "↓ see Who's Online" : "last 5 min"}
           accent="#059669"
           loading={false}
         />
@@ -1484,6 +1617,56 @@ export default function AdminDashboard() {
           )}
         </div>
       </div>
+
+      {/* ── WHO'S ONLINE PANEL ── */}
+      {onlineUsers.length > 0 && (
+        <div style={{ margin:"0 0 16px", background:"#fff", border:"1px solid #E2E8F0", borderRadius:10, overflow:"hidden" }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 16px", borderBottom:"1px solid #F1F5F9" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+              <span style={{ width:8, height:8, borderRadius:"50%", background:"#059669", display:"inline-block", animation:"pulse 2s ease-in-out infinite" }}/>
+              <span style={{ fontSize:11, fontWeight:800, letterSpacing:".08em", textTransform:"uppercase", color:"#0F2747" }}>
+                Who's Online
+              </span>
+              <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11, fontWeight:700, color:"#059669", background:"#ECFDF5", padding:"1px 8px", borderRadius:10, border:"1px solid #BBF7D0" }}>
+                {onlineUsers.length}
+              </span>
+            </div>
+            <span style={{ fontSize:10, color:"#94A3B8" }}>active in last 5 min · updates every 60s</span>
+          </div>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:0 }}>
+            {onlineUsers.map((u, i) => {
+              const minsAgo = u.lastSeen ? Math.round((Date.now() - u.lastSeen) / 60000) : null;
+              return (
+                <div key={u.uid} style={{
+                  display:"flex", alignItems:"center", gap:10,
+                  padding:"8px 16px",
+                  borderBottom: i < onlineUsers.length - 1 ? "1px solid #F8FAFC" : "none",
+                  width:"50%", boxSizing:"border-box",
+                  borderRight: i % 2 === 0 ? "1px solid #F1F5F9" : "none",
+                }}>
+                  <div style={{ width:28, height:28, borderRadius:"50%", background:"#EEF2FF", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                    <span style={{ fontSize:12, fontWeight:700, color:"#4338CA" }}>
+                      {(u.email || "?")[0].toUpperCase()}
+                    </span>
+                  </div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:12, fontWeight:600, color:"#0F2747", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                      {u.email}
+                    </div>
+                    <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:1 }}>
+                      <span style={{ width:5, height:5, borderRadius:"50%", background:"#6EE7B7", display:"inline-block" }}/>
+                      <span style={{ fontSize:10, color:"#94A3B8" }}>
+                        {minsAgo !== null ? (minsAgo === 0 ? "just now" : `${minsAgo}m ago`) : "—"}
+                        {u.screen && u.screen !== "—" ? ` · ${u.screen}` : ""}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ── TAB BAR ── */}
       <div style={S.tabBar} className="admin-tab-bar">
