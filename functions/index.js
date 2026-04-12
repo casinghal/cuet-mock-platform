@@ -2975,7 +2975,7 @@ Format your response as a structured fact sheet — use bullet points. State the
       }, { merge: true });
 
       // Clear Economics caches so next fills use fresh context
-      const cacheRef = db.collection("questionSets");
+      const cacheRef = db.collection("questionCache");
       const econMockSnap = await cacheRef.where("mode", "==", "Economics_Mock").get();
       const econQPSnap   = await cacheRef.where("mode", "==", "Economics_QP").get();
       const batch = db.batch();
@@ -3015,7 +3015,7 @@ exports.clearAndRebuildSubjectCache = functions
     if (!verifyAdminKey(req, res)) return;
     const subject = req.body?.subject || "all"; // "English" | "GAT" | "Economics" | "all"
     try {
-      const cacheRef = db.collection("questionSets");
+      const cacheRef = db.collection("questionCache");
       let deleted = 0;
       const batch = db.batch();
 
