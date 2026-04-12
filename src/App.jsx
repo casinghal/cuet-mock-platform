@@ -1511,7 +1511,7 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
   const warn = isTimed && timeLeft !== null && timeLeft < 300;
 
   return (
-    <div style={{ height: "100dvh", minHeight: "100vh", display: "flex", flexDirection: "column", background: "#fff", overflow: "hidden" }}>
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#fff" }}>
       {exitModal && (
         <div className="modal-overlay">
           <div className="modal-box" style={{ maxWidth: 380 }}>
@@ -1628,7 +1628,7 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
         </div>
       )}
 
-      <div className="exam-footer" style={{ borderTop: "1px solid var(--border)", background: "#fff", padding: isMobile ? "8px 12px" : "12px 32px", display: "flex", alignItems: "center", gap: isMobile ? 6 : 12, flexShrink: 0, paddingBottom: isMobile ? "calc(8px + env(safe-area-inset-bottom))" : "12px" }}>
+      <div className="exam-footer" style={{ borderTop: "1px solid var(--border)", background: "#fff", padding: isMobile ? "8px 12px" : "12px 32px", display: "flex", alignItems: "center", gap: isMobile ? 6 : 12, flexShrink: 0, position: isMobile ? "sticky" : "relative", bottom: 0, zIndex: 10, paddingBottom: isMobile ? "calc(8px + env(safe-area-inset-bottom))" : "12px" }}>
         <button className="btn-amber" onClick={() => setMarked(p => { const n = new Set(p); n.has(current) ? n.delete(current) : n.add(current); return n; })}>
           {marked.has(current) ? "✓ Marked" : "Mark"}
         </button>
