@@ -765,11 +765,11 @@ Return ONLY the JSON object. Begin with { — nothing before it.`;
 // or when the Firestore read fails. Hardcoded verified facts only.
 const FALLBACK_ECON_CONTEXT =
 `INDIAN ECONOMIC DEVELOPMENT — COMPREHENSIVE FALLBACK CONTEXT
-Source: NCERT Class 11 Indian Economic Development (Sandeep Garg framework) + verified current data
+Source: Indian Economic Development syllabus + verified current data
 
 ═══ IED UNIT I: DEVELOPMENT POLICIES 1947-90 ═══
 
-EVE OF INDEPENDENCE (Ch 1 — Sandeep Garg):
+EVE OF INDEPENDENCE (Ch 1):
 - Battle of Plassey 1757 — foundation of British Empire in India; British used India as "feeder economy"
 - 85% population rural and agricultural; not self-sufficient in food despite large agrarian workforce
 - Low per capita income, low literacy (~18%), low life expectancy (~32 years)
@@ -778,7 +778,7 @@ EVE OF INDEPENDENCE (Ch 1 — Sandeep Garg):
 - Drain of Wealth: Dadabhai Naoroji's thesis — British extracted India's wealth without return
 - "Great Divide" in demographic history = 1921 (mortality rate began declining for first time)
 
-INDIAN ECONOMY 1950-1990 (Ch 2 — Sandeep Garg):
+INDIAN ECONOMY 1950-1990 (Ch 2):
 - India adopted MIXED ECONOMY: best features of socialist economy (public sector, planning) + capitalist economy (private property, democracy)
 - Planning Commission established 1950; Prime Minister as Chairman; planning period = 5 years ("Five Year Plans")
 - First FYP (1951-56): agriculture + infrastructure focus — priority to agriculture after Partition disruption
@@ -795,7 +795,7 @@ INDIAN ECONOMY 1950-1990 (Ch 2 — Sandeep Garg):
 
 ═══ IED UNIT II: ECONOMIC REFORMS SINCE 1991 ═══
 
-TRIGGER OF 1991 CRISIS (Ch 3 — Sandeep Garg):
+TRIGGER OF 1991 CRISIS (Ch 3):
 - Gulf War (1990-91) → oil prices rose → import bill increased
 - NRI remittances fell (uncertainty during Gulf War)
 - Fiscal deficit reached 8.5% of GDP — unsustainable
@@ -835,7 +835,7 @@ Negative: widened inequality; neglected agriculture; informal sector excluded; j
 
 ═══ IED UNIT III: CURRENT CHALLENGES ═══
 
-POVERTY (Ch 4 — Sandeep Garg):
+POVERTY (Ch 4):
 - Relative Poverty: poverty compared to others (comparison)
 - Absolute Poverty: total number of people below poverty line
 - Poverty Line: based on caloric intake (2400 cal/day rural, 2100 cal/day urban — old method)
@@ -848,7 +848,7 @@ POVERTY (Ch 4 — Sandeep Garg):
   * Ministry: Ministry of Rural Development
   * Target: rural poor, especially during agricultural off-season
 
-HUMAN CAPITAL FORMATION (Ch 5 — Sandeep Garg):
+HUMAN CAPITAL FORMATION (Ch 5):
 - Human Capital = stock of skill and productive knowledge embodied in people through education, training, health
 - Education makes people more productive → economic growth
 - Return on investment in education is higher in developing countries
@@ -856,7 +856,7 @@ HUMAN CAPITAL FORMATION (Ch 5 — Sandeep Garg):
 - Role of institutions: NCERT, AICTE, UGC, IITs, IIMs, AIIMS
 - "Great Divide" connection: post-1921, investment in health improved life expectancy
 
-RURAL DEVELOPMENT (Ch 6 — Sandeep Garg):
+RURAL DEVELOPMENT (Ch 6):
 - Key issues: credit availability, marketing of produce, cooperatives
 - NABARD (National Bank for Agriculture and Rural Development): apex body for agricultural credit
 - Cooperatives: Amul (dairy cooperative, Gujarat) as successful example
@@ -864,7 +864,7 @@ RURAL DEVELOPMENT (Ch 6 — Sandeep Garg):
 - Organic farming: farming without synthetic chemicals; advantages (eco-friendly) and disadvantages (lower yield)
 - Agricultural Marketing reforms: regulated markets (mandis), MSP (Minimum Support Price), e-NAM
 
-EMPLOYMENT (Ch 7 — Sandeep Garg):
+EMPLOYMENT (Ch 7):
 - Workforce Participation Rate = Workforce / Total Population × 100
 - Labour Force = Workforce + Unemployed (seeking work)
 - Types of unemployment:
@@ -877,13 +877,13 @@ EMPLOYMENT (Ch 7 — Sandeep Garg):
 - ~90% of India's workers in informal sector
 - Female labour force participation 2025: 41.7% (HDR 2025) vs 76.1% for men
 
-INFRASTRUCTURE (Ch 8 — Sandeep Garg):
+INFRASTRUCTURE (Ch 8):
 - Physical Infrastructure: roads, ports, railways, airports, electricity, telecom
 - Economic Infrastructure: banking, insurance, energy sector
 - India's highway expansion: ~5,364 km high-speed corridors (Economic Survey 2026)
 - Golden Quadrilateral: connects Delhi, Mumbai, Chennai, Kolkata
 
-ENVIRONMENT AND SUSTAINABLE DEVELOPMENT (Ch 9 — Sandeep Garg):
+ENVIRONMENT AND SUSTAINABLE DEVELOPMENT (Ch 9):
 - Sustainable Development: "development that meets present needs without compromising future generations' ability to meet their needs" — Brundtland Commission 1987
 - Rio Earth Summit 1992 (UN Conference on Environment and Development): Agenda 21
 - Global warming, ozone depletion, biodiversity loss — key environmental challenges
@@ -903,7 +903,7 @@ HDI DATA (critical for CUET 2026):
 - India climbed 3 ranks: from 133 to 130 in 2025 HDR titled "A Matter of Choice: People and Possibilities in the Age of AI"
 
 ═══ IED UNIT IV: COMPARISON WITH NEIGHBOURS ═══
-(Sandeep Garg Chapter 10 — highest priority CUET 2026 topic)
+(Chapter 10 — highest priority CUET 2026 topic)
 
 THREE COUNTRIES COMPARED:
 - India: Independence August 15, 1947; democracy + secular constitution; mixed economy
@@ -975,7 +975,7 @@ CPEC (China-Pakistan Economic Corridor):
   $62 billion infrastructure investment linking China's Xinjiang to Pakistan's Gwadar port
   Deepened China-Pakistan strategic relationship; criticism: debt burden on Pakistan
 
-FALLBACK INSTRUCTION: If uncertain about any specific data point → use confirmed NCERT Sandeep Garg Ch 10 facts only.`;
+FALLBACK INSTRUCTION: If uncertain about any specific data point → use India-China-Pakistan comparison facts from Chapter 10 only.`;
 
 
 // ── Economics Intelligence Briefs — per batch (150-200 tokens each) ──────────
@@ -1053,13 +1053,14 @@ UNIT III — Perfect Competition (5 questions, passage=null):
 - topic "Price Elasticity of Supply": 2 questions — one determinant, one measurement — different time horizons
 
 UNIT IV — Market Equilibrium (6 questions):
-- Case Study Block: Write ONE scenario (60-80 words, a UNIQUE market — choose from: agricultural commodity / manufactured good / housing / foreign exchange / labour). passage = this scenario for ALL 4 case study questions.
+- Case Study Block: Write ONE scenario (60-80 words, a UNIQUE market — choose from: agricultural commodity / manufactured good / housing / foreign exchange / labour). passage=null for ALL questions — embed the FULL scenario text directly inside each of the 4 question fields, followed by the specific question. DO NOT use passage field.
   - topic "Market Equilibrium": Q1 equilibrium price and quantity, Q2 demand/supply shift effect, Q3 excess demand/supply, Q4 welfare/efficiency
 - topic "Price Ceiling": 1 question (maximum price — effect, examples)
 - topic "Price Floor": 1 question (minimum price / MSP — effect, examples)
 
 DIVERSITY MANDATE: All numerical questions must use different cost/price values. No two demand questions should involve the same type of good. Vary: consumer income levels, production scales, market types in case study.
 Rules: correct is 0-indexed. Round numbers only. No monopoly/oligopoly. Explanation: 2-3 sentences.
+CRITICAL OUTPUT RULE: NEVER mention "NCERT", "Sandeep Garg", "Class 11", "Class 12", "textbook", or any author/book name in question text, options, or explanations. Write explanations in plain authoritative language.
 Return ONLY the JSON object. Begin with { — nothing before it.`;
 
     case 2: return `You are an NTA CUET Economics (118) question paper generator for CUET 2026.
@@ -1069,7 +1070,7 @@ JSON schema: ${schema}
 MANDATORY TOPIC DISTRIBUTION — 21 questions, all passage=null unless case study:
 
 UNIT I — National Income Accounting (6 questions):
-- Case Study Block: Write ONE scenario (60-70 words with NNP, depreciation, and indirect tax data). Set passage field = scenario text for ALL 3 case study questions.
+- Case Study Block: Write ONE scenario (60-70 words with NNP, depreciation, and indirect tax data). passage=null for ALL questions — embed the FULL scenario text directly inside each question field, followed by the specific question. DO NOT use passage field.
   - Calculate NNPfc from given data
   - Identify stock vs flow concept from scenario
   - Private Income or Disposable Income calculation (2026 addition)
@@ -1096,21 +1097,20 @@ UNIT V — Open Economy Macroeconomics (3 questions, passage=null):
 - Exchange rate: fixed vs flexible vs managed float; determination: 1 question
 
 Rules: correct is 0-indexed. All numericals: whole number answers, provide all data in question. Explanation: 2-3 sentences.
+CRITICAL OUTPUT RULE: NEVER mention "NCERT", "Sandeep Garg", "Class 11", "Class 12", "textbook", or any author/book name in question text, options, or explanations. Write explanations in plain authoritative language.
 Return ONLY the JSON object. Begin with { — nothing before it.`;
 
     case 3: {
       // IED batch — injects current Indian economy data from Firestore if available
-      // Fallback is FALLBACK_ECON_CONTEXT (comprehensive Sandeep Garg + current data)
+      // Fallback is FALLBACK_ECON_CONTEXT (comprehensive economic syllabus + current data)
       const econSection = econContext
         ? "CURRENT INDIAN ECONOMY DATA (use these verified facts for Unit III questions — priority over fallback):\n" + econContext + "\n"
-        : "USE COMPREHENSIVE FALLBACK CONTEXT above — all facts are verified NCERT/Sandeep Garg + current data.\n";
+        : "USE COMPREHENSIVE FALLBACK CONTEXT above — all facts are verified economic data.\n";
       return `You are an NTA CUET Economics (118) question paper generator for CUET 2026.
 ${buildEconomicsIntelligenceBrief(3)}
 ${econSection}
 CRITICAL CONTEXT: Course III (Indian Economic Development) is BRAND NEW in CUET 2026 — no past CUET papers.
-Build questions EXACTLY as CBSE Class 12 boards test this content (same source: NCERT + Sandeep Garg).
-The 2025-26 Sandeep Garg book explicitly includes CUET PYQs — this content alignment is intentional.
-Question style: definition-based, application-based, assertion-reason type, case-study scenario type.
+Model question style on CBSE boards pattern: definition-based, application-based, assertion-reason type, case-study scenario type.
 Generate exactly 14 MCQ questions. Return ONLY a JSON object — no markdown, no preamble.
 JSON schema: ${schema}
 MANDATORY TOPIC DISTRIBUTION — 14 questions, all passage=null:
@@ -1142,13 +1142,14 @@ Question 7 — HUMAN CAPITAL: HDI composition (health/education/income); India H
 Question 8 — SUSTAINABLE DEVELOPMENT OR ENVIRONMENT: Brundtland Commission 1987 definition; Rio Summit 1992 (Agenda 21); OR CPCB (Central Pollution Control Board, established 1974) controls water + air pollution; OR Organic farming advantages + disadvantages
 
 UNIT IV — Development Experiences: India vs China vs Pakistan (3 questions):
-⭐ FLAGGED AS TOP-5 EXPECTED CUET 2026 TOPIC by coaching platforms. Sandeep Garg Ch 10.
-⚠ Only factual comparison questions from NCERT. No contested political topics, no military operations.
+⭐ FLAGGED AS TOP-5 EXPECTED CUET 2026 TOPIC by coaching platforms.
+⚠ Only factual comparison questions. No contested political topics, no military operations.
 Question 9 — HISTORICAL COMPARISON: All three started development at similar time (India+Pakistan 1947, China 1949); till 1980s all had similar growth rates; China's decisive break = Deng Xiaoping 1978 (Open Door Policy, SEZs, TVEs); OR Great Leap Forward 1958-62 = failed rapid industrialisation
 Question 10 — DEMOGRAPHIC COMPARISON: China One Child Policy (1980 introduced → 2015 ended → 2021 three-child); India overtook China as most populous nation in 2023; population growth rates: India ~0.68%, China ~-0.01%, Pakistan ~1.89% (highest)
 Question 11 — HDI/DEVELOPMENT COMPARISON: HDI 2025 rankings: China (~75, High) > India (130, Medium) > Pakistan (~164, Low); OR economic growth: India ~7%, China ~5%, Pakistan ~2-3%; OR sex ratio comparison
 
-Rules: correct is 0-indexed. All facts verifiable from NCERT Ch 10 + Sandeep Garg IED book + current data above. When uncertain → default to Unit II (LPG) instead. Explanation: 2-3 sentences citing the relevant concept, not naming AI or book.
+Rules: correct is 0-indexed. When uncertain about a fact → default to Unit II (LPG) instead. Explanation: 2-3 sentences on the economic concept only.
+CRITICAL OUTPUT RULE: NEVER mention "NCERT", "Sandeep Garg", "Class 11", "Class 12", "textbook", or any author/book name anywhere in question text, options, or explanations. Write in plain authoritative economic language only.
 Return ONLY the JSON object. Begin with { — nothing before it.`;
     }
 
@@ -1168,6 +1169,7 @@ MANDATORY TOPIC DISTRIBUTION (all passage=null):
 - Course II Macroeconomics: 5 questions (national income definitions, stock vs flow, money aggregates, govt deficit types)
 - Course III IED: 5 questions (LPG 1991 key facts, MGNREGA, HDI rank 130, India-China-Pakistan comparison basics)
 Rules: correct is 0-indexed. Easy-Moderate only. All numericals: provide data in question, round number answers. Explanation: 1-2 sentences.
+CRITICAL OUTPUT RULE: NEVER mention "NCERT", "Sandeep Garg", "Class 11", "Class 12", "textbook", or any author/book name in question text, options, or explanations.
 Return ONLY the JSON object. Begin with { — nothing before it.`;
 }
 
