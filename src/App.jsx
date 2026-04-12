@@ -1440,7 +1440,7 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
   const warn = isTimed && timeLeft !== null && timeLeft < 300;
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#fff" }}>
+    <div style={{ height: "100dvh", minHeight: "100vh", display: "flex", flexDirection: "column", background: "#fff", overflow: "hidden" }}>
       {exitModal && (
         <div className="modal-overlay">
           <div className="modal-box" style={{ maxWidth: 380 }}>
@@ -1557,7 +1557,7 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
         </div>
       )}
 
-      <div className="exam-footer" style={{ borderTop: "1px solid var(--border)", background: "#fff", padding: isMobile ? "10px 12px" : "12px 32px", display: "flex", alignItems: "center", gap: isMobile ? 6 : 12, flexShrink: 0 }}>
+      <div className="exam-footer" style={{ borderTop: "1px solid var(--border)", background: "#fff", padding: isMobile ? "8px 12px" : "12px 32px", display: "flex", alignItems: "center", gap: isMobile ? 6 : 12, flexShrink: 0, paddingBottom: isMobile ? "calc(8px + env(safe-area-inset-bottom))" : "12px" }}>
         <button className="btn-amber" onClick={() => setMarked(p => { const n = new Set(p); n.has(current) ? n.delete(current) : n.add(current); return n; })}>
           {marked.has(current) ? "✓ Marked" : "Mark"}
         </button>
@@ -1573,9 +1573,15 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
           >
             ← {!isMobile && "Back"}
           </button>
-          <button className="btn-navy-sm" onClick={() => { if (current < questions.length - 1) setCurrent(c => c + 1); else showToast("Last question. Submit when ready.", "info"); }}>
-            {isMobile ? "Next →" : "Save & Next →"}
-          </button>
+          {isMobile && current === questions.length - 1 ? (
+            <button className="btn-navy-sm" onClick={() => submitTest(false)} style={{ background: "var(--success)", minWidth: 80 }}>
+              Submit ✓
+            </button>
+          ) : (
+            <button className="btn-navy-sm" onClick={() => { if (current < questions.length - 1) setCurrent(c => c + 1); else showToast("Last question. Submit when ready.", "info"); }}>
+              {isMobile ? "Next →" : "Save & Next →"}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -1725,18 +1731,18 @@ Begin with { — nothing before it.`;
 
         {/* ── Score + stats ───────────────────────────────────────────────── */}
         <div className="card" style={{ marginBottom:12 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:isMobile?14:24, padding: isMobile?"14px 14px":"16px 20px", flexWrap:"wrap" }}>
-            <div>
+          <div style={{ display:"flex", alignItems:"center", gap:isMobile?12:20, padding: isMobile?"14px 14px":"16px 20px", flexWrap:"wrap" }}>
+            <div style={{ flexShrink:0 }}>
               <div style={{ fontSize:11, fontWeight:700, color:"var(--navy)", textTransform:"uppercase", letterSpacing:".05em", marginBottom:3 }}>Total Score</div>
               <div style={{ fontFamily:"var(--font-mono)", fontSize:40, fontWeight:700, color:scoreColor(pct), lineHeight:1 }}>{pct}%</div>
               <div style={{ fontFamily:"var(--font-mono)", fontSize:15, color:"var(--navy)", marginTop:3 }}>{totalScore} / {maxScore}</div>
             </div>
-            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+            <div style={{ flex:1, display:"flex", justifyContent:"space-between", alignItems:"center", gap:6, flexWrap:"wrap", minWidth:0 }}>
               {[{l:"Attempted",v:attempted,bg:"#E8EDF5",cl:"#0F2747"},{l:"Correct",v:correct,bg:"#ECFDF5",cl:"#059669"},{l:"Accuracy",v:`${accuracy}%`,bg:"#EEF2FF",cl:"#4338CA"},{l:"Wrong",v:wrong,bg:"#FEF2F2",cl:"#DC2626"},{l:"Skipped",v:unanswered,bg:"#FFFBEB",cl:"#D97706"}]
                 .map(s => (
-                <div key={s.l} style={{ textAlign:"center" }}>
-                  <div className="result-stat-pill" style={{ display:"inline-block", padding:"3px 10px", borderRadius:5, fontFamily:"var(--font-mono)", fontSize:16, fontWeight:700, background:s.bg, color:s.cl }}>{s.v}</div>
-                  <div style={{ fontSize:9, color:"var(--text-muted)", marginTop:3, textTransform:"uppercase", letterSpacing:".04em" }}>{s.l}</div>
+                <div key={s.l} style={{ textAlign:"center", flex:1, minWidth:isMobile?48:56 }}>
+                  <div className="result-stat-pill" style={{ display:"block", padding:"6px 4px", borderRadius:6, fontFamily:"var(--font-mono)", fontSize:isMobile?15:18, fontWeight:700, background:s.bg, color:s.cl }}>{s.v}</div>
+                  <div style={{ fontSize:9, color:"var(--text-muted)", marginTop:4, textTransform:"uppercase", letterSpacing:".04em" }}>{s.l}</div>
                 </div>
               ))}
             </div>
