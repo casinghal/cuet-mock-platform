@@ -76,7 +76,7 @@ button{cursor:pointer;border:none;outline:none;font-family:var(--font-body);}
 .topic-bar{width:0%;transition:width 1.1s cubic-bezier(0.25,0.46,0.45,0.94);}
 .pbar-track{width:100%;height:4px;background:#E0E7FF;border-radius:2px;overflow:hidden;}
 .pbar-fill{height:100%;background:var(--indigo);border-radius:2px;animation:indeterminate 1.6s ease-in-out infinite;transform-origin:left;}
-.option-box{display:flex;align-items:flex-start;gap:12px;padding:14px 16px;border:1.5px solid var(--border);border-radius:4px;cursor:pointer;transition:border-color .12s,background .12s;background:#fff;}
+.option-box{display:flex;align-items:flex-start;gap:12px;padding:12px 16px;border:1.5px solid var(--border);border-radius:4px;cursor:pointer;transition:border-color .12s,background .12s;background:#fff;}
 .option-box:hover{border-color:var(--indigo-light);background:#EEF2FF;}
 .option-box.selected{border-color:var(--indigo);background:#EEF2FF;}
 .option-box.correct{border-color:var(--success);background:#ECFDF5;}
@@ -1511,7 +1511,7 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
   const warn = isTimed && timeLeft !== null && timeLeft < 300;
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#fff" }}>
+    <div style={{ height: isMobile ? "auto" : "100dvh", minHeight: "100vh", display: "flex", flexDirection: "column", background: "#fff" }}>
       {exitModal && (
         <div className="modal-overlay">
           <div className="modal-box" style={{ maxWidth: 380 }}>
@@ -1551,9 +1551,9 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
       </div>
 
       <div style={{ flex: 1, display: "flex", overflow: "hidden", flexDirection: isMobile ? "column" : "row" }}>
-        <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? "20px 16px" : "28px 32px" }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? "16px 16px" : "20px 24px" }}>
           {q.passage && (
-            <div style={{ borderLeft: "4px solid var(--indigo)", background: "#F5F7FF", borderRadius: "0 8px 8px 0", padding: isMobile ? "12px 14px" : "16px 20px", marginBottom: 20, fontSize: isMobile ? 13 : 13.5, lineHeight: 1.8, color: "var(--text-primary)", overflowWrap: "break-word", wordBreak: "break-word" }}>
+            <div style={{ borderLeft: "4px solid var(--indigo)", background: "#F5F7FF", borderRadius: "0 8px 8px 0", padding: isMobile ? "12px 14px" : "14px 18px", marginBottom: 16, fontSize: 13, lineHeight: 1.7, color: "var(--text-primary)", overflowWrap: "break-word", wordBreak: "break-word" }}>
               <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".05em", textTransform: "uppercase", color: "var(--indigo)", marginBottom: 8 }}>Reading Passage</div>
               {q.passage}
             </div>
@@ -1562,12 +1562,12 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
             <span className="pill pill-indigo">{q.topic}</span>
             <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Q.{current + 1}</span>
           </div>
-          <div style={{ fontSize: isMobile ? 14 : 15, fontWeight: 500, color: "var(--text-primary)", lineHeight: 1.65, marginBottom: 24 }}>{q.question}</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ fontSize: isMobile ? 14 : 15, fontWeight: 500, color: "var(--text-primary)", lineHeight: 1.6, marginBottom: 16 }}>{q.question}</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 8 : 9 }}>
             {q.options.map((opt, i) => (
               <div key={i} className={"option-box" + (answers[current] === i ? " selected" : "")} onClick={() => setAnswers(p => ({ ...p, [current]: i }))}>
                 <span className="option-key">{String.fromCharCode(65 + i)}</span>
-                <span style={{ fontSize: isMobile ? 13 : 14, color: "var(--text-primary)", flex: 1 }}>{opt}</span>
+                <span style={{ fontSize: isMobile ? 13 : 13.5, color: "var(--text-primary)", flex: 1 }}>{opt}</span>
               </div>
             ))}
           </div>
