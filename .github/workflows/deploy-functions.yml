@@ -41,7 +41,7 @@ jobs:
       - name: Deploy Firebase Functions
         run: |
           firebase deploy \
-            --only functions:generateQuestions,functions:generateAdvisory,functions:checkTestLimit,functions:createOrder,functions:verifyPayment,functions:razorpayWebhook,functions:triggerCacheWarm,functions:getCacheStatus,functions:generateFeedbackInsights,functions:platformHealthCheck,functions:updateCuetIntelligence,functions:grantAdminClaim,functions:returnTestCredit,functions:blockUser,functions:deleteUser,functions:detectAnomalies,functions:refreshGATCurrentAffairs \
+            --only functions:generateQuestions,functions:generateAdvisory,functions:checkTestLimit,functions:createOrder,functions:verifyPayment,functions:razorpayWebhook,functions:triggerCacheWarm,functions:getCacheStatus,functions:generateFeedbackInsights,functions:platformHealthCheck,functions:updateCuetIntelligence,functions:grantAdminClaim,functions:returnTestCredit,functions:blockUser,functions:deleteUser,functions:detectAnomalies,functions:refreshGATCurrentAffairs,functions:refreshEconomicsCurrentData,functions:clearAndRebuildSubjectCache \
             --project vantiq-cuet \
             --non-interactive
         env:

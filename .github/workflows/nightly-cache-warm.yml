@@ -31,6 +31,8 @@ jobs:
           QP_NOW=0
           GAT_MOCK_NOW=0
           GAT_QP_NOW=0
+          ECO_MOCK_NOW=0
+          ECO_QP_NOW=0
 
           # How long to wait after triggering before checking status
           # triggerCacheWarm responds IMMEDIATELY but runs in background for up to 8 min
@@ -39,25 +41,45 @@ jobs:
 
           echo "========================================"
           echo "Cache Fill Engine — $(date -u '+%Y-%m-%d %H:%M UTC')"
-          echo "Target: Mock=120 / QP=200 / GAT_Mock=80 / GAT_QP=150 | Max loops: $MAX_LOOPS | Fill wait: ${FILL_WAIT_SECS}s"
+          echo "Target: Mock=120 / QP=200 / GAT_Mock=80 / GAT_QP=150 / Eco_Mock=40 / Eco_QP=150 | Max loops: $MAX_LOOPS | Fill wait: ${FILL_WAIT_SECS}s"
           echo "========================================"
 
           # Initial status check
-          INITIAL=$(curl -s -X POST "$CF_BASE/getCacheStatus"             -H "x-admin-key: $ADMIN_KEY" -H "Content-Type: application/json"             -d '{}' --max-time 15)
+          INITIAL=$(curl -s -X POST "$CF_BASE/getCacheStatus" \
+            -H "x-admin-key: $ADMIN_KEY" -H "Content-Type: application/json" \
+            -d '{}' --max-time 15)
           echo "Initial status: $INITIAL"
 
-          MOCK_NEEDED=$(echo "$INITIAL" | python3 -c             "import json,sys; d=json.load(sys.stdin); print(d['status']['Mock']['needed'])" 2>/dev/null || echo "120")
-          QP_NEEDED=$(echo "$INITIAL" | python3 -c             "import json,sys; d=json.load(sys.stdin); print(d['status']['QuickPractice']['needed'])" 2>/dev/null || echo "200")
-          MOCK_NOW=$(echo "$INITIAL" | python3 -c             "import json,sys; d=json.load(sys.stdin); print(d['status']['Mock']['current'])" 2>/dev/null || echo "0")
-          QP_NOW=$(echo "$INITIAL" | python3 -c             "import json,sys; d=json.load(sys.stdin); print(d['status']['QuickPractice']['current'])" 2>/dev/null || echo "0")
-          GAT_MOCK_NOW=$(echo "$INITIAL" | python3 -c             "import json,sys; d=json.load(sys.stdin); print(d['status'].get('GAT_Mock',{}).get('current',0))" 2>/dev/null || echo "0")
-          GAT_QP_NOW=$(echo "$INITIAL" | python3 -c             "import json,sys; d=json.load(sys.stdin); print(d['status'].get('GAT_QP',{}).get('current',0))" 2>/dev/null || echo "0")
-          GAT_MOCK_NEEDED=$(echo "$INITIAL" | python3 -c             "import json,sys; d=json.load(sys.stdin); print(d['status'].get('GAT_Mock',{}).get('needed',0))" 2>/dev/null || echo "0")
-          GAT_QP_NEEDED=$(echo "$INITIAL" | python3 -c             "import json,sys; d=json.load(sys.stdin); print(d['status'].get('GAT_QP',{}).get('needed',0))" 2>/dev/null || echo "0")
+          MOCK_NEEDED=$(echo "$INITIAL" | python3 -c \
+            "import json,sys; d=json.load(sys.stdin); print(d['status']['Mock']['needed'])" 2>/dev/null || echo "120")
+          QP_NEEDED=$(echo "$INITIAL" | python3 -c \
+            "import json,sys; d=json.load(sys.stdin); print(d['status']['QuickPractice']['needed'])" 2>/dev/null || echo "200")
+          MOCK_NOW=$(echo "$INITIAL" | python3 -c \
+            "import json,sys; d=json.load(sys.stdin); print(d['status']['Mock']['current'])" 2>/dev/null || echo "0")
+          QP_NOW=$(echo "$INITIAL" | python3 -c \
+            "import json,sys; d=json.load(sys.stdin); print(d['status']['QuickPractice']['current'])" 2>/dev/null || echo "0")
+          GAT_MOCK_NOW=$(echo "$INITIAL" | python3 -c \
+            "import json,sys; d=json.load(sys.stdin); print(d['status'].get('GAT_Mock',{}).get('current',0))" 2>/dev/null || echo "0")
+          GAT_QP_NOW=$(echo "$INITIAL" | python3 -c \
+            "import json,sys; d=json.load(sys.stdin); print(d['status'].get('GAT_QP',{}).get('current',0))" 2>/dev/null || echo "0")
+          GAT_MOCK_NEEDED=$(echo "$INITIAL" | python3 -c \
+            "import json,sys; d=json.load(sys.stdin); print(d['status'].get('GAT_Mock',{}).get('needed',0))" 2>/dev/null || echo "0")
+          GAT_QP_NEEDED=$(echo "$INITIAL" | python3 -c \
+            "import json,sys; d=json.load(sys.stdin); print(d['status'].get('GAT_QP',{}).get('needed',0))" 2>/dev/null || echo "0")
+          ECO_MOCK_NOW=$(echo "$INITIAL" | python3 -c \
+            "import json,sys; d=json.load(sys.stdin); print(d['status'].get('Economics_Mock',{}).get('current',0))" 2>/dev/null || echo "0")
+          ECO_QP_NOW=$(echo "$INITIAL" | python3 -c \
+            "import json,sys; d=json.load(sys.stdin); print(d['status'].get('Economics_QP',{}).get('current',0))" 2>/dev/null || echo "0")
+          ECO_MOCK_NEEDED=$(echo "$INITIAL" | python3 -c \
+            "import json,sys; d=json.load(sys.stdin); print(d['status'].get('Economics_Mock',{}).get('needed',0))" 2>/dev/null || echo "0")
+          ECO_QP_NEEDED=$(echo "$INITIAL" | python3 -c \
+            "import json,sys; d=json.load(sys.stdin); print(d['status'].get('Economics_QP',{}).get('needed',0))" 2>/dev/null || echo "0")
 
-          echo "Mock: $MOCK_NOW/120 (needed: $MOCK_NEEDED) | QP: $QP_NOW/200 (needed: $QP_NEEDED) | GAT_Mock: $GAT_MOCK_NOW/80 | GAT_QP: $GAT_QP_NOW/150"
+          echo "Mock: $MOCK_NOW/120 (needed: $MOCK_NEEDED) | QP: $QP_NOW/200 (needed: $QP_NEEDED)"
+          echo "GAT_Mock: $GAT_MOCK_NOW/80 (needed: $GAT_MOCK_NEEDED) | GAT_QP: $GAT_QP_NOW/150 (needed: $GAT_QP_NEEDED)"
+          echo "Eco_Mock: $ECO_MOCK_NOW/40 (needed: $ECO_MOCK_NEEDED) | Eco_QP: $ECO_QP_NOW/150 (needed: $ECO_QP_NEEDED)"
 
-          if [ "$MOCK_NEEDED" = "0" ] && [ "$QP_NEEDED" = "0" ] && [ "$GAT_MOCK_NEEDED" = "0" ] && [ "$GAT_QP_NEEDED" = "0" ]; then
+          if [ "$MOCK_NEEDED" = "0" ] && [ "$QP_NEEDED" = "0" ] && [ "$GAT_MOCK_NEEDED" = "0" ] && [ "$GAT_QP_NEEDED" = "0" ] && [ "$ECO_MOCK_NEEDED" = "0" ] && [ "$ECO_QP_NEEDED" = "0" ]; then
             echo "Cache already full. Nothing to do."
             exit 0
           fi
@@ -95,25 +117,44 @@ jobs:
             fi
 
             # Re-check status after waiting
-            STATUS=$(curl -s -X POST "$CF_BASE/getCacheStatus"               -H "x-admin-key: $ADMIN_KEY" -H "Content-Type: application/json"               -d '{}' --max-time 15)
+            STATUS=$(curl -s -X POST "$CF_BASE/getCacheStatus" \
+              -H "x-admin-key: $ADMIN_KEY" -H "Content-Type: application/json" \
+              -d '{}' --max-time 15)
 
-            MOCK_NOW=$(echo "$STATUS" | python3 -c               "import json,sys; d=json.load(sys.stdin); print(d['status']['Mock']['current'])" 2>/dev/null || echo "$MOCK_NOW")
-            QP_NOW=$(echo "$STATUS" | python3 -c               "import json,sys; d=json.load(sys.stdin); print(d['status']['QuickPractice']['current'])" 2>/dev/null || echo "$QP_NOW")
-            GAT_MOCK_NOW=$(echo "$STATUS" | python3 -c               "import json,sys; d=json.load(sys.stdin); print(d['status'].get('GAT_Mock',{}).get('current',0))" 2>/dev/null || echo "$GAT_MOCK_NOW")
-            GAT_QP_NOW=$(echo "$STATUS" | python3 -c               "import json,sys; d=json.load(sys.stdin); print(d['status'].get('GAT_QP',{}).get('needed',0))" 2>/dev/null || echo "$GAT_QP_NOW")
-            GAT_MOCK_NEEDED=$(echo "$STATUS" | python3 -c               "import json,sys; d=json.load(sys.stdin); print(d['status'].get('GAT_Mock',{}).get('needed',0))" 2>/dev/null || echo "0")
-            GAT_QP_NEEDED=$(echo "$STATUS" | python3 -c               "import json,sys; d=json.load(sys.stdin); print(d['status'].get('GAT_QP',{}).get('needed',0))" 2>/dev/null || echo "0")
-            MOCK_NEEDED=$(echo "$STATUS" | python3 -c               "import json,sys; d=json.load(sys.stdin); print(d['status']['Mock']['needed'])" 2>/dev/null || echo "999")
-            QP_NEEDED=$(echo "$STATUS" | python3 -c               "import json,sys; d=json.load(sys.stdin); print(d['status']['QuickPractice']['needed'])" 2>/dev/null || echo "999")
+            MOCK_NOW=$(echo "$STATUS" | python3 -c \
+              "import json,sys; d=json.load(sys.stdin); print(d['status']['Mock']['current'])" 2>/dev/null || echo "$MOCK_NOW")
+            QP_NOW=$(echo "$STATUS" | python3 -c \
+              "import json,sys; d=json.load(sys.stdin); print(d['status']['QuickPractice']['current'])" 2>/dev/null || echo "$QP_NOW")
+            GAT_MOCK_NOW=$(echo "$STATUS" | python3 -c \
+              "import json,sys; d=json.load(sys.stdin); print(d['status'].get('GAT_Mock',{}).get('current',0))" 2>/dev/null || echo "$GAT_MOCK_NOW")
+            GAT_QP_NOW=$(echo "$STATUS" | python3 -c \
+              "import json,sys; d=json.load(sys.stdin); print(d['status'].get('GAT_QP',{}).get('current',0))" 2>/dev/null || echo "$GAT_QP_NOW")
+            GAT_MOCK_NEEDED=$(echo "$STATUS" | python3 -c \
+              "import json,sys; d=json.load(sys.stdin); print(d['status'].get('GAT_Mock',{}).get('needed',0))" 2>/dev/null || echo "0")
+            GAT_QP_NEEDED=$(echo "$STATUS" | python3 -c \
+              "import json,sys; d=json.load(sys.stdin); print(d['status'].get('GAT_QP',{}).get('needed',0))" 2>/dev/null || echo "0")
+            MOCK_NEEDED=$(echo "$STATUS" | python3 -c \
+              "import json,sys; d=json.load(sys.stdin); print(d['status']['Mock']['needed'])" 2>/dev/null || echo "999")
+            QP_NEEDED=$(echo "$STATUS" | python3 -c \
+              "import json,sys; d=json.load(sys.stdin); print(d['status']['QuickPractice']['needed'])" 2>/dev/null || echo "999")
+            ECO_MOCK_NOW=$(echo "$STATUS" | python3 -c \
+              "import json,sys; d=json.load(sys.stdin); print(d['status'].get('Economics_Mock',{}).get('current',0))" 2>/dev/null || echo "$ECO_MOCK_NOW")
+            ECO_QP_NOW=$(echo "$STATUS" | python3 -c \
+              "import json,sys; d=json.load(sys.stdin); print(d['status'].get('Economics_QP',{}).get('current',0))" 2>/dev/null || echo "$ECO_QP_NOW")
+            ECO_MOCK_NEEDED=$(echo "$STATUS" | python3 -c \
+              "import json,sys; d=json.load(sys.stdin); print(d['status'].get('Economics_Mock',{}).get('needed',0))" 2>/dev/null || echo "0")
+            ECO_QP_NEEDED=$(echo "$STATUS" | python3 -c \
+              "import json,sys; d=json.load(sys.stdin); print(d['status'].get('Economics_QP',{}).get('needed',0))" 2>/dev/null || echo "0")
 
-            echo "    After loop $LOOP: Mock=$MOCK_NOW/120 | QP=$QP_NOW/200 | GAT_Mock=$GAT_MOCK_NOW/80 | GAT_QP=$GAT_QP_NOW/150"
+            echo "    After loop $LOOP: Mock=$MOCK_NOW/120 | QP=$QP_NOW/200 | GAT_Mock=$GAT_MOCK_NOW/80 | GAT_QP=$GAT_QP_NOW/150 | Eco_Mock=$ECO_MOCK_NOW/40 | Eco_QP=$ECO_QP_NOW/150"
 
-            if [ "$MOCK_NEEDED" = "0" ] && [ "$QP_NEEDED" = "0" ] && [ "$GAT_MOCK_NEEDED" = "0" ] && [ "$GAT_QP_NEEDED" = "0" ]; then
+            if [ "$MOCK_NEEDED" = "0" ] && [ "$QP_NEEDED" = "0" ] && [ "$GAT_MOCK_NEEDED" = "0" ] && [ "$GAT_QP_NEEDED" = "0" ] && [ "$ECO_MOCK_NEEDED" = "0" ] && [ "$ECO_QP_NEEDED" = "0" ]; then
               ELAPSED=$(( $(date +%s) - START_TIME ))
               echo ""
               echo "========================================"
               echo "CACHE FULLY FILLED"
               echo "  Mock: $MOCK_NOW/120 | QP: $QP_NOW/200 | GAT_Mock: $GAT_MOCK_NOW/80 | GAT_QP: $GAT_QP_NOW/150"
+              echo "  Eco_Mock: $ECO_MOCK_NOW/40 | Eco_QP: $ECO_QP_NOW/150"
               echo "  Loops: $LOOP | Time: ${ELAPSED}s"
               echo "========================================"
               exit 0
@@ -130,15 +171,32 @@ jobs:
           echo "  QP:   $QP_NOW/200  (needed: $QP_NEEDED)"
           echo "  GAT_Mock: $GAT_MOCK_NOW/80 (needed: $GAT_MOCK_NEEDED)"
           echo "  GAT_QP:   $GAT_QP_NOW/150 (needed: $GAT_QP_NEEDED)"
+          echo "  Eco_Mock: $ECO_MOCK_NOW/40 (needed: $ECO_MOCK_NEEDED)"
+          echo "  Eco_QP:   $ECO_QP_NOW/150 (needed: $ECO_QP_NEEDED)"
           echo "========================================"
           CRITICAL=0
           if [ "$MOCK_NOW" -lt 24 ] 2>/dev/null; then
-            echo "CRITICAL: Mock below 20% — manual fill required"
+            echo "CRITICAL: English Mock below threshold — manual fill required"
             CRITICAL=1
           fi
           if [ "$QP_NOW" -lt 40 ] 2>/dev/null; then
-            echo "CRITICAL: QP below 20% — manual fill required"
+            echo "CRITICAL: English QP below threshold — manual fill required"
             CRITICAL=1
+          fi
+          if [ "$GAT_MOCK_NOW" -lt 16 ] 2>/dev/null; then
+            echo "CRITICAL: GAT Mock below threshold — manual fill required"
+            CRITICAL=1
+          fi
+          if [ "$GAT_QP_NOW" -lt 30 ] 2>/dev/null; then
+            echo "CRITICAL: GAT QP below threshold — manual fill required"
+            CRITICAL=1
+          fi
+          # Economics only checked when it has been seeded (ECO_MOCK target > 0 means live)
+          if [ "$ECO_MOCK_NOW" -gt 0 ] || [ "$ECO_MOCK_NEEDED" -gt 0 ]; then
+            if [ "$ECO_MOCK_NOW" -lt 8 ] 2>/dev/null; then
+              echo "CRITICAL: Economics Mock below threshold — manual fill required"
+              CRITICAL=1
+            fi
           fi
           exit $CRITICAL
 
