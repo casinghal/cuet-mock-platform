@@ -387,10 +387,10 @@ function AuthScreen({ onLogin, showToast }) {
   // ── Cycling typewriter hook — above auth card, keeps moving ─────────────────
   const HOOK_LINES = [
     "Every test paper is new. No recycled content, ever.",
-    "No old PDFs. Real-time intelligence generates the most expected questions.",
+    "No old PDFs. Questions built to the current NTA pattern — not last year's.",
     "Every question reflects the current NTA exam pattern.",
     "Built fresh for CUET 2026 — not last year's coaching material.",
-    "The AI reads the syllabus. You take the test.",
+    "The platform reads the syllabus. You take the test.",
   ];
   const [hookIdx,   setHookIdx]   = useState(0);
   const [hookText,  setHookText]  = useState("");
