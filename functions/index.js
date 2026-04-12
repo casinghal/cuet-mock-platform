@@ -30,12 +30,12 @@ const UNLOCK_AMOUNT    = 19900;
 // Mock: 120 sets target, auto-fill triggers at 100 (fills ~20 sets before students notice a gap)
 // QuickPractice: 200 sets target, auto-fill triggers at 160 (higher usage — free forever)
 const CACHE_CONFIG = {
-  Mock:            { size: 120, autoFillThreshold: 100 },
-  QuickPractice:   { size: 200, autoFillThreshold: 160 },
-  GAT_Mock:        { size: 80,  autoFillThreshold: 60  },
-  GAT_QP:          { size: 150, autoFillThreshold: 120 },
-  Economics_Mock:  { size: 40,  autoFillThreshold: 30  },
-  Economics_QP:    { size: 150, autoFillThreshold: 120 },
+  Mock:            { size: 30,  autoFillThreshold: 20 },
+  QuickPractice:   { size: 40,  autoFillThreshold: 28 },
+  GAT_Mock:        { size: 30,  autoFillThreshold: 20 },
+  GAT_QP:          { size: 40,  autoFillThreshold: 28 },
+  Economics_Mock:  { size: 30,  autoFillThreshold: 20 },
+  Economics_QP:    { size: 40,  autoFillThreshold: 28 },
 };
 // Legacy alias used in a few places — now derived per-mode where needed
 function cacheSizeFor(mode) { return CACHE_CONFIG[mode]?.size || 120; }
