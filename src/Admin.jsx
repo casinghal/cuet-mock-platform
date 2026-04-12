@@ -1049,12 +1049,29 @@ export default function AdminDashboard() {
   // ── Refresh GAT Current Affairs (autonomous — triggers web search CF) ────────
   const runGATCARefresh = async () => {
     if (gatCALoad) return;
+
+    // ── Informed consent popup ────────────────────────────────────────────────
+    const gatMock = cacheStatus?.GAT_Mock?.current ?? "unknown";
+    const gatQP   = cacheStatus?.GAT_QP?.current   ?? "unknown";
+    const confirmed = window.confirm(
+      `REFRESH GAT CURRENT AFFAIRS — What will happen:\n\n` +
+      `✓  A web search will fetch the latest India current affairs\n` +
+      `✓  The GAT question generation context will be updated in Firestore\n` +
+      `✓  All ${gatMock} GAT Mock + ${gatQP} GAT QP cached question sets will be PERMANENTLY DELETED\n\n` +
+      `⚠  Students will see "tests being prepared" for the next 2–7 minutes until new sets are generated\n` +
+      `⚠  The nightly cron will auto-fill. Or go to Cache Health → ⚡ GAT Mock / ⚡ GAT QP to fill immediately\n\n` +
+      `Best time to run: Low-traffic hours (late night IST)\n\n` +
+      `Press OK to proceed, Cancel to abort.`
+    );
+    if (!confirmed) return;
+
     setGatCALoad(true);
     addLog("Refreshing GAT current affairs — fetching latest events from web...");
     try {
       const data = await cfFetch("refreshGATCurrentAffairs", {});
       setGatCAResult(data);
       addLog(`GAT CA refreshed — v${data.refreshVersion}, ${data.cacheInvalidated} cache sets cleared for regeneration`, "success");
+      addLog("⚡ Trigger a GAT cache fill now if traffic is active: Cache Health → ⚡ GAT Mock + ⚡ GAT QP", "warn");
     } catch (e) {
       addLog("GAT CA refresh failed: " + e.message, "error");
     } finally {
@@ -1064,12 +1081,30 @@ export default function AdminDashboard() {
 
   const runEconDataRefresh = async () => {
     if (econDataLoad) return;
+
+    // ── Informed consent popup ────────────────────────────────────────────────
+    const econMock = cacheStatus?.Economics_Mock?.current ?? "unknown";
+    const econQP   = cacheStatus?.Economics_QP?.current   ?? "unknown";
+    const confirmed = window.confirm(
+      `REFRESH ECONOMICS CURRENT DATA — What will happen:\n\n` +
+      `✓  A web search will fetch the latest Indian economy data (Budget, RBI, GDP, MSP)\n` +
+      `✓  The Economics question generation context will be updated in Firestore\n` +
+      `✓  All ${econMock} Economics Mock + ${econQP} Economics QP cached question sets will be PERMANENTLY DELETED\n\n` +
+      `⚠  Students will see "tests being prepared" for the next 2–7 minutes until new sets are generated\n` +
+      `⚠  The nightly cron will auto-fill. Or go to Cache Health → ⚡ Eco Mock / ⚡ Eco QP to fill immediately\n\n` +
+      `Best time to run: Low-traffic hours (late night IST)\n` +
+      `Recommended frequency: After Union Budget (Feb), RBI policy changes, or quarterly\n\n` +
+      `Press OK to proceed, Cancel to abort.`
+    );
+    if (!confirmed) return;
+
     setEconDataLoad(true);
     addLog("Refreshing Economics data — fetching latest Indian economy data...");
     try {
       const data = await cfFetch("refreshEconomicsCurrentData", {});
       setEconDataResult(data);
       addLog(`Economics data refreshed — v${data.refreshVersion}, ${data.cacheInvalidated} cache sets cleared`, "success");
+      addLog("⚡ Trigger an Economics cache fill now if traffic is active: Cache Health → ⚡ Eco Mock + ⚡ Eco QP", "warn");
     } catch (e) {
       addLog("Economics data refresh failed: " + e.message, "error");
     } finally {
@@ -2440,6 +2475,7 @@ export default function AdminDashboard() {
                   onClick={() => updateIntelligence("English")}
                   style={S.btnSmall()}
                   disabled={intelGenLoad}
+                  title="Generates fresh NTA pattern analysis and stores in Firestore. Does NOT clear the question cache — existing sets continue serving. To force fresh generation, use ↺ Rebuild English button."
                 >
                   {intelGenLoad ? <span style={S.spinner} /> : "Update English"}
                 </button>
