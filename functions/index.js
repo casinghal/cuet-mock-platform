@@ -736,7 +736,7 @@ Return ONLY the JSON object. Begin with { — nothing before it.`,
 // ── Quality Gate — validates every question before accepting the set ──────────
 function validateQuestionSet(questions, mode) {
   // Required question count per mode
-  const REQUIRED_COUNT = { Mock: 50, QuickPractice: 15, GAT_Mock: 50, GAT_QP: 15 }[mode] ?? 50;
+  const REQUIRED_COUNT = { Mock: 50, QuickPractice: 15, GAT_Mock: 50, GAT_QP: 15, TopicPractice: 10 }[mode] ?? 50;
   const errors = [];
 
   if (questions.length !== REQUIRED_COUNT) {
@@ -1079,6 +1079,46 @@ exports.generateQuestions = functions
     }
 
     const mode = (req.body.config || {}).mode || "Mock";
+
+    // ── TopicPractice: bypass cache, bypass limits, generate live ─────────────
+    if (mode === "TopicPractice") {
+      const { focusTopic, focusSubject } = req.body.config || {};
+      if (!focusTopic || !focusSubject) {
+        res.status(400).json({ error: "focusTopic and focusSubject are required for TopicPractice" }); return;
+      }
+      const KEY = functions.config().anthropic?.api_key || process.env.ANTHROPIC_API_KEY;
+      const isGAT = focusSubject === "GAT";
+      const subjectLine = isGAT
+        ? "NTA CUET General Aptitude Test (GAT 501)"
+        : "NTA CUET English (101)";
+      const schema = '{"questions":[{"question":"...","options":["A","B","C","D"],"correct":0,"topic":"...","passage":null,"explanation":"1-2 sentences"}]}';
+      const topicPrompt = `You are an ${subjectLine} question generator for targeted practice.
+Generate exactly 10 MCQ questions EXCLUSIVELY on the topic: "${focusTopic}".
+Every single question must be on "${focusTopic}" only — no other topics.
+Return ONLY a JSON object — no markdown, no preamble, no text outside JSON.
+JSON schema: ${schema}
+Rules:
+1. correct is 0-indexed (0=A,1=B,2=C,3=D)
+2. passage = null for all questions
+3. Vary question types within the topic — avoid repetition
+4. Difficulty: NTA exam standard — moderate to challenging
+5. topic field should be exactly "${focusTopic}"
+6. Explanation: 1-2 sentences explaining why correct and why main distractor is wrong
+Return ONLY the JSON object. Begin with { — nothing before it.`;
+      try {
+        const raw = await callAnthropic(topicPrompt, 4000, KEY);
+        const questions = Array.isArray(raw) ? raw : (raw?.questions || raw);
+        if (!Array.isArray(questions) || questions.length < 8) {
+          res.status(503).json({ error: "Topic practice generation failed. Please try again." }); return;
+        }
+        functions.logger.info("TOPIC_PRACTICE_GENERATED", { uid, focusTopic, focusSubject, count: questions.length });
+        res.status(200).json({ questions: questions.slice(0, 10) });
+      } catch (e) {
+        functions.logger.error("TOPIC_PRACTICE_FAILED", { uid, focusTopic, error: e.message });
+        res.status(503).json({ error: "Topic practice generation failed. Please try again." });
+      }
+      return;
+    }
 
     // ── Free modes: always allowed, no limit checks ───────────────────────────
     const isFreeMode = mode === "QuickPractice" || mode === "GAT_QP";

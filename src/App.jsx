@@ -1574,13 +1574,19 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
 }
 
 // ── RESULTS SCREEN ────────────────────────────────────────────────────────────
-function ResultsScreen({ questions, answers, config, user, onNewTest, onReview }) {
-  const [analysis, setAnalysis]  = useState(null);
-  const [aLoading, setALoading]  = useState(true);
+function ResultsScreen({ questions, answers, config, user, testHistory, onNewTest, onReview }) {
+  const [analysis,         setAnalysis]         = useState(null);   // { summary, actions[] }
+  const [aLoading,         setALoading]         = useState(true);
+  const [tpQuestions,      setTpQuestions]      = useState(null);   // topic practice questions
+  const [tpAnswers,        setTpAnswers]        = useState({});
+  const [tpCurrent,        setTpCurrent]        = useState(0);
+  const [tpSubmitted,      setTpSubmitted]      = useState(false);
+  const [tpLoading,        setTpLoading]        = useState(false);
   const isMobile = useMobile();
 
   useEffect(() => { logEvent("page_view", { page: "results" }); }, []);
 
+  // ── Score computation ──────────────────────────────────────────────────────
   let correct = 0, wrong = 0, unanswered = 0, totalScore = 0;
   questions.forEach((q, i) => {
     if (answers[i] === undefined) unanswered++;
@@ -1592,6 +1598,7 @@ function ResultsScreen({ questions, answers, config, user, onNewTest, onReview }
   const pct        = Math.round((totalScore / maxScore) * 100);
   const accuracy   = attempted > 0 ? Math.round((correct / attempted) * 100) : 0;
 
+  // ── Topic breakdown — weakest first ───────────────────────────────────────
   const topicStats = {};
   questions.forEach((q, i) => {
     if (!topicStats[q.topic]) topicStats[q.topic] = { att: 0, cor: 0 };
@@ -1603,107 +1610,279 @@ function ResultsScreen({ questions, answers, config, user, onNewTest, onReview }
   const topicRows = Object.entries(topicStats)
     .map(([t, s]) => ({ topic: t, attempted: s.att, correct: s.cor, accuracy: s.att > 0 ? Math.round((s.cor / s.att) * 100) : 0 }))
     .sort((a, b) => a.accuracy - b.accuracy);
+  const weakest = topicRows[0] || null;
 
+  // ── Historical average from testHistory ────────────────────────────────────
+  const isGAT = config?.subject === "GAT" || config?.mode?.startsWith("GAT");
+  const modeFilter = isGAT ? ["GAT_Mock","GAT_QP"] : ["Mock","QuickPractice"];
+  const pastTests  = (testHistory || []).filter(t => modeFilter.includes(t.mode));
+  const histAvg    = pastTests.length > 1
+    ? Math.round(pastTests.reduce((s, t) => s + (t.accuracy || 0), 0) / pastTests.length)
+    : null;
+
+  // ── Advisory — structured JSON prompt ─────────────────────────────────────
   useEffect(() => {
     async function fetchAnalysis() {
       setALoading(true);
       try {
-        if (!CF_BASE) {
-          setAnalysis("Review your answers below to identify improvement areas. Focus on your weakest topic first.");
-          return;
-        }
+        if (!CF_BASE) { setAnalysis({ summary: "Review your answers below to identify improvement areas.", actions: ["Focus on your weakest topic first."] }); return; }
         const token = await getAuthToken();
-        const isGAT = config?.subject === "GAT" || config?.mode?.startsWith("GAT");
         const subjectName = isGAT ? "GAT (General Aptitude Test)" : "CUET English (101)";
-        const weakTopicStr = topicRows[0] ? `Weakest topic: ${topicRows[0].topic} at ${topicRows[0].accuracy}% accuracy.` : "";
-        const prompt = `You are a CUET ${subjectName} expert. Give a concise 3-4 sentence performance analysis for a student who scored ${pct}% (${correct}/${questions.length} correct, ${wrong} wrong, ${unanswered} unanswered) in ${config?.mode} mode. ${weakTopicStr} Give specific actionable advice. Be encouraging but honest. Do not mention AI or any generation tool.`;
-        const res = await fetch(`${CF_BASE}/generateAdvisory`, {
+        const weakStr = weakest ? `Weakest topic: ${weakest.topic} at ${weakest.accuracy}% accuracy (${weakest.correct}/${weakest.attempted} correct).` : "";
+        const prompt = `You are a CUET ${subjectName} expert analysing a student's test result.
+Score: ${pct}% | Correct: ${correct}/${questions.length} | Wrong: ${wrong} | Skipped: ${unanswered} | Mode: ${config?.mode}
+${weakStr}
+
+Return ONLY a JSON object — no markdown, no preamble:
+{
+  "summary": "One honest sentence on overall performance — specific, not generic. Mention the score.",
+  "actions": [
+    "Action 1: start with a verb (Revise/Review/Practice). Specific to weakest topic.",
+    "Action 2: start with a verb. About reviewing wrong answers or second-weakest area.",
+    "Action 3: start with a verb. Strength to maintain OR biggest gap to close before next test."
+  ]
+}
+Begin with { — nothing before it.`;
+        const res = await fetch(\`\${CF_BASE}/generateAdvisory\`, {
           method: "POST", headers: authHeaders(token),
           body: JSON.stringify({ prompt }),
         });
         const d = await res.json();
-        setAnalysis(d?.text || "Keep practising — consistency leads to improvement.");
-      } catch(_) { setAnalysis("Review your answers below to identify improvement areas."); }
+        // Parse JSON from response — strip any markdown fences first
+        let parsed;
+        try {
+          const raw = (d?.text || "{}").replace(/```json|```/gi,"").trim();
+          const first = raw.indexOf("{"), last = raw.lastIndexOf("}");
+          parsed = JSON.parse(first !== -1 ? raw.slice(first, last+1) : raw);
+        } catch (_) {
+          parsed = { summary: d?.text || "Keep practising — consistency leads to improvement.", actions: [] };
+        }
+        setAnalysis(parsed);
+      } catch(_) { setAnalysis({ summary: "Review your answers to identify improvement areas.", actions: ["Focus on your weakest topic first."] }); }
       finally { setALoading(false); }
     }
     fetchAnalysis();
   }, []);
 
+  // ── Topic Practice ─────────────────────────────────────────────────────────
+  async function startTopicPractice(topic) {
+    setTpLoading(true); setTpQuestions(null); setTpAnswers({}); setTpCurrent(0); setTpSubmitted(false);
+    try {
+      const token = await getAuthToken();
+      const res = await fetch(\`\${CF_BASE}/generateQuestions\`, {
+        method: "POST", headers: authHeaders(token),
+        body: JSON.stringify({ uid: user?.uid, config: { mode: "TopicPractice", focusTopic: topic, focusSubject: isGAT ? "GAT" : "English" } }),
+      });
+      const d = await res.json();
+      if (d.questions && d.questions.length >= 8) {
+        setTpQuestions(d.questions.slice(0, 10));
+      } else {
+        alert("Could not load topic questions. Please try again.");
+      }
+    } catch(e) { alert("Topic practice failed. Please try again."); }
+    finally { setTpLoading(false); }
+  }
+
+  const ACTION_ICONS = ["📌","🔁","✅"];
+  const barColor = (acc) => acc < 40 ? "#DC2626" : acc < 65 ? "#D97706" : acc < 80 ? "#4338CA" : "#059669";
+
   return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#F8FAFC" }}>
       <div className="nta-header">
         <span className="nta-logo">Vantiq <span>CUET</span></span>
-        <span className="pill pill-indigo" style={{ fontSize: 11 }}>{config?.mode}</span>
+        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          <span className="pill pill-indigo" style={{ fontSize:11 }}>{isGAT ? "GAT" : "English"}</span>
+          <span className="pill pill-navy" style={{ fontSize:11 }}>{config?.mode === "GAT_QP" || config?.mode === "QuickPractice" ? "Quick Practice" : "Mock Exam"}</span>
+        </div>
       </div>
-      <div style={{ flex: 1, maxWidth: 860, margin: "0 auto", width: "100%", padding: isMobile ? "16px 14px" : "28px 24px", boxSizing: "border-box" }}>
-        <h1 style={{ fontFamily: "var(--font-display)", fontSize: 26, color: "var(--navy)", marginBottom: 24 }}>
+
+      <div style={{ flex:1, maxWidth:820, margin:"0 auto", width:"100%", padding: isMobile ? "14px 12px" : "24px 20px", boxSizing:"border-box" }}>
+        <h1 style={{ fontFamily:"var(--font-display)", fontSize:22, color:"var(--navy)", marginBottom:14 }}>
           Test Performance Report
         </h1>
 
-        <div className="card" style={{ padding: isMobile ? "20px 16px" : "28px 32px", marginBottom: 20, display: "flex", alignItems: isMobile ? "flex-start" : "center", gap: isMobile ? 16 : 32, flexWrap: "wrap" }}>
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--navy)", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 4 }}>Total Score</div>
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: 48, fontWeight: 700, color: scoreColor(pct), lineHeight: 1 }}>{pct}%</div>
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: 20, color: "var(--navy)", marginTop: 4 }}>{totalScore} / {maxScore}</div>
-          </div>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            {[
-              { l: "Attempted", v: attempted, c: "pill-navy" },
-              { l: "Correct",   v: correct,   c: "pill-green" },
-              { l: "Accuracy",  v: `${accuracy}%`, c: "pill-indigo" },
-              { l: "Wrong",     v: wrong,      c: "pill-red" },
-              { l: "Skipped",   v: unanswered, c: "pill-amber" },
-            ].map(s => (
-              <div key={s.l} style={{ textAlign: "center", minWidth: 52 }}>
-                <div className={"pill result-stat-pill " + s.c} style={{ height: "auto", padding: "4px 10px", fontSize: 18, fontFamily: "var(--font-mono)", fontWeight: 700 }}>{s.v}</div>
-                <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4, textTransform: "uppercase", letterSpacing: ".04em" }}>{s.l}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="card" style={{ marginBottom: 20, overflow: "hidden" }}>
-          <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)" }}>
-            <h3 style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)" }}>
-              Topic Breakdown <span style={{ fontSize: 11, fontWeight: 400, color: "var(--text-muted)" }}>(weakest first)</span>
-            </h3>
-          </div>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead>
-              <tr style={{ background: "var(--bg-alt)" }}>
-                {["Topic", "Attempted", "Correct", "Accuracy %"].map(h => (
-                  <th key={h} style={{ padding: "10px 16px", textAlign: "left", fontWeight: 600, fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-secondary)" }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {topicRows.map((r, i) => (
-                <tr key={i} style={{ borderTop: "1px solid var(--border)" }}>
-                  <td style={{ padding: "12px 16px", fontWeight: 500 }}>{r.topic}</td>
-                  <td style={{ padding: "12px 16px", fontFamily: "var(--font-mono)" }}>{r.attempted}</td>
-                  <td style={{ padding: "12px 16px", fontFamily: "var(--font-mono)" }}>{r.correct}</td>
-                  <td style={{ padding: "12px 16px", fontWeight: 700, fontFamily: "var(--font-mono)", color: scoreColor(r.accuracy) }}>{r.accuracy}%</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="card" style={{ padding: "20px 24px", marginBottom: 28 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)", marginBottom: 12 }}>Performance Review</h3>
-          {aLoading ? (
+        {/* ── Score + stats ───────────────────────────────────────────────── */}
+        <div className="card" style={{ marginBottom:12 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:isMobile?14:24, padding: isMobile?"14px 14px":"16px 20px", flexWrap:"wrap" }}>
             <div>
-              <div className="pbar-track"><div className="pbar-fill" /></div>
-              <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 8 }}>Preparing your performance breakdown...</p>
+              <div style={{ fontSize:11, fontWeight:700, color:"var(--navy)", textTransform:"uppercase", letterSpacing:".05em", marginBottom:3 }}>Total Score</div>
+              <div style={{ fontFamily:"var(--font-mono)", fontSize:40, fontWeight:700, color:scoreColor(pct), lineHeight:1 }}>{pct}%</div>
+              <div style={{ fontFamily:"var(--font-mono)", fontSize:15, color:"var(--navy)", marginTop:3 }}>{totalScore} / {maxScore}</div>
             </div>
-          ) : (
-            <p style={{ fontSize: 14, color: "var(--text-secondary)", lineHeight: 1.7 }}>{analysis}</p>
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+              {[{l:"Attempted",v:attempted,bg:"#E8EDF5",cl:"#0F2747"},{l:"Correct",v:correct,bg:"#ECFDF5",cl:"#059669"},{l:"Accuracy",v:`${accuracy}%`,bg:"#EEF2FF",cl:"#4338CA"},{l:"Wrong",v:wrong,bg:"#FEF2F2",cl:"#DC2626"},{l:"Skipped",v:unanswered,bg:"#FFFBEB",cl:"#D97706"}]
+                .map(s => (
+                <div key={s.l} style={{ textAlign:"center" }}>
+                  <div className="result-stat-pill" style={{ display:"inline-block", padding:"3px 10px", borderRadius:5, fontFamily:"var(--font-mono)", fontSize:16, fontWeight:700, background:s.bg, color:s.cl }}>{s.v}</div>
+                  <div style={{ fontSize:9, color:"var(--text-muted)", marginTop:3, textTransform:"uppercase", letterSpacing:".04em" }}>{s.l}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* This attempt vs historical average */}
+          {histAvg !== null && (
+            <div style={{ display:"flex", gap:0, borderTop:"1px solid var(--border)" }}>
+              <div style={{ flex:1, padding:"10px 16px", background:"#EEF2FF", borderRight:"1px solid var(--border)" }}>
+                <div style={{ fontSize:9, fontWeight:700, letterSpacing:".07em", textTransform:"uppercase", color:"#4338CA", marginBottom:3 }}>This Attempt</div>
+                <div style={{ fontFamily:"var(--font-mono)", fontSize:18, fontWeight:700, color:"#4338CA" }}>{pct}%</div>
+                <div style={{ fontSize:10, color:"#4338CA", opacity:0.7, marginTop:1 }}>{correct} correct · {wrong} wrong</div>
+              </div>
+              <div style={{ flex:1, padding:"10px 16px", background:"#F0FDF4" }}>
+                <div style={{ fontSize:9, fontWeight:700, letterSpacing:".07em", textTransform:"uppercase", color:"#059669", marginBottom:3 }}>Your Average ({pastTests.length} attempts)</div>
+                <div style={{ fontFamily:"var(--font-mono)", fontSize:18, fontWeight:700, color:"#059669" }}>{histAvg}%</div>
+                <div style={{ fontSize:10, color:"#059669", opacity:0.7, marginTop:1 }}>{pct >= histAvg ? "▲ above your average" : "▼ below your average"}</div>
+              </div>
+            </div>
           )}
         </div>
 
-        <div style={{ display: "flex", gap: 12 }}>
-          <button className="btn-outline" style={{ flex: 1 }} onClick={onReview}>Review Answers</button>
-          <button className="btn-primary" style={{ flex: 1 }} onClick={onNewTest}>New Test Paper</button>
+        {/* ── Priority Focus + Topic Practice CTA ────────────────────────── */}
+        {weakest && (
+          <div style={{ background:"linear-gradient(135deg,#0F2747 0%,#1a3a6b 100%)", borderRadius:10, padding:"14px 16px", marginBottom:12 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:12, marginBottom:12, flexWrap:"wrap" }}>
+              <div>
+                <div style={{ display:"inline-block", background:"rgba(252,211,77,0.18)", border:"1px solid rgba(252,211,77,0.35)", borderRadius:20, padding:"2px 9px", fontSize:9, fontWeight:700, letterSpacing:".07em", color:"#FCD34D", textTransform:"uppercase", marginBottom:5 }}>⚠ Priority Focus Area</div>
+                <div style={{ fontSize:16, fontWeight:700, color:"#fff", marginBottom:3 }}>{weakest.topic}</div>
+                <div style={{ fontSize:11, color:"rgba(255,255,255,0.58)" }}>{weakest.correct} of {weakest.attempted} correct · Lowest accuracy this test</div>
+              </div>
+              <div style={{ textAlign:"right" }}>
+                <div style={{ fontFamily:"var(--font-mono)", fontSize:28, fontWeight:700, color:"#FCD34D", lineHeight:1 }}>{weakest.accuracy}%</div>
+                <div style={{ fontSize:10, color:"rgba(255,255,255,0.45)", marginTop:2 }}>Accuracy</div>
+              </div>
+            </div>
+
+            {/* Topic Practice CTA */}
+            <div
+              style={{ background:"rgba(255,255,255,0.06)", border:"1.5px solid rgba(252,211,77,0.4)", borderRadius:8, padding:"11px 14px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, cursor: tpLoading ? "wait" : "pointer" }}
+              onClick={() => !tpLoading && !tpSubmitted && startTopicPractice(weakest.topic)}
+            >
+              <div>
+                <div style={{ fontSize:9, fontWeight:700, letterSpacing:".07em", textTransform:"uppercase", color:"rgba(252,211,77,0.8)", marginBottom:3 }}>⚡ Targeted Practice</div>
+                <div style={{ fontSize:12.5, color:"#fff", fontWeight:500 }}>Practice only {weakest.topic} — 10 questions</div>
+                <div style={{ fontSize:11, color:"rgba(255,255,255,0.5)", marginTop:2 }}>No time limit · Free · Never counts toward your test limit</div>
+              </div>
+              <button
+                style={{ background:"#FCD34D", color:"#0F2747", border:"none", borderRadius:6, padding:"7px 14px", fontSize:12, fontWeight:700, fontFamily:"var(--font-body)", cursor:"pointer", whiteSpace:"nowrap", flexShrink:0, opacity: tpLoading?0.7:1 }}
+                disabled={tpLoading}
+              >
+                {tpLoading ? "Loading..." : tpQuestions ? "Retry ↺" : "Start Now →"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Topic Practice Mini-Exam ────────────────────────────────────── */}
+        {tpQuestions && !tpSubmitted && (
+          <div className="card" style={{ marginBottom:12, overflow:"hidden" }}>
+            <div style={{ background:"linear-gradient(135deg,#0F2747,#1a3a6b)", padding:"10px 16px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+              <div>
+                <div style={{ fontSize:9, fontWeight:700, letterSpacing:".07em", textTransform:"uppercase", color:"#FCD34D", marginBottom:2 }}>Targeted Practice · {tpQuestions[tpCurrent]?.topic}</div>
+                <div style={{ fontSize:13, fontWeight:700, color:"#fff" }}>10 Questions · No Time Limit</div>
+              </div>
+              <div style={{ fontFamily:"var(--font-mono)", fontSize:12, color:"rgba(255,255,255,0.6)" }}>Q {tpCurrent+1} of {tpQuestions.length}</div>
+            </div>
+            <div style={{ padding:"14px 16px" }}>
+              <div style={{ fontSize:11, fontWeight:600, letterSpacing:".05em", textTransform:"uppercase", color:"var(--indigo)", marginBottom:6 }}>{tpQuestions[tpCurrent]?.topic}</div>
+              <div style={{ fontSize:isMobile?13:14, fontWeight:500, color:"var(--navy)", lineHeight:1.65, marginBottom:16 }}>{tpQuestions[tpCurrent]?.question}</div>
+              <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:14 }}>
+                {tpQuestions[tpCurrent]?.options.map((opt, i) => (
+                  <div key={i}
+                    className={"option-box" + (tpAnswers[tpCurrent] === i ? " selected" : "")}
+                    onClick={() => setTpAnswers(p => ({...p, [tpCurrent]: i}))}
+                  >
+                    <span className="option-key">{String.fromCharCode(65+i)}</span>
+                    <span style={{ fontSize:isMobile?13:14, color:"var(--text-primary)", flex:1, minWidth:0 }}>{opt}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display:"flex", gap:10, alignItems:"center" }}>
+                <button
+                  onClick={() => tpCurrent > 0 && setTpCurrent(c => c-1)}
+                  style={{ height:34, padding:"0 14px", border:"1.5px solid var(--border)", borderRadius:6, background:"#fff", fontSize:12, fontWeight:500, color:"var(--text-secondary)", cursor:tpCurrent>0?"pointer":"not-allowed", opacity:tpCurrent>0?1:0.4, fontFamily:"var(--font-body)" }}
+                >← Back</button>
+                <div style={{ flex:1, display:"flex", gap:4 }}>
+                  {tpQuestions.map((_, i) => (
+                    <div key={i} onClick={() => setTpCurrent(i)} style={{ flex:1, height:4, borderRadius:2, background: i===tpCurrent ? "var(--indigo)" : tpAnswers[i]!==undefined ? "#059669" : "var(--border)", cursor:"pointer" }} />
+                  ))}
+                </div>
+                {tpCurrent < tpQuestions.length - 1 ? (
+                  <button className="btn-navy-sm" onClick={() => setTpCurrent(c => c+1)}>Next →</button>
+                ) : (
+                  <button className="btn-primary" style={{ height:34, fontSize:13 }}
+                    onClick={() => { setTpSubmitted(true); logEvent("topic_practice_completed", { topic: weakest?.topic, answered: Object.keys(tpAnswers).length }); }}>
+                    Submit →
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Topic Practice Results ─────────────────────────────────────── */}
+        {tpQuestions && tpSubmitted && (() => {
+          let tpCorrect = 0;
+          tpQuestions.forEach((q, i) => { if (tpAnswers[i] === q.correct) tpCorrect++; });
+          const tpPct = Math.round((tpCorrect / tpQuestions.length) * 100);
+          return (
+            <div className="card" style={{ marginBottom:12, overflow:"hidden" }}>
+              <div style={{ background:"linear-gradient(135deg,#0F2747,#1a3a6b)", padding:"10px 16px" }}>
+                <div style={{ fontSize:9, fontWeight:700, letterSpacing:".07em", textTransform:"uppercase", color:"#FCD34D", marginBottom:2 }}>Targeted Practice Complete · {tpQuestions[0]?.topic}</div>
+              </div>
+              <div style={{ padding:"14px 16px", display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12 }}>
+                <div>
+                  <div style={{ fontFamily:"var(--font-mono)", fontSize:28, fontWeight:700, color:scoreColor(tpPct) }}>{tpCorrect}/{tpQuestions.length}</div>
+                  <div style={{ fontSize:12, color:"var(--text-sec)", marginTop:2 }}>
+                    {tpPct > weakest?.accuracy ? `↑ Improved from ${weakest?.accuracy}% (main test)` : tpPct === weakest?.accuracy ? `Same as main test (${weakest?.accuracy}%)` : `${tpPct}% this session`}
+                  </div>
+                </div>
+                <div style={{ display:"flex", gap:8 }}>
+                  <button className="btn-outline" style={{ height:34, fontSize:12 }} onClick={() => { setTpSubmitted(false); setTpAnswers({}); setTpCurrent(0); }}>Try Again</button>
+                  <button className="btn-primary" style={{ height:34, fontSize:12 }} onClick={() => { setTpQuestions(null); setTpSubmitted(false); }}>Close</button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ── Topic accuracy bars ─────────────────────────────────────────── */}
+        <div className="card" style={{ marginBottom:12, padding:"14px 16px" }}>
+          <div style={{ fontSize:10, fontWeight:700, letterSpacing:".07em", textTransform:"uppercase", color:"var(--text-muted)", marginBottom:10 }}>Topic Accuracy — Weakest First</div>
+          {topicRows.map((r, i) => (
+            <div key={i} style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
+              <div style={{ fontSize:11, color: i===0 ? "#DC2626" : "var(--text-sec)", fontWeight: i===0 ? 700 : 400, width:isMobile?110:150, flexShrink:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.topic}</div>
+              <div style={{ flex:1, height:6, background:"#E2E8F0", borderRadius:3, overflow:"hidden" }}>
+                <div style={{ height:"100%", width:`${r.accuracy}%`, background:barColor(r.accuracy), borderRadius:3, transition:"width .6s ease" }} />
+              </div>
+              <div style={{ fontFamily:"var(--font-mono)", fontSize:11, fontWeight:700, color:barColor(r.accuracy), width:32, textAlign:"right", flexShrink:0 }}>{r.accuracy}%</div>
+            </div>
+          ))}
+        </div>
+
+        {/* ── What to Do Next — advisory ─────────────────────────────────── */}
+        <div className="card" style={{ padding:"14px 16px", marginBottom:20 }}>
+          <div style={{ fontSize:10, fontWeight:700, letterSpacing:".07em", textTransform:"uppercase", color:"var(--text-muted)", marginBottom:10 }}>What to Do Next</div>
+          {aLoading ? (
+            <div><div className="pbar-track"><div className="pbar-fill" /></div><p style={{ fontSize:12, color:"var(--text-muted)", marginTop:8 }}>Preparing your performance analysis...</p></div>
+          ) : analysis ? (
+            <>
+              {analysis.summary && (
+                <p style={{ fontSize:13, color:"var(--navy)", fontWeight:500, lineHeight:1.6, marginBottom:10, paddingBottom:10, borderBottom:"1px solid var(--border)" }}>{analysis.summary}</p>
+              )}
+              {(analysis.actions || []).map((a, i) => (
+                <div key={i} style={{ display:"flex", gap:10, alignItems:"flex-start", marginBottom:9 }}>
+                  <span style={{ fontSize:14, flexShrink:0, marginTop:1 }}>{ACTION_ICONS[i] || "•"}</span>
+                  <span style={{ fontSize:13, color:"var(--text-secondary)", lineHeight:1.6 }}>{a}</span>
+                </div>
+              ))}
+            </>
+          ) : null}
+        </div>
+
+        {/* ── Actions ─────────────────────────────────────────────────────── */}
+        <div style={{ display:"flex", gap:12 }}>
+          <button className="btn-outline" style={{ flex:1 }} onClick={onReview}>Review Answers</button>
+          <button className="btn-primary" style={{ flex:1 }} onClick={onNewTest}>New Test Paper</button>
         </div>
       </div>
     </div>
@@ -2182,7 +2361,7 @@ export default function App() {
       {screen === "dashboard"  && <DashboardScreen user={user} userData={userData} testHistory={testHistory} onBeginTest={handleBeginTest} onLogout={() => auth ? signOut(auth) : setScreen("auth")} showToast={showToast} subjects={SUBJECTS} showPaywallOverride={showPaywall} setShowPaywallOverride={setShowPaywall} />}
       {screen === "generating" && <GeneratingScreen config={testConfig} />}
       {screen === "exam"       && <ExamScreen      questions={questions} config={testConfig} user={user} onSubmit={handleSubmitTest} showToast={showToast} />}
-      {screen === "results"    && <ResultsScreen   questions={questions} answers={answers} config={testConfig} user={user} onNewTest={() => setScreen("dashboard")} onReview={() => setScreen("review")} />}
+      {screen === "results"    && <ResultsScreen   questions={questions} answers={answers} config={testConfig} user={user} testHistory={testHistory} onNewTest={() => setScreen("dashboard")} onReview={() => setScreen("review")} />}
       {/* Feedback button — always visible when logged in */}
       {user && screen !== "auth" && screen !== "exam" && <FeedbackWidget user={user} />}
       {/* Star rating — shown once per login session */}
