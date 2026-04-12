@@ -3012,7 +3012,10 @@ exports.clearAndRebuildSubjectCache = functions
     setCORS(res);
     if (req.method === "OPTIONS") { res.status(204).send(""); return; }
     if (req.method !== "POST")    { res.status(405).json({ error: "Method not allowed" }); return; }
-    if (!verifyAdminKey(req, res)) return;
+    const adminKey    = req.body?.adminKey || req.headers["x-admin-key"] || "";
+    const cfg         = functions.config();
+    const expectedKey = cfg.admin?.key || process.env.ADMIN_KEY || "";
+    if (!adminKey || adminKey !== expectedKey) { res.status(401).json({ error: "Unauthorized" }); return; }
     const subject = req.body?.subject || "all"; // "English" | "GAT" | "Economics" | "all"
     try {
       const cacheRef = db.collection("questionCache");
