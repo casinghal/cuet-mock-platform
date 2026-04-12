@@ -972,7 +972,7 @@ export default function AdminDashboard() {
   // ── Auto-refresh every 60s — full dashboard data ──────────────────────────
   // If fill is active: only refresh cache status + presence (lightweight, won't disrupt fill)
   // If fill is idle: full loadData so KPIs, students, tests all update
-  const [nextRefreshIn, setNextRefreshIn] = useState(60);
+  const [nextRefreshIn, setNextRefreshIn] = useState(300);
   const refreshCountdownRef = useRef(null);
 
   useEffect(() => {
@@ -982,10 +982,10 @@ export default function AdminDashboard() {
       loadCacheStatus(true);
       if (!filling) loadData();
       setNextRefreshIn(60);
-    }, 60000);
+    }, 300000);
     // Countdown ticker
     refreshCountdownRef.current = setInterval(() => {
-      setNextRefreshIn(n => n > 0 ? n - 1 : 60);
+      setNextRefreshIn(n => n > 0 ? n - 1 : 300);
     }, 1000);
     return () => {
       clearInterval(statusPollRef.current);
