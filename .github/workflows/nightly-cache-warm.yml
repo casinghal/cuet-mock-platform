@@ -1,9 +1,6 @@
 name: Nightly Cache Fill Engine
 
 on:
-  schedule:
-    - cron: '30 20 * * *'  # 2:00 AM IST primary fill
-    - cron: '0 6 * * *'    # 11:30 AM IST midday top-up
   workflow_dispatch:
     inputs:
       reason:

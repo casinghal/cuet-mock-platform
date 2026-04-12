@@ -962,7 +962,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (authed && fbUser) {
       loadData();
-      checkAndFill();
+      // NOTE: auto-fill removed — all cache fills are manual only via Fill buttons
       setTimeout(() => runAnomalyDetection(), 4000);
     } else if (authed && !fbUser && !fbLoading) {
       loadCacheStatus();
