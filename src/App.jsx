@@ -1351,7 +1351,7 @@ function GeneratingScreen({ config }) {
 
 // ── EXAM SCREEN ───────────────────────────────────────────────────────────────
 function ExamScreen({ questions, config, user, onSubmit, showToast }) {
-  const isTimed    = config?.mode !== "QuickPractice"; // QuickPractice has no time limit
+  const isTimed    = config?.mode !== "QuickPractice" && config?.mode !== "GAT_QP"; // free modes: no timer
   const [current,   setCurrent]   = useState(0);
   const [answers,   setAnswers]   = useState({});
   const [marked,    setMarked]    = useState(new Set());
