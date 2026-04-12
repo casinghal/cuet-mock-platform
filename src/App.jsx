@@ -57,6 +57,7 @@ button{cursor:pointer;border:none;outline:none;font-family:var(--font-body);}
 @keyframes valueIn{from{opacity:0;transform:translateX(-8px);}to{opacity:1;transform:translateX(0);}}
 @keyframes recoveryGlow{0%,100%{box-shadow:0 0 0 0 rgba(99,102,241,0);}50%{box-shadow:0 0 24px rgba(99,102,241,0.25),0 0 48px rgba(99,102,241,0.1);}}
 .eyebrow-live{animation:pillGlow 2.4s ease-in-out infinite;}
+@keyframes livePulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(5,150,105,0);}60%{opacity:.55;box-shadow:0 0 0 5px rgba(5,150,105,0.12);}}
 .typewriter-caret{display:inline-block;width:2px;height:1em;background:rgba(255,255,255,0.7);margin-left:2px;vertical-align:text-bottom;animation:caretBlink 0.8s step-end infinite;}
 .hook-caret{display:inline-block;width:2px;height:0.9em;background:#FBBF24;margin-left:2px;vertical-align:text-bottom;animation:caretBlink 0.7s step-end infinite;}
 .hook-text{animation:hookGlow 2s ease-in-out infinite,hookFadeIn 0.3s ease-out;}
@@ -1168,7 +1169,7 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
   }
 
   // Section label and subject badge
-  const subjectBadge = activeSubject === "GAT" ? "GAT (501)" : activeSubject === "Economics" ? "Economics (118)" : "English (101)";
+  const subjectBadge = activeSubject === "GAT" ? "General Aptitude Test (501)" : activeSubject === "Economics" ? "Economics (218)" : "English (101)";
   const sectionLabel = activeSubject === "GAT"
     ? "Your Practice Summary — CUET GAT (501) 2026"
     : activeSubject === "Economics"
@@ -1189,7 +1190,7 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           {activeSubject && (
             <span style={{ fontSize: 11, background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 4, padding: "3px 8px", color: "#fff", letterSpacing: ".03em" }}>
-              {activeSubject === "GAT" ? "GAT (501)" : "English (101)"}
+              {activeSubject === "GAT" ? "General Aptitude Test (501)" : "English (101)"}
             </span>
           )}
           <span style={{ fontSize: 13, opacity: 0.8 }}>{user?.displayName?.split(" ")[0]}</span>
@@ -1200,140 +1201,135 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
       </div>
 
       <div style={{ flex: 1, maxWidth: 900, margin: "0 auto", width: "100%", padding: isMobile ? "20px 16px" : "28px 24px" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-          <h2 style={{ fontSize: 12, fontWeight: 600, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--text-muted)", margin: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+          <h2 style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--text-muted)", margin: 0 }}>
             Your Practice Summary
           </h2>
-          <span style={{ fontSize: 11, color: "var(--success)", fontWeight: 600 }}>⚡ Quick Practice: Always Free</span>
+          <span style={{ fontSize: 10, color: "var(--success)", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--success)", display: "inline-block", animation: "livePulse 2s ease-in-out infinite" }} />
+            Quick Practice · Always Free
+          </span>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 12, marginBottom: 36 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 8, marginBottom: 14 }}>
           {[
-            { label: "Tests Taken",  val: activeSubject === "GAT" ? gatTestsUsed : activeSubject === "Economics" ? econTestsUsed : testsUsed, sub: unlocked ? "Unlimited" : `${testsLeft} free left` },
-            { label: "Avg. Score",   val: avgScore != null ? `${avgScore}%` : "—", sub: "across all tests" },
-            { label: "Best Score",   val: bestScore != null ? `${bestScore}%` : "—", sub: "personal best" },
-            { label: "Access",       val: unlocked ? "Pro" : "Free", sub: unlocked ? "Unlimited till 30 Jun" : `${testsLeft} of 4 Mock Exams free` },
+            { label: "Tests Taken",  val: activeSubject === "GAT" ? gatTestsUsed : activeSubject === "Economics" ? econTestsUsed : testsUsed, sub: unlocked ? "Unlimited" : `${testsLeft} free left`, accent: "var(--indigo)" },
+            { label: "Avg. Score",   val: avgScore != null ? `${avgScore}%` : "—", sub: "across all tests", accent: "#D97706" },
+            { label: "Best Score",   val: bestScore != null ? `${bestScore}%` : "—", sub: "personal best", accent: "var(--success)" },
+            { label: "Access",       val: unlocked ? "Pro" : "Free", sub: unlocked ? "Unlimited till 30 Jun" : `${testsLeft} of 4 Mock Exams free`, accent: unlocked ? "var(--success)" : "var(--indigo)" },
           ].map(s => (
-            <div key={s.label} className="stat-strip">
-              <div style={{ fontSize: 22, fontWeight: 700, color: "var(--navy)", fontFamily: "var(--font-mono)" }}>{s.val}</div>
-              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{s.label}</div>
-              <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 1 }}>{s.sub}</div>
+            <div key={s.label} className="stat-strip" style={{ borderLeft: `3px solid ${s.accent}`, padding: "10px 14px" }}>
+              <div style={{ fontSize: 18, fontWeight: 700, color: s.label === "Access" && unlocked ? "var(--success)" : "var(--navy)", fontFamily: "var(--font-mono)", lineHeight: 1 }}>{s.val}</div>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", color: "var(--text-muted)", marginTop: 4 }}>{s.label}</div>
+              <div style={{ fontSize: 10, color: "var(--text-secondary)", marginTop: 1 }}>{s.sub}</div>
             </div>
           ))}
         </div>
 
-        <div className="card" style={{ padding: isMobile ? "18px 16px" : "24px 28px", marginBottom: 28 }}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--navy)", marginBottom: 20 }}>New Test Paper</h3>
+        <div className="card" style={{ padding: 0, marginBottom: 20, overflow: "hidden" }}>
 
-          {/* ── STEP 1: Subject ─────────────────────────────────────── */}
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 8 }}>
-              Step 1 — Choose Subject
+          {/* ── Card header ─────────────────────────────────────────── */}
+          <div style={{ padding: "11px 18px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--success)", display: "inline-block", boxShadow: "0 0 0 3px rgba(5,150,105,.15)", animation: "livePulse 2s ease-in-out infinite" }} />
+              <h3 style={{ fontSize: 14, fontWeight: 800, color: "var(--navy)", margin: 0 }}>New Test Paper</h3>
+              <span style={{ fontSize: 9, fontWeight: 700, color: "var(--success)", background: "#ECFDF5", border: "1px solid #A7F3D0", padding: "2px 7px", borderRadius: 20, letterSpacing: ".05em" }}>LIVE</span>
             </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 600 }}>⚡ Quick Practice · Always Free</span>
+          </div>
+
+          <div style={{ padding: isMobile ? "14px 16px" : "14px 18px" }}>
+
+            {/* ── SUBJECT chips ────────────────────────────────────────── */}
+            <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 7 }}>
+              Subject
+            </div>
+            <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 14 }}>
               {liveSubjects.map(s => {
-                const key = s.name.includes("GAT") ? "GAT" : s.name.includes("Economics") ? "Economics" : "English";
-                const label = s.name.includes("GAT") ? "GAT (501)" : s.name.includes("Economics") ? "Economics (118)" : "English (101)";
+                const key   = s.name.includes("GAT") ? "GAT" : s.name.includes("Economics") ? "Economics" : "English";
+                const label = s.name.includes("GAT") ? "General Aptitude Test (501)" : s.name.includes("Economics") ? "Economics (218)" : "English (101)";
                 const isActive = activeSubject === key;
                 return (
                   <button key={key} onClick={() => handleSubjectChange(key)} style={{
-                    flex: "1 1 120px", padding: "10px 16px", borderRadius: 9, cursor: "pointer",
-                    border: `2px solid ${isActive ? "var(--navy)" : "var(--border)"}`,
+                    padding: "5px 14px", borderRadius: 20, cursor: "pointer",
+                    border: `1.5px solid ${isActive ? "var(--navy)" : "var(--border)"}`,
                     background: isActive ? "var(--navy)" : "#fff",
                     color: isActive ? "#fff" : "var(--navy)",
-                    fontWeight: 600, fontSize: 13, fontFamily: "var(--font-body)",
-                    transition: "all .15s", display: "flex", alignItems: "center", gap: 7,
-                    justifyContent: "center",
+                    fontWeight: 600, fontSize: 12, fontFamily: "var(--font-body)",
+                    transition: "all .15s", display: "flex", alignItems: "center", gap: 6,
                   }}>
-                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: isActive ? "#6EE7B7" : "#6EE7B7", display: "inline-block", flexShrink: 0 }} />
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#6EE7B7", display: "inline-block", flexShrink: 0 }} />
                     {label}
                   </button>
                 );
               })}
+              {/* Economics coming soon chip */}
+              <span style={{ padding: "5px 14px", borderRadius: 20, border: "1.5px solid #F1F5F9", background: "#F8FAFC", color: "#CBD5E1", fontWeight: 600, fontSize: 12, display: "flex", alignItems: "center", gap: 5 }}>
+                Economics (218) <span style={{ fontSize: 9, opacity: 0.6 }}>soon</span>
+              </span>
             </div>
-          </div>
 
-          {/* ── STEP 2: Format — only shown after subject chosen ─────── */}
-          {activeSubject ? (
-            <>
-              <div style={{ height: 1, background: "var(--border)", margin: "4px 0 16px" }} />
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 8 }}>
-                  Step 2 — Choose Format
+            {/* ── FORMAT tiles — horizontal compact ────────────────────── */}
+            {activeSubject ? (
+              <>
+                <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 7 }}>
+                  Format
                 </div>
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
                   {Object.entries(MODES).map(([k, cfg]) => {
                     const isSelected = mode === k;
                     return (
                       <div key={k} onClick={() => setMode(k)} style={{
-                        flex: "1 1 140px", border: `2px solid ${isSelected ? "var(--indigo)" : "var(--border)"}`,
-                        borderRadius: 10, padding: "14px 16px", cursor: "pointer",
+                        flex: "1 1 160px", border: `1.5px solid ${isSelected ? "var(--indigo)" : "var(--border)"}`,
+                        borderRadius: 9, padding: "11px 14px", cursor: "pointer",
                         background: isSelected ? "#EEF2FF" : "#fff",
-                        boxShadow: isSelected ? "0 0 0 3px rgba(67,56,202,0.1)" : "none",
-                        transition: "all .15s", position: "relative",
+                        boxShadow: isSelected ? "0 0 0 3px rgba(67,56,202,0.08)" : "none",
+                        transition: "all .15s", display: "flex", alignItems: "flex-start", gap: 12,
                       }}>
-                        <div style={{ fontSize: 20, marginBottom: 6 }}>{cfg.icon}</div>
-                        <div style={{ fontWeight: 700, fontSize: 13, color: "var(--navy)", marginBottom: 3 }}>{cfg.label}</div>
-                        <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: cfg.free ? 6 : 0 }}>{cfg.desc}</div>
-                        {cfg.free && (
-                          <span style={{ display: "inline-block", background: "#DCFCE7", color: "var(--success)", fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 20, letterSpacing: ".04em", textTransform: "uppercase" }}>
-                            Always Free
-                          </span>
-                        )}
-                        {!cfg.free && !unlocked && (
-                          <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
-                            {testsLeft > 0 ? `${testsLeft} free · ₹199 unlimited` : "Free limit reached · ₹199 to unlock"}
-                          </div>
-                        )}
+                        <span style={{ fontSize: 18, marginTop: 1, flexShrink: 0 }}>{cfg.icon}</span>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: 13, color: "var(--navy)", marginBottom: 2 }}>{cfg.label}</div>
+                          <div style={{ fontSize: 10, color: "var(--text-secondary)", lineHeight: 1.4 }}>{cfg.desc}</div>
+                          {cfg.free && (
+                            <span style={{ display: "inline-block", marginTop: 5, background: "#DCFCE7", color: "var(--success)", fontSize: 9, fontWeight: 700, padding: "1px 7px", borderRadius: 20, letterSpacing: ".04em", border: "1px solid #A7F3D0" }}>
+                              ALWAYS FREE
+                            </span>
+                          )}
+                          {!cfg.free && !unlocked && (
+                            <div style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 5 }}>
+                              {testsLeft > 0 ? `${testsLeft} free · ₹199 unlimited` : "Free limit reached · ₹199 to unlock"}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     );
                   })}
                 </div>
+              </>
+            ) : (
+              <div style={{ border: "1.5px dashed var(--border)", borderRadius: 9, padding: "14px 16px", textAlign: "center", color: "var(--text-muted)", fontSize: 12, marginBottom: 14 }}>
+                Select a subject above to see available formats
               </div>
-            </>
-          ) : (
-            /* No subject selected yet */
-            <div style={{ border: "1.5px dashed var(--border)", borderRadius: 10, padding: "20px 16px", textAlign: "center", color: "var(--text-muted)", fontSize: 12, marginBottom: 16 }}>
-              Select a subject above to see available formats
+            )}
+
+            {/* ── CTA row — button + hint inline ──────────────────────── */}
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <button
+                className="btn-primary"
+                onClick={handleBegin}
+                disabled={!activeSubject || !mode || (checking && !isCurrentModeFree)}
+                style={{ flex: 1, height: 40, fontSize: 13, opacity: (!activeSubject || !mode) ? 0.45 : 1, cursor: (!activeSubject || !mode) ? "not-allowed" : "pointer" }}
+              >
+                {checking ? "Checking..." : "Begin Test →"}
+              </button>
+              <span style={{ fontSize: 10, color: !activeSubject || !mode ? "var(--text-muted)" : isCurrentModeFree ? "var(--success)" : "var(--text-muted)", fontWeight: isCurrentModeFree ? 600 : 400, whiteSpace: "nowrap", flexShrink: 0 }}>
+                {!activeSubject ? "Pick a subject" : !mode ? "Pick a format" : isCurrentModeFree ? "✓ Always free" : !unlocked && testsLeft > 0 ? `${testsLeft} Mock Exam${testsLeft !== 1 ? "s" : ""} free` : !unlocked ? "Free limit reached" : "Unlimited access"}
+              </span>
             </div>
-          )}
 
-          {/* ── Divider + CTA ───────────────────────────────────────── */}
-          <div style={{ height: 1, background: "var(--border)", margin: "4px 0 14px" }} />
-          <button
-            className="btn-primary full"
-            onClick={handleBegin}
-            disabled={!activeSubject || !mode || (checking && !isCurrentModeFree)}
-            style={{ opacity: (!activeSubject || !mode) ? 0.45 : 1, cursor: (!activeSubject || !mode) ? "not-allowed" : "pointer" }}
-          >
-            {checking ? "Checking..." : "Begin Test →"}
-          </button>
-
-          {/* Hint text — progressive */}
-          {!activeSubject ? (
-            <p style={{ textAlign: "center", marginTop: 10, fontSize: 12, color: "var(--text-muted)" }}>
-              Choose a subject to get started
-            </p>
-          ) : !mode ? (
-            <p style={{ textAlign: "center", marginTop: 10, fontSize: 12, color: "var(--text-muted)" }}>
-              Now pick a format above
-            </p>
-          ) : isCurrentModeFree ? (
-            <p style={{ textAlign: "center", marginTop: 10, fontSize: 12, color: "var(--success)", fontWeight: 600 }}>
-              ✓ Quick Practice is always free — no limits, ever.
-            </p>
-          ) : !unlocked ? (
-            <p style={{ textAlign: "center", marginTop: 10, fontSize: 12, color: "var(--text-muted)" }}>
-              {testsLeft > 0 ? `${testsLeft} free Mock Exam${testsLeft !== 1 ? "s" : ""} remaining` : "Free limit reached — unlock above"}
-            </p>
-          ) : (
-            <p style={{ textAlign: "center", marginTop: 10, fontSize: 12, color: "var(--text-muted)" }}>
-              Unlimited access active
-            </p>
-          )}
+          </div>
         </div>
-
-        <h3 style={{ fontSize: 14, fontWeight: 600, color: "var(--navy)", marginBottom: 14 }}>Recent Tests</h3>
+        <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--navy)", marginBottom: 12 }}>Recent Tests</h3>
         {testHistory.length === 0 ? (
           <div style={{ border: "1px dashed var(--border)", borderRadius: 10, padding: 32, textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
             No tests attempted yet. Start your first test above.
