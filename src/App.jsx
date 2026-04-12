@@ -15,7 +15,7 @@ import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 if (!document.getElementById("cuet-fonts")) {
   const l = document.createElement("link");
   l.id = "cuet-fonts"; l.rel = "stylesheet";
-  l.href = "https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=DM+Serif+Display:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap";
+  l.href = "https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=DM+Serif+Display:ital@0;1&family=JetBrains+Mono:wght@400;500&family=Poppins:wght@400;500;600;700&display=swap";
   document.head.appendChild(l);
 }
 
@@ -752,7 +752,7 @@ function AuthScreen({ onLogin, showToast }) {
             }}>
               <span style={{ width:6, height:6, borderRadius:"50%", background:"#6EE7B7",
                 boxShadow:"0 0 6px #6EE7B7", display:"inline-block" }} />
-              English (101) + GAT (501) Live Now
+              English (101) + GAT (501) + Economics (118) Live Now
             </div>
 
             {/* Headline */}
@@ -815,7 +815,7 @@ function AuthScreen({ onLogin, showToast }) {
         <div style={S.hero}>
           <div style={S.eyebrow} className="eyebrow-live">
             <span style={S.dot} />
-            Continuously updated · English (101) + GAT (501) Live Now
+            Continuously updated · English (101) + GAT (501) + Economics (118) Live Now
           </div>
 
           <h1 style={S.h1}>
@@ -863,34 +863,29 @@ function AuthScreen({ onLogin, showToast }) {
             ))}
           </div>
 
-          {/* Subjects — CUET-LIVE-PREMIUM: Economics "preparing" shimmer state */}
-          <div style={S.subjectLabel}>Subjects on this platform</div>
-          <div style={S.subjectChips}>
-            {subjects.map(s => {
-              const isEcon = s.name.includes("Economics");
-              return (
-                <span key={s.name}
-                  className={isEcon ? "chip-prep-shimmer" : ""}
-                  style={s.live ? S.chipLive : {
-                    ...S.chipSoon,
-                    ...(isEcon ? {
-                      background:"rgba(99,102,241,0.08)",
-                      border:"1px solid rgba(99,102,241,0.2)",
-                      color:"rgba(255,255,255,0.4)",
-                    } : {}),
-                  }}>
-                  {s.live && <span className="live-pulse-dot" style={{ width:6, height:6, borderRadius:"50%", background:"#6EE7B7", display:"inline-block" }} />}
-                  {s.name}
-                  {!s.live && <span style={{ fontSize:10, marginLeft:4, opacity:0.6 }}>{isEcon ? "preparing" : "soon"}</span>}
-                </span>
-              );
-            })}
-          </div>
         </div>
         )}
 
         {/* ── Right: Auth Card ── */}
         <div style={S.authCard}>
+
+          {/* ── Subject Status Block — above typewriter ── */}
+          <div style={{ background:"#1C1C1E", borderRadius:12, padding:"14px 16px", marginBottom: isMobile ? 10 : 14, border:"1px solid rgba(255,255,255,0.08)" }}>
+            <div style={{ fontSize:9, fontWeight:700, letterSpacing:"0.12em", textTransform:"uppercase", color:"rgba(255,255,255,0.35)", marginBottom:10, fontFamily:"'Poppins', sans-serif" }}>Live on this platform</div>
+            <div style={{ display:"flex", flexDirection:"column", gap:7 }}>
+              {[
+                { code:"101", name:"English", section:"Section IA — Languages" },
+                { code:"501", name:"General Aptitude Test", section:"Section III — GAT" },
+                { code:"118", name:"Economics", section:"Section II — Domain" },
+              ].map(s => (
+                <div key={s.code} style={{ display:"flex", alignItems:"center", gap:10 }}>
+                  <span style={{ width:6, height:6, borderRadius:"50%", background:"#6EE7B7", flexShrink:0, boxShadow:"0 0 5px rgba(110,231,183,0.6)", animation:"livePulse 2.4s ease-in-out infinite" }} />
+                  <span style={{ fontFamily:"'Poppins', sans-serif", fontSize:12, fontWeight:600, color:"#FFFFFF", letterSpacing:"0.01em" }}>{s.name}</span>
+                  <span style={{ fontFamily:"'Poppins', sans-serif", fontSize:10, color:"rgba(255,255,255,0.35)", marginLeft:"auto", letterSpacing:"0.03em" }}>{s.code}</span>
+                </div>
+              ))}
+            </div>
+          </div>
 
           {/* ── Typewriter hook — always shown, compact on mobile ── */}
           <div style={{ minHeight: isMobile ? 42 : 52, marginBottom: isMobile ? 12 : 18, padding: isMobile ? "8px 12px" : "10px 14px", background:"rgba(251,191,36,0.07)", border:"1px solid rgba(251,191,36,0.22)", borderRadius:10, borderLeft:"3px solid #FBBF24" }}>
@@ -1334,10 +1329,6 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
                   </button>
                 );
               })}
-              {/* Economics — muted chip while live:false */}
-              <span style={{ padding: "5px 14px", borderRadius: 20, border: "1.5px solid #F1F5F9", background: "#F8FAFC", color: "#CBD5E1", fontWeight: 600, fontSize: 12, display: "flex", alignItems: "center", gap: 5 }}>
-                Economics (118) <span style={{ fontSize: 9, opacity: 0.6 }}>preparing</span>
-              </span>
             </div>
 
             {/* ── FORMAT tiles — horizontal compact ────────────────────── */}
