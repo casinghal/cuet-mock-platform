@@ -1659,7 +1659,7 @@ Return ONLY a JSON object — no markdown, no preamble:
   ]
 }
 Begin with { — nothing before it.`;
-        const res = await fetch(\`\${CF_BASE}/generateAdvisory\`, {
+        const res = await fetch(`${CF_BASE}/generateAdvisory`, {
           method: "POST", headers: authHeaders(token),
           body: JSON.stringify({ prompt }),
         });
@@ -1685,7 +1685,7 @@ Begin with { — nothing before it.`;
     setTpLoading(true); setTpQuestions(null); setTpAnswers({}); setTpCurrent(0); setTpSubmitted(false);
     try {
       const token = await getAuthToken();
-      const res = await fetch(\`\${CF_BASE}/generateQuestions\`, {
+      const res = await fetch(`${CF_BASE}/generateQuestions`, {
         method: "POST", headers: authHeaders(token),
         body: JSON.stringify({ uid: user?.uid, config: { mode: "TopicPractice", focusTopic: topic, focusSubject: isGAT ? "GAT" : isEcon ? "Economics" : "English" } }),
       });
