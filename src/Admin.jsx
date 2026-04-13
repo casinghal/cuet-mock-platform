@@ -473,7 +473,7 @@ function CacheBar({ mode, config, current }) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 // ─── Cache Command Centre ─────────────────────────────────────────────────────
-function CacheCommandCentre({ cacheStatus, filling, fillProgress, fillMode, fillAllCache, stopFill }) {
+function CacheCommandCentre({ cacheStatus, filling, fillProgress, fillMode, fillAllCache, stopFill, autoFillEnabled, setAutoFillEnabled, lastAutoCheck, autoFillTriggered }) {
   const modes = [
     { key: "Mock",            label: "Eng Mock",   color: "#4338CA", bg: "#EEF2FF" },
     { key: "GAT_Mock",        label: "GAT Mock",   color: "#DC2626", bg: "#FEF2F2" },
@@ -514,6 +514,37 @@ function CacheCommandCentre({ cacheStatus, filling, fillProgress, fillMode, fill
             ▶ Fill All
           </button>
         </div>
+      </div>
+
+      {/* Auto-fill status bar */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"5px 20px", background: autoFillEnabled ? "#F0FDF4" : "#F8FAFC", borderBottom:"1px solid #F1F5F9" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          {/* Toggle */}
+          <div
+            onClick={() => setAutoFillEnabled(v => !v)}
+            style={{ width:32, height:18, borderRadius:9, background: autoFillEnabled ? "#059669" : "#CBD5E1", cursor:"pointer", position:"relative", transition:"background .2s", flexShrink:0 }}
+          >
+            <div style={{ width:14, height:14, borderRadius:"50%", background:"#fff", position:"absolute", top:2, left: autoFillEnabled ? 16 : 2, transition:"left .2s", boxShadow:"0 1px 3px rgba(0,0,0,0.2)" }} />
+          </div>
+          <span style={{ fontSize:10, fontWeight:700, color: autoFillEnabled ? "#059669" : "#94A3B8", textTransform:"uppercase", letterSpacing:".06em" }}>
+            Auto-fill {autoFillEnabled ? "ON" : "OFF"}
+          </span>
+          {autoFillEnabled && (
+            <span style={{ fontSize:10, color:"#64748B" }}>
+              · checks every 30 min
+            </span>
+          )}
+          {autoFillTriggered && (
+            <span style={{ fontSize:10, fontWeight:700, color:"#D97706", background:"#FEF3C7", border:"1px solid #FCD34D", padding:"1px 7px", borderRadius:10 }}>
+              ⚡ Filling now…
+            </span>
+          )}
+        </div>
+        <span style={{ fontSize:10, color:"#94A3B8" }}>
+          {lastAutoCheck
+            ? `Last checked ${lastAutoCheck.toLocaleTimeString("en-IN", { hour:"2-digit", minute:"2-digit" })}`
+            : "Not yet checked"}
+        </span>
       </div>
 
       {/* 6-mode grid: 3 cols × 2 rows — Eng / GAT / Economics */}
@@ -627,7 +658,12 @@ export default function AdminDashboard() {
   const fillStartRef = useRef(null);
   const stalePollsRef = useRef(0);
 
-  // ── Health state ────────────────────────────────────────────────────────────
+  // ── Auto-fill state ──────────────────────────────────────────────────────────
+  const [autoFillEnabled, setAutoFillEnabled] = useState(true);
+  const [lastAutoCheck, setLastAutoCheck] = useState(null);   // Date of last check
+  const [autoFillTriggered, setAutoFillTriggered] = useState(false); // true = fill fired this cycle
+  const autoFillIntervalRef = useRef(null);
+
   const [healthData, setHealthData] = useState(null);
   const [healthLoad, setHealthLoad] = useState(false);
 
@@ -940,6 +976,7 @@ export default function AdminDashboard() {
 
   const checkAndFill = useCallback(async () => {
     const status = await loadCacheStatus(true); // silent on auto-check
+    setLastAutoCheck(new Date());
     if (!status) return;
     const needsFill =
       (status.Mock?.current ?? 0) < CACHE_CONFIG.Mock.threshold ||
@@ -948,17 +985,18 @@ export default function AdminDashboard() {
       (status.GAT_QP?.current ?? 0) < CACHE_CONFIG.GAT_QP.threshold ||
       (status.Economics_Mock?.current ?? 0) < CACHE_CONFIG.Economics_Mock.threshold ||
       (status.Economics_QP?.current ?? 0) < CACHE_CONFIG.Economics_QP.threshold;
-    if (needsFill) {
-      addLog("Cache below threshold — auto-fill starting in 1.5s", "warn");
-      setTimeout(fillAllCache, 1500);
+    if (needsFill && !filling) {
+      addLog("Auto-fill: cache below threshold — triggering fill", "warn");
+      setAutoFillTriggered(true);
+      setTimeout(() => { fillAllCache(); setAutoFillTriggered(false); }, 1500);
     }
-  }, [loadCacheStatus, fillAllCache, addLog]);
+  }, [loadCacheStatus, fillAllCache, filling, addLog]);
 
   // ── Initial load ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (authed && fbUser) {
       loadData();
-      // NOTE: auto-fill removed — all cache fills are manual only via Fill buttons
+      // Auto-fill check happens via the dedicated auto-fill interval (10s after load)
       setTimeout(() => runAnomalyDetection(), 4000);
     } else if (authed && !fbUser && !fbLoading) {
       loadCacheStatus();
@@ -994,8 +1032,28 @@ export default function AdminDashboard() {
     return () => {
       clearInterval(fillPollRef.current);
       clearInterval(statusPollRef.current);
+      clearInterval(autoFillIntervalRef.current);
     };
   }, []);
+
+  // ── Auto-fill interval — checks every 30 minutes when dashboard is open ──────
+  // On initial load: immediate check after 10s (let auth + data settle first)
+  // Then every 30 minutes while dashboard is open and autoFillEnabled is true
+  useEffect(() => {
+    if (!authed) return;
+    // Initial check — 10 second delay to let page settle
+    const initialTimer = setTimeout(() => {
+      if (autoFillEnabled) checkAndFill();
+    }, 10000);
+    // Recurring check every 30 minutes
+    autoFillIntervalRef.current = setInterval(() => {
+      if (autoFillEnabled && !filling) checkAndFill();
+    }, 30 * 60 * 1000);
+    return () => {
+      clearTimeout(initialTimer);
+      clearInterval(autoFillIntervalRef.current);
+    };
+  }, [authed, autoFillEnabled, filling, checkAndFill]);
 
   // ── Health check ─────────────────────────────────────────────────────────────
   const runHealthCheck = async () => {
@@ -1637,6 +1695,10 @@ export default function AdminDashboard() {
         fillMode={fillMode}
         fillAllCache={fillAllCache}
         stopFill={stopFill}
+        autoFillEnabled={autoFillEnabled}
+        setAutoFillEnabled={setAutoFillEnabled}
+        lastAutoCheck={lastAutoCheck}
+        autoFillTriggered={autoFillTriggered}
       />
 
       {/* ── ZONE 2: COMMAND ROW ── */}
