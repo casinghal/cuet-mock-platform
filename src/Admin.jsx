@@ -2637,7 +2637,7 @@ export default function AdminDashboard() {
           <div style={{ background: "linear-gradient(135deg,#0F2747,#1a3a6b)", borderRadius: 10, padding: "14px 18px", marginBottom: 16 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", marginBottom: 4 }}>⚡ Bulk Cache Accuracy Audit</div>
             <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", marginBottom: 12 }}>
-              Scans every existing cached question set, fixes wrong correct indices, and removes approximate-answer questions. Works across all modes and subjects.
+              Scans every cached set. Fixes wrong correct indices in place. If any question has no exact matching answer, deletes the entire set (nightly cache warm regenerates it fully verified). No student ever gets a short exam.
             </div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: auditProgress ? 12 : 0 }}>
               {["all","Economics_Mock","Economics_QP","GAT_Mock","GAT_QP","Mock","QuickPractice"].map(m => (
@@ -2659,13 +2659,14 @@ export default function AdminDashboard() {
                         totalScanned  += result.scanned || 0;
                         totalFixed    += result.totalFixed || 0;
                         totalRejected += result.totalRejected || 0;
-                        setAuditProgress({ scanned: totalScanned, fixed: totalFixed, rejected: totalRejected, done: result.done, batches, mode: m });
-                        addLog(`Audit batch ${batches}: scanned=${totalScanned} fixed=${totalFixed} rejected=${totalRejected}`, totalFixed > 0 ? "warn" : "info");
+                        const totalDeleted = (auditProgress?.deleted || 0) + (result.totalDeleted || 0);
+                        setAuditProgress({ scanned: totalScanned, fixed: totalFixed, rejected: totalRejected, deleted: totalDeleted, done: result.done, batches, mode: m });
+                        addLog(`Audit batch ${batches}: scanned=${totalScanned} idx_fixed=${totalFixed} sets_deleted=${totalDeleted}`, (totalFixed > 0 || totalDeleted > 0) ? "warn" : "info");
                         if (result.done || !result.lastDocId) break;
                         startAfter = result.lastDocId;
                         await new Promise(r => setTimeout(r, 500));
                       }
-                      addLog(`✅ Audit complete: ${totalScanned} sets scanned, ${totalFixed} answers fixed, ${totalRejected} bad questions removed`, "success");
+                      addLog(`✅ Audit complete: ${totalScanned} sets scanned | ${totalFixed} wrong indices fixed | ${totalRejected} bad questions found → ${totalDeleted || 0} short sets deleted (nightly cache warm will replace them)`, "success");
                     } catch(e) {
                       addLog("Audit error: " + e.message, "error");
                     } finally { setAuditRunning(false); }
@@ -2679,10 +2680,10 @@ export default function AdminDashboard() {
               <div style={{ background: "rgba(255,255,255,0.08)", borderRadius: 8, padding: "10px 14px" }}>
                 <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
                   {[
-                    { l: "Scanned", v: auditProgress.scanned, c: "#fff" },
-                    { l: "Fixed", v: auditProgress.fixed, c: "#FCD34D" },
-                    { l: "Removed", v: auditProgress.rejected, c: "#FCA5A5" },
-                    { l: "Batches", v: auditProgress.batches, c: "#94A3B8" },
+                    { l: "Scanned",        v: auditProgress.scanned,  c: "#fff" },
+                    { l: "Idx Fixed",      v: auditProgress.fixed,    c: "#FCD34D" },
+                    { l: "Sets Deleted",   v: auditProgress.deleted,  c: "#FCA5A5" },
+                    { l: "Batches",        v: auditProgress.batches,  c: "#94A3B8" },
                   ].map(s => (
                     <div key={s.l}>
                       <div style={{ fontFamily: "var(--font-mono)", fontSize: 20, fontWeight: 700, color: s.c }}>{s.v}</div>

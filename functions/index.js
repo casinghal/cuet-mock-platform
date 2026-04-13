@@ -1736,14 +1736,14 @@ async function generateQuestionSet(mode, apiKey) {
       // correct=0 pointing to 10,500), and questions with no exact option match.
       const verified = await verifyQuestionAccuracy(questions, mode, apiKey);
       if (verified.length < questions.length) {
-        // Some questions were rejected — if too many removed, retry generation entirely
+        // ANY removal means the set is short — a 49-question Mock or 14-question QP
+        // gives students a shorter exam and breaks the scoring. Always retry.
         const removedCount = questions.length - verified.length;
-        const requiredCount = { Mock: 50, QuickPractice: 15, GAT_Mock: 50, GAT_QP: 15, Economics_Mock: 50, Economics_QP: 15, TopicPractice: 10 }[mode] ?? 50;
-        if (verified.length < Math.ceil(requiredCount * 0.85)) {
-          functions.logger.warn("TOO_MANY_REJECTIONS", { mode, attempt, removed: removedCount, remaining: verified.length, required: requiredCount });
-          throw new Error(`ACCURACY_REJECT_TOO_MANY:${removedCount} questions removed, only ${verified.length} remain`);
-        }
-        functions.logger.warn("SOME_QUESTIONS_REMOVED", { mode, attempt, removed: removedCount, remaining: verified.length });
+        functions.logger.warn("ACCURACY_REJECTION_RETRY", {
+          mode, attempt, removed: removedCount, remaining: verified.length,
+          reason: "Set must be full-length — even 1 removed question triggers retry"
+        });
+        throw new Error(`ACCURACY_REJECT:${removedCount} question(s) had no exact answer — regenerating full set`);
       }
       return verified;
 
@@ -3222,6 +3222,7 @@ exports.auditCacheAccuracy = functions
       const results = [];
       let totalFixed = 0;
       let totalRejected = 0;
+      let totalDeleted = 0;
       let lastDocId = null;
 
       for (const docSnap of snap.docs) {
@@ -3252,26 +3253,45 @@ exports.auditCacheAccuracy = functions
         const rejectedCount = questions.length - verified.length;
         totalFixed    += fixedCount;
         totalRejected += rejectedCount;
+        if (rejectedCount > 0) totalDeleted++;
 
-        if ((fixedCount > 0 || rejectedCount > 0) && !dryRun) {
-          // Write corrected questions back to Firestore
-          await db.collection("questionCache").doc(docSnap.id).update({
-            questions: verified,
-            questionCount: verified.length,
-            lastAuditedAt: admin.firestore.FieldValue.serverTimestamp(),
-            auditFixCount: fixedCount,
-            auditRejectCount: rejectedCount,
-          });
-          functions.logger.info("AUDIT_SET_CORRECTED", {
-            docId: docSnap.id, mode, fixedCount, rejectedCount, originalCount: questions.length
-          });
+        if (!dryRun) {
+          if (rejectedCount > 0) {
+            // Questions were removed — set is now short (e.g. 49 instead of 50).
+            // A short set gives students a broken exam. DELETE it entirely.
+            // The nightly cache warm will regenerate it correctly with the verifier
+            // now gating all new generation — so no bad question will re-enter.
+            await db.collection("questionCache").doc(docSnap.id).delete();
+            functions.logger.warn("AUDIT_SET_DELETED_SHORT", {
+              docId: docSnap.id, mode,
+              originalCount: questions.length, rejectedCount,
+              reason: "Short set deleted — nightly warm will replace with full verified set"
+            });
+          } else if (fixedCount > 0) {
+            // Only correct-index fixes — set stays full length. Safe to save in place.
+            await db.collection("questionCache").doc(docSnap.id).update({
+              questions: verified,
+              questionCount: verified.length,
+              lastAuditedAt: admin.firestore.FieldValue.serverTimestamp(),
+              auditFixCount: fixedCount,
+            });
+            functions.logger.info("AUDIT_SET_CORRECTED", {
+              docId: docSnap.id, mode, fixedCount, originalCount: questions.length
+            });
+          }
         }
 
         results.push({
           id: docSnap.id, mode,
-          status: (fixedCount > 0 || rejectedCount > 0) ? (dryRun ? "would_fix" : "fixed") : "ok",
+          status: rejectedCount > 0
+            ? (dryRun ? "would_delete" : "deleted")
+            : fixedCount > 0
+              ? (dryRun ? "would_fix" : "fixed")
+              : "ok",
           originalCount: questions.length,
-          fixedCount, rejectedCount,
+          fixedCount,
+          rejectedCount,
+          action: rejectedCount > 0 ? "deleted_short_set" : fixedCount > 0 ? "fixed_indices" : "no_change",
         });
 
         // Small delay between docs to avoid hammering the Anthropic API
@@ -3288,6 +3308,7 @@ exports.auditCacheAccuracy = functions
         scanned: snap.docs.length,
         totalFixed,
         totalRejected,
+        totalDeleted,
         dryRun,
         lastDocId,
         results,
