@@ -1092,7 +1092,7 @@ function IEDDisclaimerBanner() {
 }
 
 // ── DASHBOARD SCREEN ──────────────────────────────────────────────────────────
-function DashboardScreen({ user, userData, testHistory, onBeginTest, onReviewTest, onLogout, showToast, subjects, showPaywallOverride, setShowPaywallOverride }) {
+function DashboardScreen({ user, userData, testHistory, onBeginTest, onReviewTest, onViewAnalytics, onLogout, showToast, subjects, showPaywallOverride, setShowPaywallOverride }) {
   const [mode,          setMode]          = useState(null);   // null = no selection yet
   const [activeSubject, setActiveSubject] = useState(null);   // null = no selection yet
   // showPaywall can be triggered from inside (handleBegin gate) or outside (handleBeginTest 402 catch)
@@ -1269,6 +1269,30 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onReviewTes
             </div>
           ))}
         </div>
+
+        {testHistory.length > 0 && (
+          <button
+            onClick={() => onViewAnalytics && onViewAnalytics()}
+            style={{ width:"100%", height:42, marginBottom:14, display:"flex", alignItems:"center",
+              justifyContent:"space-between", paddingLeft:16, paddingRight:16,
+              background:"#111111", border:"1px solid rgba(129,140,248,0.4)",
+              borderRadius:10, cursor:"pointer", fontFamily:"var(--font-body)", transition:"border-color .2s" }}
+            onMouseEnter={e => e.currentTarget.style.borderColor = "rgba(129,140,248,0.8)"}
+            onMouseLeave={e => e.currentTarget.style.borderColor = "rgba(129,140,248,0.4)"}
+          >
+            <span style={{ display:"flex", alignItems:"center", gap:10 }}>
+              <span style={{ fontSize:18 }}>📊</span>
+              <span style={{ fontWeight:700, fontSize:14, color:"#FFFFFF" }}>My Analytics</span>
+              <span style={{ fontSize:11, color:"rgba(129,140,248,0.8)", background:"rgba(129,140,248,0.12)", padding:"2px 8px", borderRadius:4, fontWeight:600 }}>Progression · Topics · Trends</span>
+            </span>
+            <span style={{ display:"flex", alignItems:"center", gap:8 }}>
+              <span style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>
+                {testHistory[0]?.accuracy || 0}% last test
+              </span>
+              <span style={{ fontSize:14, color:"rgba(129,140,248,0.9)" }}>→</span>
+            </span>
+          </button>
+        )}
 
         <div className="card" style={{ padding: 0, marginBottom: 20, overflow: "hidden" }}>
 
@@ -1466,7 +1490,10 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
   const isMobile = useMobile();
-  const timerRef = useRef(null);
+  const timerRef       = useRef(null);
+  const questionStartRef = useRef(Date.now());
+  const timePerQRef      = useRef({});
+  const currentRef       = useRef(0);
 
   useEffect(() => { logEvent("page_view", { page: "exam" }); }, []);
 
@@ -1483,8 +1510,17 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
 
   function submitTest(auto = false) {
     clearInterval(timerRef.current);
-    // test_completed moved to handleSubmitTest in App() — score/accuracy available there
-    onSubmit(answers);
+    const elapsed = Math.round((Date.now() - questionStartRef.current) / 1000);
+    timePerQRef.current[currentRef.current] = (timePerQRef.current[currentRef.current] || 0) + elapsed;
+    onSubmit(answers, { ...timePerQRef.current });
+  }
+
+  function navTo(i) {
+    const elapsed = Math.round((Date.now() - questionStartRef.current) / 1000);
+    timePerQRef.current[currentRef.current] = (timePerQRef.current[currentRef.current] || 0) + elapsed;
+    questionStartRef.current = Date.now();
+    currentRef.current = i;
+    setCurrent(i);
   }
 
   const q    = questions[current];
@@ -1601,7 +1637,7 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
                 else if (ans)   { bg = "#ECFDF5"; bc = "var(--success)"; cl = "var(--success)"; }
                 else if (mrk)   { bg = "#FFFBEB"; bc = "var(--amber)"; cl = "var(--amber)"; }
                 return (
-                  <button key={i} onClick={() => setCurrent(i)} style={{ width: 30, height: 30, border: `2px solid ${cur ? "var(--indigo)" : bc}`, borderRadius: 4, background: bg, color: cl, fontSize: 11, fontWeight: cur ? 700 : 500, fontFamily: "var(--font-mono)", cursor: "pointer", boxShadow: cur ? "0 0 0 2px var(--indigo)" : "none", transition: "all .12s" }}>
+                  <button key={i} onClick={() => navTo(i)} style={{ width: 30, height: 30, border: `2px solid ${cur ? "var(--indigo)" : bc}`, borderRadius: 4, background: bg, color: cl, fontSize: 11, fontWeight: cur ? 700 : 500, fontFamily: "var(--font-mono)", cursor: "pointer", boxShadow: cur ? "0 0 0 2px var(--indigo)" : "none", transition: "all .12s" }}>
                     {i + 1}
                   </button>
                 );
@@ -1633,7 +1669,7 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
                 else if (ans)   { bg = "#ECFDF5"; bc = "var(--success)"; cl = "var(--success)"; }
                 else if (mrk)   { bg = "#FFFBEB"; bc = "var(--amber)"; cl = "var(--amber)"; }
                 return (
-                  <button key={i} onClick={() => { setCurrent(i); setShowPalette(false); }} style={{ width: 36, height: 36, border: `2px solid ${cur ? "var(--indigo)" : bc}`, borderRadius: 4, background: bg, color: cl, fontSize: 12, fontWeight: cur ? 700 : 500, fontFamily: "var(--font-mono)", cursor: "pointer" }}>
+                  <button key={i} onClick={() => { navTo(i); setShowPalette(false); }} style={{ width: 36, height: 36, border: `2px solid ${cur ? "var(--indigo)" : bc}`, borderRadius: 4, background: bg, color: cl, fontSize: 12, fontWeight: cur ? 700 : 500, fontFamily: "var(--font-mono)", cursor: "pointer" }}>
                     {i + 1}
                   </button>
                 );
@@ -1655,7 +1691,7 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
         )}
         <div className="exam-footer-right" style={{ marginLeft: "auto", display: "flex", gap: isMobile ? 6 : 10 }}>
           <button
-            onClick={() => current > 0 && setCurrent(c => c - 1)}
+            onClick={() => current > 0 && navTo(current - 1)}
             style={{ height: 32, padding: "0 12px", border: "1.5px solid var(--border)", borderRadius: 6, background: "#fff", fontSize: isMobile ? 12 : 13, fontWeight: 500, color: "var(--text-secondary)", cursor: current > 0 ? "pointer" : "not-allowed", opacity: current > 0 ? 1 : 0.4, fontFamily: "var(--font-body)", display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}
           >
             ← {!isMobile && "Back"}
@@ -1665,7 +1701,7 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
               Submit ✓
             </button>
           ) : (
-            <button className="btn-navy-sm" onClick={() => { if (current < questions.length - 1) setCurrent(c => c + 1); else showToast("Last question. Submit when ready.", "info"); }}>
+            <button className="btn-navy-sm" onClick={() => { if (current < questions.length - 1) navTo(current + 1); else showToast("Last question. Submit when ready.", "info"); }}>
               {isMobile ? "Next →" : "Save & Next →"}
             </button>
           )}
@@ -1675,20 +1711,93 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
   );
 }
 
+// ── ANALYTICS ZONE COLOR CONSTANTS ──────────────────────────────────────────
+const AZ = {
+  bg:"#111111", card:"#1C1C1C", card2:"#252525",
+  bord:"rgba(255,255,255,0.10)", bord2:"rgba(255,255,255,0.06)",
+  text:"#FFFFFF", textS:"rgba(255,255,255,0.65)", textM:"rgba(255,255,255,0.38)",
+  grn:"#34D399", red:"#F87171", amb:"#FBBF24", ind:"#818CF8", blu:"#60A5FA",
+};
+
+// ── REUSABLE ANALYTICS COMPONENTS ────────────────────────────────────────────
+function DonutChart({ segments, centerLabel, centerSub, size = 108 }) {
+  const total = segments.reduce((s, x) => s + x.value, 0) || 1;
+  const r = 38, cx = size / 2, cy = size / 2, circ = 2 * Math.PI * r;
+  let offset = 0;
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={11} />
+      {segments.filter(s => s.value > 0).map((seg, i) => {
+        const dash = (seg.value / total) * circ;
+        const el = (
+          <circle key={i} cx={cx} cy={cy} r={r} fill="none"
+            stroke={seg.color} strokeWidth={11}
+            strokeDasharray={`${dash.toFixed(2)} ${(circ - dash + 0.01).toFixed(2)}`}
+            strokeDashoffset={(-offset).toFixed(2)}
+            strokeLinecap="butt"
+            transform={`rotate(-90 ${cx} ${cy})`} />
+        );
+        offset += dash;
+        return el;
+      })}
+      <text x={cx} y={cy - 5} textAnchor="middle" fontSize={11}
+        fontFamily="JetBrains Mono,monospace" fontWeight={700} fill="#fff">{centerLabel}</text>
+      {centerSub && <text x={cx} y={cy + 10} textAnchor="middle" fontSize={9}
+        fontFamily="system-ui,sans-serif" fill="rgba(255,255,255,0.45)">{centerSub}</text>}
+    </svg>
+  );
+}
+
+function Spark({ data, color = "#818CF8", w = 110, h = 34 }) {
+  if (!data || data.length < 2) return null;
+  const max = Math.max(...data), min = Math.min(...data), range = max - min || 1;
+  const pts = data.map((v, i) =>
+    `${((i / (data.length-1)) * (w-8) + 4).toFixed(1)},${(h-4-((v-min)/range)*(h-8)).toFixed(1)}`
+  ).join(" ");
+  const li = data.length - 1;
+  const lx = ((li / (data.length-1)) * (w-8) + 4).toFixed(1);
+  const ly = (h-4-((data[li]-min)/range)*(h-8)).toFixed(1);
+  return (
+    <svg width={w} height={h}>
+      <polyline points={pts} fill="none" stroke={color} strokeWidth={1.8}
+        strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={lx} cy={ly} r={3} fill={color} stroke="#1C1C1C" strokeWidth={1.5} />
+    </svg>
+  );
+}
+
+function TimeBarChart({ timePerQ, questions, answers }) {
+  const keys = Object.keys(timePerQ || {});
+  if (keys.length < 3) return null;
+  const n = questions.length, vals = Array.from({length:n}, (_, i) => timePerQ[i] || 0);
+  const maxT = Math.max(...vals, 1);
+  const W = 320, H = 72, bw = Math.max(3, Math.floor((W - 8) / n) - 1);
+  return (
+    <svg width="100%" viewBox={`0 0 ${W} ${H + 14}`} preserveAspectRatio="none" style={{display:"block",width:"100%"}}>
+      {vals.map((t, i) => {
+        const bh = Math.max(2, Math.round((t / maxT) * (H - 8)));
+        const x = 4 + i * (bw + 1), y = H - bh;
+        const ua = answers[i];
+        const col = ua === undefined ? AZ.amb : ua === questions[i]?.correct ? AZ.grn : AZ.red;
+        return <rect key={i} x={x} y={y} width={bw} height={bh} rx={1} fill={col} opacity={0.8} />;
+      })}
+    </svg>
+  );
+}
+
+function fmtSecs(s) {
+  const m = Math.floor(s / 60), sec = s % 60;
+  return m > 0 ? `${m}m ${sec}s` : `${sec}s`;
+}
+
 // ── RESULTS SCREEN ────────────────────────────────────────────────────────────
-function ResultsScreen({ questions, answers, config, user, testHistory, onNewTest, onReview }) {
-  const [analysis,         setAnalysis]         = useState(null);   // { summary, actions[] }
-  const [aLoading,         setALoading]         = useState(true);
-  const [tpQuestions,      setTpQuestions]      = useState(null);   // topic practice questions
-  const [tpAnswers,        setTpAnswers]        = useState({});
-  const [tpCurrent,        setTpCurrent]        = useState(0);
-  const [tpSubmitted,      setTpSubmitted]      = useState(false);
-  const [tpLoading,        setTpLoading]        = useState(false);
+function ResultsScreen({ questions, answers, config, user, testHistory, timePerQ = {}, onNewTest, onReview, onViewAnalytics }) {
+  const [analysis, setAnalysis] = useState(null);
   const isMobile = useMobile();
 
   useEffect(() => { logEvent("page_view", { page: "results" }); }, []);
 
-  // ── Score computation ──────────────────────────────────────────────────────
+  // ── Score calculations ────────────────────────────────────────────────
   let correct = 0, wrong = 0, unanswered = 0, totalScore = 0;
   questions.forEach((q, i) => {
     if (answers[i] === undefined) unanswered++;
@@ -1696,11 +1805,26 @@ function ResultsScreen({ questions, answers, config, user, testHistory, onNewTes
     else { wrong++; totalScore += MARKS_WRONG; }
   });
   const attempted  = correct + wrong;
-  const maxScore   = questions.length * MARKS_CORRECT;
-  const pct        = Math.round((totalScore / maxScore) * 100);
   const accuracy   = attempted > 0 ? Math.round((correct / attempted) * 100) : 0;
+  const pct        = questions.length > 0 ? Math.round((totalScore / (questions.length * MARKS_CORRECT)) * 100) : 0;
+  const maxScore   = questions.length * MARKS_CORRECT;
+  const marksEarned    = correct * 5;
+  const negativeMarks  = wrong * 1;
+  const optimisedScore = correct * 5;
 
-  // ── Topic breakdown — weakest first ───────────────────────────────────────
+  // Score Drag — seconds spent on wrong answers
+  const scoreDragSecs = Object.entries(timePerQ || {}).reduce((tot, [i, secs]) => {
+    const idx = parseInt(i), ua = answers[idx];
+    if (ua === undefined || ua === questions[idx]?.correct) return tot;
+    return tot + secs;
+  }, 0);
+  const timeOnCorrect = Object.entries(timePerQ || {}).reduce((tot, [i, secs]) => {
+    const idx = parseInt(i), ua = answers[idx];
+    return ua !== undefined && ua === questions[idx]?.correct ? tot + secs : tot;
+  }, 0);
+  const hasTimeData = Object.keys(timePerQ || {}).length >= 5;
+
+  // ── Topic stats ───────────────────────────────────────────────────────
   const topicStats = {};
   questions.forEach((q, i) => {
     if (!topicStats[q.topic]) topicStats[q.topic] = { att: 0, cor: 0 };
@@ -1710,297 +1834,252 @@ function ResultsScreen({ questions, answers, config, user, testHistory, onNewTes
     }
   });
   const topicRows = Object.entries(topicStats)
-    .filter(([, s]) => s.att > 0)   // ← only show topics the student actually attempted
     .map(([t, s]) => ({ topic: t, attempted: s.att, correct: s.cor, accuracy: s.att > 0 ? Math.round((s.cor / s.att) * 100) : 0 }))
     .sort((a, b) => a.accuracy - b.accuracy);
-  const weakest = topicRows[0] || null;
 
-  // ── Historical average from testHistory ────────────────────────────────────
-  const isGAT  = config?.subject === "GAT"       || config?.mode?.startsWith("GAT");
-  const isEcon = config?.subject === "Economics" || config?.mode?.startsWith("Economics");
-  const modeFilter = isGAT ? ["GAT_Mock","GAT_QP"] : isEcon ? ["Economics_Mock","Economics_QP"] : ["Mock","QuickPractice"];
+  // ── Historical average ────────────────────────────────────────────────
+  const modeFilter = config?.mode === "GAT_Mock" || config?.mode === "GAT_QP" ? ["GAT_Mock","GAT_QP"]
+    : config?.mode === "Economics_Mock" || config?.mode === "Economics_QP" ? ["Economics_Mock","Economics_QP"]
+    : ["Mock","QuickPractice"];
   const pastTests  = (testHistory || []).filter(t => modeFilter.includes(t.mode));
-  const histAvg    = pastTests.length > 1
-    ? Math.round(pastTests.reduce((s, t) => s + (t.accuracy || 0), 0) / pastTests.length)
-    : null;
+  const histAvg    = pastTests.length > 1 ? Math.round(pastTests.reduce((s,t) => s+(t.accuracy||0),0) / pastTests.length) : null;
+  const delta      = histAvg !== null ? pct - histAvg : null;
+  const weakest    = topicRows[0] && topicRows[0].attempted > 0 ? topicRows[0] : null;
 
-  // ── Advisory — structured JSON prompt ─────────────────────────────────────
+  // ── AI advisory ───────────────────────────────────────────────────────
   useEffect(() => {
-    async function fetchAnalysis() {
-      setALoading(true);
-      try {
-        if (!CF_BASE) { setAnalysis({ summary: "Review your answers below to identify improvement areas.", actions: ["Focus on your weakest topic first."] }); return; }
-        const token = await getAuthToken();
-        const subjectName = isGAT ? "GAT (General Aptitude Test)" : isEcon ? "Economics (118)" : "CUET English (101)";
-        const subjectContext = isEcon
-          ? "Focus on Microeconomics (Course I), Macroeconomics (Course II), and Indian Economic Development (Course III — new in 2026). IED covers Development Policies 1947-90, Economic Reforms 1991 (LPG), Current Challenges, and India-China-Pakistan comparison."
-          : isGAT
-          ? "Focus on Quantitative Aptitude, Logical Reasoning, and General Knowledge."
-          : "Focus on Reading Comprehension, Vocabulary, and Grammar.";
-        const weakStr = weakest ? `Weakest topic: ${weakest.topic} at ${weakest.accuracy}% accuracy (${weakest.correct}/${weakest.attempted} correct).` : "";
-        const prompt = `You are a CUET ${subjectName} expert analysing a student's test result.
-
-SCORING DATA (NTA system: +5 correct, -1 wrong, 0 skipped):
+    const weakStr = weakest ? `Weakest topic: ${weakest.topic} at ${weakest.accuracy}% accuracy.` : "";
+    const prompt = `You are a CUET preparation expert. A student just finished a CUET mock test.
 - NTA points scored: ${totalScore} out of ${maxScore} possible (${pct}%)
-- Questions correct: ${correct} out of ${questions.length} attempted (raw accuracy: ${Math.round(correct / questions.length * 100)}%)
-- Questions wrong: ${wrong} | Questions skipped: ${unanswered} | Mode: ${config?.mode}
-${subjectContext}
+- Questions correct: ${correct} out of ${questions.length} attempted
+- Wrong answers: ${wrong} | Skipped: ${unanswered} | Accuracy: ${accuracy}%
 ${weakStr}
-
-CRITICAL: The ${pct}% score comes from NTA points (${totalScore}/${maxScore}), NOT from questions correct (${correct}/${questions.length}). Do NOT write "${pct}% (${correct}/${questions.length} correct)" — that is factually wrong. State them separately.
-
-Return ONLY a JSON object — no markdown, no preamble:
-{
-  "summary": "One honest sentence. State the NTA score (${totalScore}/${maxScore} points = ${pct}%) and separately note that ${correct} out of ${questions.length} questions were correct. Do not conflate the two.",
-  "actions": [
-    "Action 1: start with a verb (Revise/Review/Practice). Specific to weakest topic.",
-    "Action 2: start with a verb. About reviewing wrong answers or second-weakest area.",
-    "Action 3: start with a verb. Strength to maintain OR biggest gap to close before next test."
-  ]
-}
-Begin with { — nothing before it.`;
-        const res = await fetch(`${CF_BASE}/generateAdvisory`, {
-          method: "POST", headers: authHeaders(token),
-          body: JSON.stringify({ prompt }),
+CRITICAL: Do NOT conflate pct% with accuracy. State NTA score and accuracy separately.
+Respond ONLY with valid JSON: {"summary":"One honest sentence about NTA score and accuracy.","actions":["Action 1: ...","Action 2: ..."]}`;
+    if (!CF_BASE) { setAnalysis({ summary: "Review your answers to find improvement areas.", actions: ["Focus on your weakest topic first."] }); return; }
+    (async () => {
+      try {
+        const token = await getAuthToken();
+        const r = await fetch(`${CF_BASE}/generateAdvisory`, {
+          method:"POST", headers: authHeaders(token),
+          body: JSON.stringify({ score: pct, correct, wrong, unanswered, totalScore, maxScore, accuracy, weakest: weakest?.topic, weakestAcc: weakest?.accuracy })
         });
-        const d = await res.json();
-        // Parse JSON from response — strip any markdown fences first
-        let parsed;
-        try {
-          const raw = (d?.text || "{}").replace(/```json|```/gi,"").trim();
-          const first = raw.indexOf("{"), last = raw.lastIndexOf("}");
-          parsed = JSON.parse(first !== -1 ? raw.slice(first, last+1) : raw);
-        } catch (_) {
-          parsed = { summary: d?.text || "Keep practising — consistency leads to improvement.", actions: [] };
-        }
-        setAnalysis(parsed);
+        if (!r.ok) throw new Error("CF error");
+        const d = await r.json();
+        setAnalysis(d.advisory || { summary: d.summary, actions: d.actions });
       } catch(_) { setAnalysis({ summary: "Review your answers to identify improvement areas.", actions: ["Focus on your weakest topic first."] }); }
-      finally { setALoading(false); }
-    }
-    fetchAnalysis();
+    })();
   }, []);
 
-  // ── Topic Practice ─────────────────────────────────────────────────────────
-  async function startTopicPractice(topic) {
-    setTpLoading(true); setTpQuestions(null); setTpAnswers({}); setTpCurrent(0); setTpSubmitted(false);
-    try {
-      const token = await getAuthToken();
-      const res = await fetch(`${CF_BASE}/generateQuestions`, {
-        method: "POST", headers: authHeaders(token),
-        body: JSON.stringify({ uid: user?.uid, config: { mode: "TopicPractice", focusTopic: topic, focusSubject: isGAT ? "GAT" : isEcon ? "Economics" : "English" } }),
-      });
-      const d = await res.json();
-      if (d.questions && d.questions.length >= 8) {
-        setTpQuestions(d.questions.slice(0, 10));
-      } else {
-        alert("Could not load topic questions. Please try again.");
-      }
-    } catch(e) { alert("Topic practice failed. Please try again."); }
-    finally { setTpLoading(false); }
-  }
-
-  const ACTION_ICONS = ["📌","🔁","✅"];
-  const barColor = (acc) => acc < 40 ? "#DC2626" : acc < 65 ? "#D97706" : acc < 80 ? "#4338CA" : "#059669";
+  const ACTION_ICONS = ["📚","🎯","⏱️","💡","✅"];
+  const pad = isMobile ? "14px" : "20px";
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#F8FAFC" }}>
-      <div className="nta-header">
+    <div style={{ minHeight:"100vh", background: AZ.bg, display:"flex", flexDirection:"column" }}>
+      {/* Header */}
+      <div className="nta-header" style={{ background:"#0D0D0D", borderBottom:`1px solid ${AZ.bord}` }}>
         <span className="nta-logo">Vantiq <span>CUET</span></span>
-        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <span className="pill pill-indigo" style={{ fontSize:11 }}>{isGAT ? "GAT" : isEcon ? "Economics" : "English"}</span>
-          <span className="pill pill-navy" style={{ fontSize:11 }}>{config?.mode === "GAT_QP" || config?.mode === "QuickPractice" ? "Quick Practice" : "Mock Exam"}</span>
-        </div>
+        <button onClick={onNewTest} style={{ background:"transparent", color:"rgba(255,255,255,.55)", border:"1px solid rgba(255,255,255,.18)", borderRadius:6, padding:"4px 14px", fontSize:13, cursor:"pointer", fontFamily:"var(--font-body)" }}>
+          ← Dashboard
+        </button>
       </div>
 
-      <div style={{ flex:1, maxWidth:820, margin:"0 auto", width:"100%", padding: isMobile ? "14px 12px" : "24px 20px", boxSizing:"border-box" }}>
-        <h1 style={{ fontFamily:"var(--font-display)", fontSize:22, color:"var(--navy)", marginBottom:14 }}>
-          Test Performance Report
+      <div style={{ flex:1, maxWidth:820, margin:"0 auto", width:"100%", padding: isMobile ? "16px 14px" : "28px 24px" }}>
+        <h1 style={{ fontFamily:"var(--font-display)", fontSize:22, color:AZ.text, marginBottom:4 }}>
+          {config?.subject || "English"} Mock — Results
         </h1>
+        <p style={{ fontSize:12, color:AZ.textM, marginBottom:20 }}>
+          {config?.mode === "QuickPractice" || config?.mode === "GAT_QP" || config?.mode === "Economics_QP" ? "Quick Practice" : "Full Mock Exam"} · {questions.length} Questions
+        </p>
 
-        {/* ── Score + stats ───────────────────────────────────────────────── */}
-        <div className="card" style={{ marginBottom:12 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:isMobile?12:20, padding: isMobile?"14px 14px":"16px 20px", flexWrap:"wrap" }}>
-            <div style={{ flexShrink:0 }}>
-              <div style={{ fontSize:11, fontWeight:700, color:"var(--navy)", textTransform:"uppercase", letterSpacing:".05em", marginBottom:3 }}>Total Score</div>
-              <div style={{ fontFamily:"var(--font-mono)", fontSize:40, fontWeight:700, color:scoreColor(pct), lineHeight:1 }}>{pct}%</div>
-              <div style={{ fontFamily:"var(--font-mono)", fontSize:15, color:"var(--navy)", marginTop:3 }}>{totalScore} / {maxScore}</div>
+        {/* ── BLOCK 1: Score Overview ─────────────────────────────────── */}
+        <div style={{ background:AZ.card, borderRadius:12, padding: isMobile ? "16px" : "20px 24px", marginBottom:16, border:`1px solid ${AZ.bord}` }}>
+          <div style={{ fontSize:10, fontWeight:700, letterSpacing:".08em", textTransform:"uppercase", color:AZ.textM, marginBottom:14 }}>Result Overview</div>
+          <div style={{ display:"flex", gap:16, flexWrap:"wrap", alignItems:"flex-start" }}>
+            {/* Main score */}
+            <div style={{ flex:"0 0 auto", textAlign:"center", minWidth:100 }}>
+              <div style={{ fontFamily:"var(--font-mono)", fontSize:48, fontWeight:800, lineHeight:1,
+                color: pct >= 70 ? AZ.grn : pct >= 45 ? AZ.amb : AZ.red }}>{pct}%</div>
+              <div style={{ fontSize:12, color:AZ.textS, marginTop:4 }}>NTA Score</div>
+              <div style={{ fontSize:11, color:AZ.textM }}>{totalScore} / {maxScore} marks</div>
             </div>
-            <div style={{ flex:1, display:"flex", justifyContent:"space-between", alignItems:"center", gap:6, flexWrap:"wrap", minWidth:0 }}>
-              {[{l:"Attempted",v:attempted,bg:"#E8EDF5",cl:"#0F2747"},{l:"Correct",v:correct,bg:"#ECFDF5",cl:"#059669"},{l:"Accuracy",v:`${accuracy}%`,bg:"#EEF2FF",cl:"#4338CA"},{l:"Wrong",v:wrong,bg:"#FEF2F2",cl:"#DC2626"},{l:"Skipped",v:unanswered,bg:"#FFFBEB",cl:"#D97706"}]
-                .map(s => (
-                <div key={s.l} style={{ textAlign:"center", flex:1, minWidth:isMobile?48:56 }}>
-                  <div className="result-stat-pill" style={{ display:"block", padding:"6px 4px", borderRadius:6, fontFamily:"var(--font-mono)", fontSize:isMobile?15:18, fontWeight:700, background:s.bg, color:s.cl }}>{s.v}</div>
-                  <div style={{ fontSize:9, color:"var(--text-muted)", marginTop:4, textTransform:"uppercase", letterSpacing:".04em" }}>{s.l}</div>
+            {/* Stats */}
+            <div style={{ flex:1, display:"flex", flexWrap:"wrap", gap:10 }}>
+              {[
+                {l:"Accuracy",  v:`${accuracy}%`,  c:AZ.ind },
+                {l:"Correct",   v:correct,           c:AZ.grn },
+                {l:"Wrong",     v:wrong,             c:AZ.red },
+                {l:"Skipped",   v:unanswered,        c:AZ.amb },
+                ...(delta !== null ? [{l: delta >= 0 ? "▲ vs Avg" : "▼ vs Avg", v:`${Math.abs(delta)}%`, c: delta >= 0 ? AZ.grn : AZ.red}] : []),
+              ].map(s => (
+                <div key={s.l} style={{ background:AZ.card2, borderRadius:8, padding:"10px 14px", minWidth:72, flex:"1 1 auto" }}>
+                  <div style={{ fontFamily:"var(--font-mono)", fontSize:22, fontWeight:700, color:s.c, lineHeight:1 }}>{s.v}</div>
+                  <div style={{ fontSize:10, color:AZ.textM, marginTop:4, textTransform:"uppercase", letterSpacing:".04em" }}>{s.l}</div>
                 </div>
               ))}
             </div>
           </div>
+        </div>
 
-          {/* This attempt vs historical average */}
-          {histAvg !== null && (
-            <div style={{ display:"flex", gap:0, borderTop:"1px solid var(--border)" }}>
-              <div style={{ flex:1, padding:"10px 16px", background:"#EEF2FF", borderRight:"1px solid var(--border)" }}>
-                <div style={{ fontSize:9, fontWeight:700, letterSpacing:".07em", textTransform:"uppercase", color:"#4338CA", marginBottom:3 }}>This Attempt</div>
-                <div style={{ fontFamily:"var(--font-mono)", fontSize:18, fontWeight:700, color:"#4338CA" }}>{pct}%</div>
-                <div style={{ fontSize:10, color:"#4338CA", opacity:0.7, marginTop:1 }}>{correct} correct · {wrong} wrong</div>
+        {/* ── BLOCK 2: Three Insight Chips ────────────────────────────── */}
+        <div style={{ display:"flex", gap:10, marginBottom:16, flexWrap:"wrap" }}>
+          {/* Negative Marks */}
+          <div style={{ flex:"1 1 140px", background:AZ.card, borderRadius:10, padding:"14px 16px", border:`1px solid ${AZ.bord}` }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
+              <span style={{ width:28, height:28, borderRadius:"50%", background:"rgba(248,113,113,0.18)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14 }}>⊖</span>
+              <span style={{ fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em", color:AZ.textM }}>Negative Marks</span>
+            </div>
+            <div style={{ fontFamily:"var(--font-mono)", fontSize:28, fontWeight:800, color:AZ.red, lineHeight:1 }}>−{negativeMarks}</div>
+            <div style={{ fontSize:11, color:AZ.textS, marginTop:5 }}>{wrong} wrong answer{wrong !== 1 ? "s" : ""}</div>
+          </div>
+
+          {/* Optimisation Insight */}
+          {negativeMarks > 0 && (
+            <div style={{ flex:"1 1 140px", background:AZ.card, borderRadius:10, padding:"14px 16px", border:`1px solid rgba(52,211,153,0.25)` }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
+                <span style={{ width:28, height:28, borderRadius:"50%", background:"rgba(52,211,153,0.18)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14 }}>↑</span>
+                <span style={{ fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em", color:AZ.textM }}>Without Negatives</span>
               </div>
-              <div style={{ flex:1, padding:"10px 16px", background:"#F0FDF4" }}>
-                <div style={{ fontSize:9, fontWeight:700, letterSpacing:".07em", textTransform:"uppercase", color:"#059669", marginBottom:3 }}>Your Average ({pastTests.length} attempts)</div>
-                <div style={{ fontFamily:"var(--font-mono)", fontSize:18, fontWeight:700, color:"#059669" }}>{histAvg}%</div>
-                <div style={{ fontSize:10, color:"#059669", opacity:0.7, marginTop:1 }}>{pct >= histAvg ? "▲ above your average" : "▼ below your average"}</div>
+              <div style={{ fontFamily:"var(--font-mono)", fontSize:28, fontWeight:800, color:AZ.grn, lineHeight:1 }}>{optimisedScore}</div>
+              <div style={{ fontSize:11, color:AZ.textS, marginTop:5 }}>potential marks with zero guessing</div>
+            </div>
+          )}
+
+          {/* Score Drag */}
+          {hasTimeData && scoreDragSecs > 0 && (
+            <div style={{ flex:"1 1 140px", background:AZ.card, borderRadius:10, padding:"14px 16px", border:`1px solid rgba(129,140,248,0.25)` }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
+                <span style={{ width:28, height:28, borderRadius:"50%", background:"rgba(129,140,248,0.18)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14 }}>⏱</span>
+                <span style={{ fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em", color:AZ.textM }}>Score Drag</span>
               </div>
+              <div style={{ fontFamily:"var(--font-mono)", fontSize:24, fontWeight:800, color:AZ.ind, lineHeight:1 }}>{fmtSecs(scoreDragSecs)}</div>
+              <div style={{ fontSize:11, color:AZ.textS, marginTop:5 }}>wasted on wrong answers</div>
             </div>
           )}
         </div>
 
-        {/* ── Priority Focus + Topic Practice CTA ────────────────────────── */}
-        {weakest && (
-          <div style={{ background:"linear-gradient(135deg,#0F2747 0%,#1a3a6b 100%)", borderRadius:10, padding:"14px 16px", marginBottom:12 }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:12, marginBottom:12, flexWrap:"wrap" }}>
-              <div>
-                <div style={{ display:"inline-block", background:"rgba(252,211,77,0.18)", border:"1px solid rgba(252,211,77,0.35)", borderRadius:20, padding:"2px 9px", fontSize:9, fontWeight:700, letterSpacing:".07em", color:"#FCD34D", textTransform:"uppercase", marginBottom:5 }}>⚠ Priority Focus Area</div>
-                <div style={{ fontSize:16, fontWeight:700, color:"#fff", marginBottom:3 }}>{weakest.topic}</div>
-                <div style={{ fontSize:11, color:"rgba(255,255,255,0.58)" }}>{weakest.correct} of {weakest.attempted} correct · Lowest accuracy this test</div>
-              </div>
-              <div style={{ textAlign:"right" }}>
-                <div style={{ fontFamily:"var(--font-mono)", fontSize:28, fontWeight:700, color:"#FCD34D", lineHeight:1 }}>{weakest.accuracy}%</div>
-                <div style={{ fontSize:10, color:"rgba(255,255,255,0.45)", marginTop:2 }}>Accuracy</div>
-              </div>
-            </div>
-
-            {/* Topic Practice CTA */}
-            <div
-              style={{ background:"rgba(255,255,255,0.06)", border:"1.5px solid rgba(252,211,77,0.4)", borderRadius:8, padding:"11px 14px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, cursor: tpLoading ? "wait" : "pointer" }}
-              onClick={() => !tpLoading && !tpSubmitted && startTopicPractice(weakest.topic)}
-            >
-              <div>
-                <div style={{ fontSize:9, fontWeight:700, letterSpacing:".07em", textTransform:"uppercase", color:"rgba(252,211,77,0.8)", marginBottom:3 }}>⚡ Targeted Practice</div>
-                <div style={{ fontSize:12.5, color:"#fff", fontWeight:500 }}>Practice only {weakest.topic} — 10 questions</div>
-                <div style={{ fontSize:11, color:"rgba(255,255,255,0.5)", marginTop:2 }}>No time limit · Free · Never counts toward your test limit</div>
-              </div>
-              <button
-                style={{ background:"#FCD34D", color:"#0F2747", border:"none", borderRadius:6, padding:"7px 14px", fontSize:12, fontWeight:700, fontFamily:"var(--font-body)", cursor:"pointer", whiteSpace:"nowrap", flexShrink:0, opacity: tpLoading?0.7:1 }}
-                disabled={tpLoading}
-              >
-                {tpLoading ? "Loading..." : tpQuestions ? "Retry ↺" : "Start Now →"}
-              </button>
+        {/* ── BLOCK 3: Three Donut Charts ─────────────────────────────── */}
+        <div style={{ display:"flex", gap:10, marginBottom:16, flexWrap:"wrap" }}>
+          {/* Questions donut */}
+          <div style={{ flex:"1 1 160px", background:AZ.card, borderRadius:10, padding:"14px", border:`1px solid ${AZ.bord}`, display:"flex", flexDirection:"column", alignItems:"center" }}>
+            <div style={{ fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em", color:AZ.textM, marginBottom:10 }}>{questions.length} Questions</div>
+            <DonutChart
+              segments={[{value:correct,color:AZ.grn},{value:wrong,color:AZ.red},{value:unanswered,color:"rgba(255,255,255,0.15)"}]}
+              centerLabel={`${attempted}/${questions.length}`} centerSub="answered" />
+            <div style={{ marginTop:10, fontSize:10, color:AZ.textS, textAlign:"center", lineHeight:1.8 }}>
+              <span style={{color:AZ.grn}}>■</span> {correct} Correct &nbsp;
+              <span style={{color:AZ.red}}>■</span> {wrong} Wrong &nbsp;
+              <span style={{color:"rgba(255,255,255,0.3)"}}>■</span> {unanswered} Skip
             </div>
           </div>
-        )}
 
-        {/* ── Topic Practice Mini-Exam ────────────────────────────────────── */}
-        {tpQuestions && !tpSubmitted && (
-          <div className="card" style={{ marginBottom:12, overflow:"hidden" }}>
-            <div style={{ background:"linear-gradient(135deg,#0F2747,#1a3a6b)", padding:"10px 16px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-              <div>
-                <div style={{ fontSize:9, fontWeight:700, letterSpacing:".07em", textTransform:"uppercase", color:"#FCD34D", marginBottom:2 }}>Targeted Practice · {tpQuestions[tpCurrent]?.topic}</div>
-                <div style={{ fontSize:13, fontWeight:700, color:"#fff" }}>10 Questions · No Time Limit</div>
+          {/* Time donut */}
+          {hasTimeData ? (
+            <div style={{ flex:"1 1 160px", background:AZ.card, borderRadius:10, padding:"14px", border:`1px solid ${AZ.bord}`, display:"flex", flexDirection:"column", alignItems:"center" }}>
+              <div style={{ fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em", color:AZ.textM, marginBottom:10 }}>Time Split</div>
+              <DonutChart
+                segments={[{value:timeOnCorrect,color:AZ.grn},{value:scoreDragSecs,color:AZ.red},{value:Math.max(0, Object.values(timePerQ).reduce((a,b)=>a+b,0)-timeOnCorrect-scoreDragSecs),color:"rgba(255,255,255,0.12)"}]}
+                centerLabel={fmtSecs(Object.values(timePerQ).reduce((a,b)=>a+b,0))} centerSub="total used" />
+              <div style={{ marginTop:10, fontSize:10, color:AZ.textS, textAlign:"center", lineHeight:1.8 }}>
+                <span style={{color:AZ.grn}}>■</span> {fmtSecs(timeOnCorrect)} Correct &nbsp;
+                <span style={{color:AZ.red}}>■</span> {fmtSecs(scoreDragSecs)} Wrong
               </div>
-              <div style={{ fontFamily:"var(--font-mono)", fontSize:12, color:"rgba(255,255,255,0.6)" }}>Q {tpCurrent+1} of {tpQuestions.length}</div>
             </div>
-            <div style={{ padding:"14px 16px" }}>
-              <div style={{ fontSize:11, fontWeight:600, letterSpacing:".05em", textTransform:"uppercase", color:"var(--indigo)", marginBottom:6 }}>{tpQuestions[tpCurrent]?.topic}</div>
-              <div style={{ fontSize:isMobile?13:14, fontWeight:500, color:"var(--navy)", lineHeight:1.65, marginBottom:16 }}>{tpQuestions[tpCurrent]?.question}</div>
-              <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:14 }}>
-                {tpQuestions[tpCurrent]?.options.map((opt, i) => (
-                  <div key={i}
-                    className={"option-box" + (tpAnswers[tpCurrent] === i ? " selected" : "")}
-                    onClick={() => setTpAnswers(p => ({...p, [tpCurrent]: i}))}
-                  >
-                    <span className="option-key">{String.fromCharCode(65+i)}</span>
-                    <span style={{ fontSize:isMobile?13:14, color:"var(--text-primary)", flex:1, minWidth:0 }}>{opt}</span>
-                  </div>
-                ))}
+          ) : null}
+
+          {/* Marks breakdown */}
+          <div style={{ flex:"1 1 160px", background:AZ.card, borderRadius:10, padding:"14px 16px", border:`1px solid ${AZ.bord}` }}>
+            <div style={{ fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em", color:AZ.textM, marginBottom:12 }}>Marks Breakdown</div>
+            {[
+              {l:"Marks Earned",   v:`+${marksEarned}`, c:AZ.grn },
+              {l:"Negative Marks", v:`−${negativeMarks}`, c:AZ.red },
+            ].map(r => (
+              <div key={r.l} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+                <span style={{ fontSize:12, color:AZ.textS }}>{r.l}</span>
+                <span style={{ fontFamily:"var(--font-mono)", fontWeight:700, fontSize:16, color:r.c }}>{r.v}</span>
               </div>
-              <div style={{ display:"flex", gap:10, alignItems:"center" }}>
-                <button
-                  onClick={() => tpCurrent > 0 && setTpCurrent(c => c-1)}
-                  style={{ height:34, padding:"0 14px", border:"1.5px solid var(--border)", borderRadius:6, background:"#fff", fontSize:12, fontWeight:500, color:"var(--text-secondary)", cursor:tpCurrent>0?"pointer":"not-allowed", opacity:tpCurrent>0?1:0.4, fontFamily:"var(--font-body)" }}
-                >← Back</button>
-                <div style={{ flex:1, display:"flex", gap:4 }}>
-                  {tpQuestions.map((_, i) => (
-                    <div key={i} onClick={() => setTpCurrent(i)} style={{ flex:1, height:4, borderRadius:2, background: i===tpCurrent ? "var(--indigo)" : tpAnswers[i]!==undefined ? "#059669" : "var(--border)", cursor:"pointer" }} />
-                  ))}
-                </div>
-                {tpCurrent < tpQuestions.length - 1 ? (
-                  <button className="btn-navy-sm" onClick={() => setTpCurrent(c => c+1)}>Next →</button>
-                ) : (
-                  <button className="btn-primary" style={{ height:34, fontSize:13 }}
-                    onClick={() => { setTpSubmitted(true); logEvent("topic_practice_completed", { topic: weakest?.topic, answered: Object.keys(tpAnswers).length }); }}>
-                    Submit →
-                  </button>
-                )}
-              </div>
+            ))}
+            <div style={{ height:1, background:AZ.bord, margin:"10px 0" }} />
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <span style={{ fontSize:13, fontWeight:700, color:AZ.text }}>Total Marks</span>
+              <span style={{ fontFamily:"var(--font-mono)", fontWeight:800, fontSize:22, color: pct >= 70 ? AZ.grn : pct >= 45 ? AZ.amb : AZ.red }}>{totalScore}</span>
             </div>
           </div>
-        )}
-
-        {/* ── Topic Practice Results ─────────────────────────────────────── */}
-        {tpQuestions && tpSubmitted && (() => {
-          let tpCorrect = 0;
-          tpQuestions.forEach((q, i) => { if (tpAnswers[i] === q.correct) tpCorrect++; });
-          const tpPct = Math.round((tpCorrect / tpQuestions.length) * 100);
-          return (
-            <div className="card" style={{ marginBottom:12, overflow:"hidden" }}>
-              <div style={{ background:"linear-gradient(135deg,#0F2747,#1a3a6b)", padding:"10px 16px" }}>
-                <div style={{ fontSize:9, fontWeight:700, letterSpacing:".07em", textTransform:"uppercase", color:"#FCD34D", marginBottom:2 }}>Targeted Practice Complete · {tpQuestions[0]?.topic}</div>
-              </div>
-              <div style={{ padding:"14px 16px", display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12 }}>
-                <div>
-                  <div style={{ fontFamily:"var(--font-mono)", fontSize:28, fontWeight:700, color:scoreColor(tpPct) }}>{tpCorrect}/{tpQuestions.length}</div>
-                  <div style={{ fontSize:12, color:"var(--text-sec)", marginTop:2 }}>
-                    {tpPct > weakest?.accuracy ? `↑ Improved from ${weakest?.accuracy}% (main test)` : tpPct === weakest?.accuracy ? `Same as main test (${weakest?.accuracy}%)` : `${tpPct}% this session`}
-                  </div>
-                </div>
-                <div style={{ display:"flex", gap:8 }}>
-                  <button className="btn-outline" style={{ height:34, fontSize:12 }} onClick={() => { setTpSubmitted(false); setTpAnswers({}); setTpCurrent(0); }}>Try Again</button>
-                  <button className="btn-primary" style={{ height:34, fontSize:12 }} onClick={() => { setTpQuestions(null); setTpSubmitted(false); }}>Close</button>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* ── Topic accuracy bars ─────────────────────────────────────────── */}
-        <div className="card" style={{ marginBottom:12, padding:"14px 16px" }}>
-          <div style={{ fontSize:10, fontWeight:700, letterSpacing:".07em", textTransform:"uppercase", color:"var(--text-muted)", marginBottom:10 }}>Topic Accuracy — Weakest First</div>
-          {topicRows.map((r, i) => (
-            <div key={i} style={{ marginBottom: 10 }}>
-              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4, gap:8 }}>
-                <div style={{ fontSize:11, color: i===0 ? "#DC2626" : "var(--navy)", fontWeight: i===0 ? 700 : 500, lineHeight:1.4 }}>{r.topic}</div>
-                <div style={{ fontFamily:"var(--font-mono)", fontSize:11, fontWeight:700, color:barColor(r.accuracy), flexShrink:0 }}>{r.accuracy}%</div>
-              </div>
-              <div style={{ height:5, background:"#E2E8F0", borderRadius:3, overflow:"hidden" }}>
-                <div style={{ height:"100%", width:`${r.accuracy}%`, background:barColor(r.accuracy), borderRadius:3, transition:"width .6s ease" }} />
-              </div>
-            </div>
-          ))}
         </div>
 
-        {/* ── What to Do Next — advisory ─────────────────────────────────── */}
-        <div className="card" style={{ padding:"14px 16px", marginBottom:20 }}>
-          <div style={{ fontSize:10, fontWeight:700, letterSpacing:".07em", textTransform:"uppercase", color:"var(--text-muted)", marginBottom:10 }}>What to Do Next</div>
-          {aLoading ? (
-            <div><div className="pbar-track"><div className="pbar-fill" /></div><p style={{ fontSize:12, color:"var(--text-muted)", marginTop:8 }}>Preparing your performance analysis...</p></div>
-          ) : analysis ? (
+        {/* ── BLOCK 4: Per-Question Time Chart ─────────────────────────── */}
+        {hasTimeData && (
+          <div style={{ background:AZ.card, borderRadius:10, padding:"14px 16px", marginBottom:16, border:`1px solid ${AZ.bord}` }}>
+            <div style={{ fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em", color:AZ.textM, marginBottom:10 }}>
+              Time per Question
+              <span style={{ fontWeight:400, marginLeft:6, color:AZ.textM }}>seconds spent · <span style={{color:AZ.grn}}>■</span> Correct &nbsp;<span style={{color:AZ.red}}>■</span> Wrong &nbsp;<span style={{color:AZ.amb}}>■</span> Skipped</span>
+            </div>
+            <TimeBarChart timePerQ={timePerQ} questions={questions} answers={answers} />
+            <div style={{ display:"flex", gap:16, marginTop:8, fontSize:11, color:AZ.textS, flexWrap:"wrap" }}>
+              <span>Total time: <strong style={{color:AZ.text}}>{fmtSecs(Object.values(timePerQ).reduce((a,b)=>a+b,0))}</strong></span>
+              {scoreDragSecs > 0 && <span>Wasted on wrong: <strong style={{color:AZ.red}}>{fmtSecs(scoreDragSecs)}</strong></span>}
+            </div>
+          </div>
+        )}
+
+        {/* ── BLOCK 5: Topic Accuracy ───────────────────────────────────── */}
+        {topicRows.filter(t => t.attempted > 0).length > 0 && (
+          <div style={{ background:AZ.card, borderRadius:10, padding:"14px 16px", marginBottom:16, border:`1px solid ${AZ.bord}` }}>
+            <div style={{ fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em", color:AZ.textM, marginBottom:14 }}>
+              Topic Accuracy — Weakest First
+            </div>
+            {topicRows.filter(t => t.attempted > 0).map(t => {
+              const acc = t.accuracy;
+              const col = acc >= 70 ? AZ.grn : acc >= 45 ? AZ.amb : AZ.red;
+              return (
+                <div key={t.topic} style={{ marginBottom:10 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+                    <span style={{ fontSize:12, color:AZ.textS }}>{t.topic}</span>
+                    <span style={{ fontFamily:"var(--font-mono)", fontSize:12, fontWeight:700, color:col }}>{acc}% ({t.correct}/{t.attempted})</span>
+                  </div>
+                  <div style={{ height:5, background:"rgba(255,255,255,0.07)", borderRadius:3, overflow:"hidden" }}>
+                    <div style={{ height:"100%", width:`${acc}%`, background:col, borderRadius:3, transition:"width .5s ease" }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ── BLOCK 6: Advisory ─────────────────────────────────────────── */}
+        <div style={{ background:AZ.card, borderRadius:10, padding:"14px 16px", marginBottom:20, border:`1px solid ${AZ.bord}` }}>
+          <div style={{ fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em", color:AZ.textM, marginBottom:10 }}>What to Do Next</div>
+          {!analysis ? (
+            <div style={{ fontSize:12, color:AZ.textS }}>Generating analysis…</div>
+          ) : (
             <>
-              {analysis.summary && (
-                <p style={{ fontSize:13, color:"var(--navy)", fontWeight:500, lineHeight:1.6, marginBottom:10, paddingBottom:10, borderBottom:"1px solid var(--border)" }}>{analysis.summary}</p>
-              )}
+              {analysis.summary && <p style={{ fontSize:13, color:AZ.textS, fontWeight:500, lineHeight:1.6, marginBottom:10, paddingBottom:10, borderBottom:`1px solid ${AZ.bord}` }}>{analysis.summary}</p>}
               {(analysis.actions || []).map((a, i) => (
-                <div key={i} style={{ display:"flex", gap:10, alignItems:"flex-start", marginBottom:9 }}>
-                  <span style={{ fontSize:14, flexShrink:0, marginTop:1 }}>{ACTION_ICONS[i] || "•"}</span>
-                  <span style={{ fontSize:13, color:"var(--text-secondary)", lineHeight:1.6 }}>{a}</span>
+                <div key={i} style={{ display:"flex", gap:10, alignItems:"flex-start", marginBottom:8 }}>
+                  <span style={{ fontSize:14, flexShrink:0 }}>{ACTION_ICONS[i] || "•"}</span>
+                  <span style={{ fontSize:13, color:AZ.textS, lineHeight:1.6 }}>{a}</span>
                 </div>
               ))}
             </>
-          ) : null}
+          )}
         </div>
 
-        {/* ── Actions ─────────────────────────────────────────────────────── */}
-        <div style={{ display:"flex", gap:12 }}>
-          <button className="btn-outline" style={{ flex:1 }} onClick={onReview}>Review Answers</button>
-          <button className="btn-primary" style={{ flex:1 }} onClick={onNewTest}>New Test Paper</button>
+        {/* ── BLOCK 7: Action Buttons ───────────────────────────────────── */}
+        <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
+          <button onClick={onReview}
+            style={{ flex:1, minWidth:120, height:40, background:"transparent", color:AZ.textS, border:`1px solid ${AZ.bord}`, borderRadius:8, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"var(--font-body)" }}>
+            Review Answers
+          </button>
+          {onViewAnalytics && (
+            <button onClick={onViewAnalytics}
+              style={{ flex:1, minWidth:120, height:40, background:AZ.ind, color:"#fff", border:"none", borderRadius:8, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"var(--font-body)" }}>
+              📊 My Analytics →
+            </button>
+          )}
+          <button onClick={onNewTest}
+            style={{ flex:1, minWidth:120, height:40, background:AZ.grn, color:"#0D0D0D", border:"none", borderRadius:8, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"var(--font-body)" }}>
+            New Test Paper
+          </button>
         </div>
       </div>
     </div>
@@ -2009,74 +2088,626 @@ Begin with { — nothing before it.`;
 
 // ── REVIEW SCREEN ─────────────────────────────────────────────────────────────
 function ReviewScreen({ questions, answers, onBack }) {
+  const [filter, setFilter]           = useState("all");
+  const [showPalette, setShowPalette] = useState(false);
+  const cardRefs = useRef([]);
+  const isMobile = useMobile();
   useEffect(() => { logEvent("page_view", { page: "review" }); }, []);
 
+  const counts = questions.reduce((acc, _, i) => {
+    const ua = answers[i];
+    if (ua === undefined) acc.skipped++;
+    else if (ua === questions[i].correct) acc.correct++;
+    else acc.wrong++;
+    return acc;
+  }, { correct: 0, wrong: 0, skipped: 0 });
+
+  const visibleIndices = questions.reduce((acc, q, i) => {
+    const ua = answers[i], ok = ua === q.correct, skip = ua === undefined;
+    if (filter === "all" ||
+        (filter === "wrong"   && !skip && !ok) ||
+        (filter === "skipped" && skip) ||
+        (filter === "correct" && !skip && ok)) acc.push(i);
+    return acc;
+  }, []);
+
+  function scrollTo(i) {
+    if (!visibleIndices.includes(i)) {
+      setFilter("all");
+      setTimeout(() => cardRefs.current[i]?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+    } else {
+      cardRefs.current[i]?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    if (isMobile) setShowPalette(false);
+  }
+
+  function tileStyle(i) {
+    const ua = answers[i], skip = ua === undefined;
+    if (skip)                    return { bg: "#F1F5F9", bc: "#CBD5E1", cl: "#64748B" };
+    if (ua === questions[i].correct) return { bg: "#ECFDF5", bc: "#059669", cl: "#059669" };
+    return { bg: "#FEF2F2", bc: "#DC2626", cl: "#DC2626" };
+  }
+
+  const PalettePanel = () => (
+    <div style={{ display: "flex", flexDirection: "column" }}>
+      {/* summary */}
+      <div style={{ padding: "10px 12px 8px", borderBottom: "1px solid var(--border)" }}>
+        {[["Correct", counts.correct, "#ECFDF5", "#059669"],
+          ["Wrong",   counts.wrong,   "#FEF2F2", "#DC2626"],
+          ["Skipped", counts.skipped, "#FFFBEB", "#D97706"]].map(([label, n, bg, cl]) => (
+          <div key={label} style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+            <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>{label}</span>
+            <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", fontWeight: 700, color: cl,
+              background: bg, padding: "0 6px", borderRadius: 4 }}>{n}</span>
+          </div>
+        ))}
+      </div>
+      {/* filter chips */}
+      <div style={{ padding: "8px 10px 6px", borderBottom: "1px solid var(--border)", display: "flex", flexWrap: "wrap", gap: 4 }}>
+        {[["all","All"],["wrong","Wrong"],["skipped","Skip"],["correct","Correct"]].map(([v, l]) => (
+          <button key={v} onClick={() => setFilter(v)}
+            style={{ fontSize: 10, fontWeight: 600, padding: "3px 8px", borderRadius: 4, cursor: "pointer",
+              background: filter === v ? "var(--navy)" : "var(--bg-alt)",
+              color:      filter === v ? "#fff"        : "var(--text-secondary)",
+              border: "1px solid " + (filter === v ? "var(--navy)" : "var(--border)") }}>{l}</button>
+        ))}
+      </div>
+      {/* tiles */}
+      <div style={{ padding: "10px 10px", display: "flex", flexWrap: "wrap", gap: 5,
+        overflowY: "auto", maxHeight: isMobile ? 220 : "calc(100vh - 260px)" }}>
+        {questions.map((_, i) => {
+          const { bg, bc, cl } = tileStyle(i);
+          const dim = !visibleIndices.includes(i);
+          return (
+            <button key={i} onClick={() => scrollTo(i)} title={"Q." + (i+1)}
+              style={{ width: 30, height: 30, borderRadius: 4, border: "1.5px solid " + bc,
+                background: dim ? "#F8FAFC" : bg, color: dim ? "#CBD5E1" : cl,
+                fontSize: 10, fontWeight: 600, fontFamily: "var(--font-mono)",
+                cursor: "pointer", opacity: dim ? 0.4 : 1,
+                display: "flex", alignItems: "center", justifyContent: "center" }}>
+              {i + 1}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+
   return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "var(--bg)" }}>
+      {/* header */}
       <div className="nta-header">
         <span className="nta-logo">Vantiq <span>CUET</span></span>
-        <button onClick={onBack} style={{ background: "transparent", color: "rgba(255,255,255,.7)", border: "1px solid rgba(255,255,255,.2)", borderRadius: 6, padding: "4px 14px", fontSize: 13, cursor: "pointer", fontFamily: "var(--font-body)" }}>
-          ← Back to Report
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {isMobile && (
+            <button onClick={() => setShowPalette(true)}
+              style={{ background: "rgba(255,255,255,.1)", color: "#fff", border: "1px solid rgba(255,255,255,.2)",
+                borderRadius: 6, padding: "4px 10px", fontSize: 12, cursor: "pointer", fontFamily: "var(--font-body)" }}>
+              ✓ {counts.correct} &nbsp;✗ {counts.wrong}
+            </button>
+          )}
+          <button onClick={onBack}
+            style={{ background: "transparent", color: "rgba(255,255,255,.7)", border: "1px solid rgba(255,255,255,.2)",
+              borderRadius: 6, padding: "4px 14px", fontSize: 13, cursor: "pointer", fontFamily: "var(--font-body)" }}>
+            ← Back to Report
+          </button>
+        </div>
       </div>
-      <div style={{ flex: 1, maxWidth: 800, margin: "0 auto", width: "100%", padding: "28px 24px" }}>
-        <h1 style={{ fontFamily: "var(--font-display)", fontSize: 24, color: "var(--navy)", marginBottom: 24 }}>Answer Review</h1>
-        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          {questions.map((q, i) => {
-            const ua = answers[i], ok = ua === q.correct, skip = ua === undefined;
-            const bc = skip ? "var(--border)" : ok ? "var(--success)" : "var(--danger)";
-            return (
-              <div key={i} style={{ borderLeft: `4px solid ${bc}`, background: "#fff", borderRadius: "0 10px 10px 0", padding: "20px 20px 16px", boxShadow: "var(--card-shadow)", border: "1px solid var(--border)" }}>
-                <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-                  <span className="pill pill-navy" style={{ fontSize: 10 }}>Q.{i + 1}</span>
-                  <span className="pill pill-indigo" style={{ fontSize: 10 }}>{q.topic}</span>
-                  {skip && <span className="pill pill-amber" style={{ fontSize: 10 }}>Skipped</span>}
-                  {!skip && ok && <span className="pill pill-green" style={{ fontSize: 10 }}>+5</span>}
-                  {!skip && !ok && <span className="pill pill-red" style={{ fontSize: 10 }}>&minus;1</span>}
-                </div>
-                {q.passage && (
-                  <div style={{ background: "#F5F7FF", borderLeft: "3px solid var(--indigo)", padding: "10px 14px", borderRadius: "0 6px 6px 0", fontSize: 12.5, lineHeight: 1.7, color: "var(--text-secondary)", marginBottom: 10 }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".05em", textTransform: "uppercase", color: "var(--indigo)", marginBottom: 6 }}>Reading Passage</div>
-                    {q.passage}
+
+      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+        {/* left palette — desktop */}
+        {!isMobile && (
+          <div style={{ width: 164, flexShrink: 0, borderRight: "1px solid var(--border)", background: "#fff",
+            position: "sticky", top: 0, height: "calc(100vh - 52px)", overflowY: "auto", alignSelf: "flex-start" }}>
+            <div style={{ padding: "10px 12px 6px", fontSize: 11, fontWeight: 700, letterSpacing: ".06em",
+              textTransform: "uppercase", color: "var(--text-muted)", borderBottom: "1px solid var(--border)" }}>
+              Questions
+            </div>
+            <PalettePanel />
+          </div>
+        )}
+
+        {/* question cards */}
+        <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? "16px 14px" : "24px 28px", maxWidth: 820 }}>
+          <h1 style={{ fontFamily: "var(--font-display)", fontSize: 22, color: "var(--navy)", marginBottom: 6 }}>Answer Review</h1>
+          {filter !== "all" && (
+            <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 18 }}>
+              Showing {visibleIndices.length} {filter} question{visibleIndices.length !== 1 ? "s" : ""}
+              {" · "}<button onClick={() => setFilter("all")} style={{ fontSize: 12, color: "var(--indigo)", background: "none", border: "none", cursor: "pointer", textDecoration: "underline", padding: 0 }}>Show all</button>
+            </p>
+          )}
+          {filter !== "all" && visibleIndices.length === 0 && (
+            <p style={{ padding: "24px 0", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>No {filter} questions in this test.</p>
+          )}
+          <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+            {questions.map((q, i) => {
+              if (!visibleIndices.includes(i)) return null;
+              const ua = answers[i], ok = ua === q.correct, skip = ua === undefined;
+              const bc = skip ? "var(--border)" : ok ? "var(--success)" : "var(--danger)";
+              return (
+                <div key={i} ref={el => { cardRefs.current[i] = el; }}
+                  style={{ borderLeft: "4px solid " + bc, background: "#fff", borderRadius: "0 10px 10px 0",
+                    padding: "18px 20px 14px", boxShadow: "var(--card-shadow)", border: "1px solid var(--border)",
+                    scrollMarginTop: 20 }}>
+                  <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+                    <span className="pill pill-navy" style={{ fontSize: 10 }}>Q.{i + 1}</span>
+                    <span className="pill pill-indigo" style={{ fontSize: 10 }}>{q.topic}</span>
+                    {skip      && <span className="pill pill-amber" style={{ fontSize: 10 }}>Skipped</span>}
+                    {!skip && ok  && <span className="pill pill-green" style={{ fontSize: 10 }}>+5</span>}
+                    {!skip && !ok && <span className="pill pill-red"   style={{ fontSize: 10 }}>&minus;1</span>}
                   </div>
-                )}
-                <p style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)", lineHeight: 1.6, marginBottom: 14 }}>{q.question}</p>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
-                  {q.options.map((opt, oi) => {
-                    const isUser = ua === oi, isRight = q.correct === oi;
-                    let cls = "";
-                    if (isRight) cls = "correct";
-                    else if (isUser && !isRight) cls = "wrong";
-                    return (
-                      <div key={oi} className={"option-box" + (cls ? " " + cls : "")} style={{ cursor: "default" }}>
-                        <span className="option-key">{String.fromCharCode(65 + oi)}</span>
-                        <span style={{ fontSize: 13, flex: 1 }}>{opt}</span>
-                        {isRight && <span style={{ fontSize: 11, fontWeight: 600, color: "var(--success)", marginLeft: 8 }}>✓ Correct</span>}
-                        {isUser && !isRight && <span style={{ fontSize: 11, fontWeight: 600, color: "var(--danger)", marginLeft: 8 }}>✗ Your Answer</span>}
+                  {q.passage && (
+                    <div style={{ background: "#F5F7FF", borderLeft: "3px solid var(--indigo)", padding: "10px 14px",
+                      borderRadius: "0 6px 6px 0", fontSize: 12.5, lineHeight: 1.7, color: "var(--text-secondary)", marginBottom: 10 }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".05em", textTransform: "uppercase", color: "var(--indigo)", marginBottom: 6 }}>Reading Passage</div>
+                      {q.passage}
+                    </div>
+                  )}
+                  <p style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)", lineHeight: 1.6, marginBottom: 14 }}>{q.question}</p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+                    {q.options.map((opt, oi) => {
+                      const isUser = ua === oi, isRight = q.correct === oi;
+                      let cls = "";
+                      if (isRight) cls = "correct";
+                      else if (isUser && !isRight) cls = "wrong";
+                      return (
+                        <div key={oi} className={"option-box" + (cls ? " " + cls : "")} style={{ cursor: "default" }}>
+                          <span className="option-key">{String.fromCharCode(65 + oi)}</span>
+                          <span style={{ fontSize: 13, flex: 1 }}>{opt}</span>
+                          {isRight && <span style={{ fontSize: 11, fontWeight: 600, color: "var(--success)", marginLeft: 8 }}>✓ Correct</span>}
+                          {isUser && !isRight && <span style={{ fontSize: 11, fontWeight: 600, color: "var(--danger)", marginLeft: 8 }}>✗ Your Answer</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{ display: "flex", gap: 16, fontSize: 11, fontWeight: 600, textTransform: "uppercase",
+                    letterSpacing: ".05em", color: "var(--text-muted)", marginBottom: 8, flexWrap: "wrap" }}>
+                    {!skip && <span>Your Answer: <span style={{ color: ok ? "var(--success)" : "var(--danger)" }}>{String.fromCharCode(65 + ua)} — {q.options[ua]}</span></span>}
+                    <span>Correct Answer: <span style={{ color: "var(--success)" }}>{String.fromCharCode(65 + q.correct)} — {q.options[q.correct]}</span></span>
+                  </div>
+                  {q.explanation && (
+                    <div style={{ background: "var(--bg-alt)", border: "1px solid var(--border)", borderRadius: 6,
+                      padding: "10px 14px", fontSize: 12.5, color: "var(--text-secondary)", lineHeight: 1.65 }}>
+                      <span style={{ fontWeight: 600, color: "var(--navy)", marginRight: 4 }}>Explanation:</span>{q.explanation}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <button className="btn-primary" style={{ marginTop: 28, width: "100%" }} onClick={onBack}>
+            ← Back to Performance Report
+          </button>
+        </div>
+      </div>
+
+      {/* mobile palette drawer */}
+      {isMobile && showPalette && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.6)", zIndex: 998, display: "flex", alignItems: "flex-end" }}
+          onClick={() => setShowPalette(false)}>
+          <div style={{ background: "#fff", borderRadius: "16px 16px 0 0", width: "100%", maxHeight: "70vh", overflowY: "auto" }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px 0" }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: "var(--navy)" }}>Questions</span>
+              <button onClick={() => setShowPalette(false)} style={{ background: "none", border: "none", fontSize: 18, cursor: "pointer", color: "var(--text-muted)" }}>✕</button>
+            </div>
+            <PalettePanel />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+// ── PERFORMANCE DASHBOARD ────────────────────────────────────────────────────
+function PerformanceDashboard({ testHistory, user, onBack }) {
+  const isMobile = useMobile();
+  useEffect(() => { logEvent("page_view", { page: "performance_dashboard" }); }, []);
+
+  if (!testHistory || testHistory.length === 0) {
+    return (
+      <div style={{ minHeight:"100vh", background:AZ.bg, display:"flex", flexDirection:"column" }}>
+        <div className="nta-header" style={{ background:"#0D0D0D", borderBottom:`1px solid ${AZ.bord}` }}>
+          <span className="nta-logo">Vantiq <span>CUET</span></span>
+          <button onClick={onBack} style={{ background:"transparent", color:"rgba(255,255,255,.55)", border:"1px solid rgba(255,255,255,.18)", borderRadius:6, padding:"4px 14px", fontSize:13, cursor:"pointer", fontFamily:"var(--font-body)" }}>← Dashboard</button>
+        </div>
+        <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <div style={{ textAlign:"center" }}>
+            <div style={{ fontSize:40, marginBottom:16 }}>📊</div>
+            <p style={{ color:AZ.textS, fontSize:14, marginBottom:20 }}>Complete your first test to unlock performance analytics.</p>
+            <button onClick={onBack} style={{ background:AZ.ind, color:"#fff", border:"none", borderRadius:8, padding:"10px 24px", fontSize:14, fontWeight:700, cursor:"pointer" }}>Start a Test →</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────
+  function linReg(data) {
+    const n = data.length;
+    if (n < 2) return { slope: 0 };
+    const xm = (n-1)/2, ym = data.reduce((s,v)=>s+v,0)/n;
+    let num=0, den=0;
+    data.forEach((y,x) => { num += (x-xm)*(y-ym); den += (x-xm)**2; });
+    return { slope: den ? num/den : 0 };
+  }
+  function fmtDate(ts) {
+    if (!ts) return "—";
+    const d = ts?.toDate ? ts.toDate() : new Date(ts);
+    return d.toLocaleDateString("en-IN", { day:"numeric", month:"short" });
+  }
+
+  // ── Derive data ───────────────────────────────────────────────────────
+  const attempts   = [...testHistory].reverse(); // oldest first
+  const totalTests = attempts.length;
+  const allAcc     = attempts.map(t => t.accuracy || 0);
+  const avgAcc     = Math.round(allAcc.reduce((s,v)=>s+v,0) / totalTests);
+  const bestAcc    = Math.max(...allAcc);
+  const latestAcc  = allAcc[allAcc.length - 1];
+  const prevAcc    = allAcc.length >= 2 ? allAcc[allAcc.length - 2] : null;
+  const trendDelta = prevAcc !== null ? latestAcc - prevAcc : null;
+
+  const { slope } = linReg(allAcc);
+  const trendLabel = allAcc.length < 3 ? null : slope > 1 ? { text:"↑ Trending upward", c:AZ.grn } : slope < -1 ? { text:"↓ Trending downward", c:AZ.red } : { text:"→ Plateauing", c:AZ.amb };
+
+  // Per-subject data
+  const bySubject = {};
+  attempts.forEach(t => {
+    const s = t.subject || "English";
+    if (!bySubject[s]) bySubject[s] = [];
+    bySubject[s].push(t);
+  });
+
+  // Topic heatmap — from topicResults stored per test
+  const heatTests = attempts.filter(t => t.topicResults && t.topicResults.length > 0).slice(-10);
+  const allTopics = heatTests.length > 0
+    ? [...new Set(heatTests.flatMap(t => t.topicResults.map(r => r.topic)))]
+    : [];
+
+  // Focus areas — average accuracy per topic across all tests with data
+  const topicAvgMap = {};
+  heatTests.forEach(t => {
+    (t.topicResults || []).forEach(r => {
+      if (!topicAvgMap[r.topic]) topicAvgMap[r.topic] = [];
+      topicAvgMap[r.topic].push(r.accuracy);
+    });
+  });
+  const focusAreas = Object.entries(topicAvgMap)
+    .map(([topic, accs]) => ({ topic, avg: Math.round(accs.reduce((s,v)=>s+v,0)/accs.length), n: accs.length, last: accs[accs.length-1] }))
+    .filter(f => f.n >= 1)
+    .sort((a,b) => a.avg - b.avg)
+    .slice(0, 3);
+
+  // Improvement banner
+  const showBanner = attempts.length >= 3;
+  const recent3avg  = showBanner ? Math.round(allAcc.slice(-3).reduce((s,v)=>s+v,0)/3) : 0;
+  const early3avg   = showBanner ? Math.round(allAcc.slice(0,3).reduce((s,v)=>s+v,0)/3) : 0;
+  const bannerDelta = showBanner ? recent3avg - early3avg : 0;
+  const improving   = bannerDelta > 1;
+  const declining   = bannerDelta < -1;
+
+  // Wrong answers trend
+  const wrongTrend = attempts.map(t => t.wrong || 0);
+  const { slope: wrongSlope } = linReg(wrongTrend);
+
+  const subjectColors = { English:"#818CF8", GAT:"#34D399", Economics:"#FBBF24" };
+  const subjectLabels = { English:"English (101)", GAT:"GAT (501)", Economics:"Economics (118)" };
+
+  const sLabel = (txt) => (
+    <div style={{ fontSize:10, fontWeight:700, letterSpacing:".08em", textTransform:"uppercase", color:AZ.textM, marginBottom:14 }}>{txt}</div>
+  );
+
+  const Stat = ({ label, val, sub, col = AZ.ind }) => (
+    <div style={{ background:AZ.card2, borderRadius:8, padding:"12px 14px", flex:"1 1 auto", minWidth:90 }}>
+      <div style={{ fontFamily:"var(--font-mono)", fontSize:22, fontWeight:800, color:col, lineHeight:1 }}>{val}</div>
+      <div style={{ fontSize:9, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em", color:AZ.textM, marginTop:4 }}>{label}</div>
+      {sub && <div style={{ fontSize:10, color:AZ.textM, marginTop:2 }}>{sub}</div>}
+    </div>
+  );
+
+  const cellBg  = acc => acc === null ? "rgba(255,255,255,0.03)" : acc >= 70 ? "rgba(52,211,153,0.18)" : acc >= 45 ? "rgba(251,191,36,0.18)" : "rgba(248,113,113,0.18)";
+  const cellCol = acc => acc === null ? AZ.textM : acc >= 70 ? AZ.grn : acc >= 45 ? AZ.amb : AZ.red;
+
+  return (
+    <div style={{ minHeight:"100vh", background:AZ.bg, display:"flex", flexDirection:"column" }}>
+      {/* Header */}
+      <div className="nta-header" style={{ background:"#0D0D0D", borderBottom:`1px solid ${AZ.bord}` }}>
+        <span className="nta-logo">Vantiq <span>CUET</span></span>
+        <button onClick={onBack} style={{ background:"transparent", color:"rgba(255,255,255,.55)", border:"1px solid rgba(255,255,255,.18)", borderRadius:6, padding:"4px 14px", fontSize:13, cursor:"pointer", fontFamily:"var(--font-body)" }}>← Dashboard</button>
+      </div>
+
+      <div style={{ flex:1, maxWidth:880, margin:"0 auto", width:"100%", padding: isMobile ? "16px 14px" : "28px 24px" }}>
+        <h1 style={{ fontFamily:"var(--font-display)", fontSize:22, color:AZ.text, marginBottom:4 }}>Performance Analytics</h1>
+        <p style={{ fontSize:12, color:AZ.textM, marginBottom:20 }}>Based on your {totalTests} test{totalTests !== 1?"s":""}</p>
+
+        {/* ── Improvement Banner ─────────────────────────────────────── */}
+        {showBanner && (improving || declining) && (
+          <div style={{ background: improving ? "rgba(52,211,153,0.12)" : "rgba(248,113,113,0.12)",
+            border:`1px solid ${improving ? "rgba(52,211,153,0.35)" : "rgba(248,113,113,0.35)"}`,
+            borderRadius:10, padding:"14px 16px", marginBottom:20, display:"flex", alignItems:"center", gap:14 }}>
+            <span style={{ fontSize:26 }}>{improving ? "🏆" : "📌"}</span>
+            <div>
+              <div style={{ fontWeight:700, fontSize:14, color:improving ? AZ.grn : AZ.red }}>
+                {improving
+                  ? `You've improved ${Math.abs(bannerDelta)}% compared to your first tests`
+                  : `Recent accuracy is ${Math.abs(bannerDelta)}% below your early average`}
+              </div>
+              <div style={{ fontSize:12, color:AZ.textS, marginTop:3 }}>
+                {improving ? "Consistent practice is paying off. Keep going." : "Review your wrong answers carefully to identify the pattern."}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Stats Strip ───────────────────────────────────────────── */}
+        <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:20 }}>
+          <Stat label="Tests Taken"   val={totalTests}  sub="all subjects"       col={AZ.ind} />
+          <Stat label="Avg Accuracy"  val={`${avgAcc}%`} sub="across all tests"  col={AZ.blu} />
+          <Stat label="Best Score"    val={`${bestAcc}%`} sub="personal best"    col={AZ.grn} />
+          <Stat label="Latest Test"   val={`${latestAcc}%`}
+            sub={trendDelta !== null ? (trendDelta >= 0 ? `▲ +${trendDelta}% vs prev` : `▼ ${trendDelta}% vs prev`) : "first test"}
+            col={trendDelta === null ? AZ.textM : trendDelta >= 0 ? AZ.grn : AZ.red} />
+        </div>
+
+        {/* ── Progression Trend ─────────────────────────────────────── */}
+        <div style={{ background:AZ.card, borderRadius:12, padding:"16px 18px", marginBottom:16, border:`1px solid ${AZ.bord}` }}>
+          {sLabel("Your Progress Over Time")}
+
+          <div style={{ display:"flex", gap:16, flexWrap:"wrap" }}>
+            {/* Score Trend */}
+            <div style={{ flex:"1 1 200px" }}>
+              <div style={{ fontSize:11, color:AZ.textS, marginBottom:8, fontWeight:600 }}>
+                Accuracy per Test
+                {trendLabel && <span style={{ marginLeft:8, fontSize:11, color:trendLabel.c, fontWeight:700 }}>{trendLabel.text}</span>}
+              </div>
+              {(() => {
+                const w = isMobile ? 220 : 300, h = 80;
+                const data = allAcc;
+                if (data.length < 2) return <div style={{fontSize:11,color:AZ.textM}}>Need 2+ tests for trend chart</div>;
+                const max = Math.max(...data), min = Math.min(...data), range = max - min || 1;
+                const pts = data.map((v,i) =>
+                  `${((i/(data.length-1))*(w-10)+5).toFixed(1)},${(h-5-((v-min)/range)*(h-14)).toFixed(1)}`
+                ).join(" ");
+                // Regression line
+                const { slope: s2 } = linReg(data);
+                const ymean = data.reduce((a,b)=>a+b,0)/data.length;
+                const x0=5, x1=w-5;
+                const y0 = h-5-((ymean - s2*(data.length-1)/2 - min)/range)*(h-14);
+                const y1 = h-5-((ymean + s2*(data.length-1)/2 - min)/range)*(h-14);
+                const li = data.length-1;
+                const lx = ((li/(data.length-1))*(w-10)+5).toFixed(1);
+                const ly = (h-5-((data[li]-min)/range)*(h-14)).toFixed(1);
+                return (
+                  <svg width={w} height={h}>
+                    {/* Grid lines */}
+                    {[0,25,50,75,100].map(v => {
+                      const y = h-5-((v-min)/range)*(h-14);
+                      return y >= 0 && y <= h ? <line key={v} x1={5} y1={y} x2={w-5} y2={y} stroke="rgba(255,255,255,0.06)" strokeWidth={1} /> : null;
+                    })}
+                    {/* Trend regression line */}
+                    <line x1={x0} y1={y0} x2={x1} y2={y1} stroke={AZ.amb} strokeWidth={1} strokeDasharray="4 3" opacity={0.7} />
+                    {/* Score line */}
+                    <polyline points={pts} fill="none" stroke={AZ.ind} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+                    {/* All dots */}
+                    {data.map((v,i) => {
+                      const dx = ((i/(data.length-1))*(w-10)+5).toFixed(1);
+                      const dy = (h-5-((v-min)/range)*(h-14)).toFixed(1);
+                      return <circle key={i} cx={dx} cy={dy} r={i===li?4:2.5} fill={i===li?AZ.ind:"rgba(129,140,248,0.7)"} stroke="#1C1C1C" strokeWidth={1} />;
+                    })}
+                    {/* Latest value label */}
+                    <text x={lx} y={parseFloat(ly)-8} textAnchor="middle" fontSize={9} fill={AZ.ind} fontFamily="JetBrains Mono,monospace" fontWeight={700}>{data[li]}%</text>
+                  </svg>
+                );
+              })()}
+              <div style={{ display:"flex", justifyContent:"space-between", marginTop:4, fontSize:9, color:AZ.textM }}>
+                <span>Oldest</span><span style={{color:AZ.amb}}>— Trend</span><span>Latest</span>
+              </div>
+            </div>
+
+            {/* Wrong answers trend */}
+            <div style={{ flex:"1 1 180px" }}>
+              <div style={{ fontSize:11, color:AZ.textS, marginBottom:8, fontWeight:600 }}>
+                Wrong Answers per Test
+                {attempts.length >= 3 && <span style={{ marginLeft:8, fontSize:11, fontWeight:700, color: wrongSlope < -0.5 ? AZ.grn : wrongSlope > 0.5 ? AZ.red : AZ.amb }}>
+                  {wrongSlope < -0.5 ? "↓ Improving" : wrongSlope > 0.5 ? "↑ Getting worse" : "→ Steady"}
+                </span>}
+              </div>
+              {(() => {
+                const w = isMobile ? 180 : 220, H2 = 80;
+                const data = wrongTrend;
+                if (data.length < 1) return null;
+                const maxV = Math.max(...data, 1);
+                const bw = Math.max(4, Math.floor((w - 8) / data.length) - 2);
+                return (
+                  <svg width={w} height={H2}>
+                    {data.map((v, i) => {
+                      const bh = Math.max(3, Math.round((v/maxV)*(H2-10)));
+                      const x = 4 + i * (bw + 2), y = H2 - bh;
+                      const isLast = i === data.length - 1;
+                      return (
+                        <g key={i}>
+                          <rect x={x} y={y} width={bw} height={bh} rx={2}
+                            fill={v === 0 ? AZ.grn : isLast ? AZ.red : "rgba(248,113,113,0.55)"} />
+                          {isLast && <text x={x+bw/2} y={y-4} textAnchor="middle" fontSize={9} fill={AZ.red} fontFamily="JetBrains Mono,monospace">{v}</text>}
+                        </g>
+                      );
+                    })}
+                  </svg>
+                );
+              })()}
+              <div style={{ fontSize:9, color:AZ.textM, marginTop:4 }}>Fewer wrong = less guessing = real improvement</div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Subject-wise Cards ────────────────────────────────────── */}
+        {Object.keys(bySubject).length > 0 && (
+          <div style={{ background:AZ.card, borderRadius:12, padding:"16px 18px", marginBottom:16, border:`1px solid ${AZ.bord}` }}>
+            {sLabel("Subject-Wise Progression")}
+            <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
+              {Object.entries(bySubject).map(([sub, tests]) => {
+                const subAcc  = tests.map(t => t.accuracy || 0);
+                const subAvg  = Math.round(subAcc.reduce((s,v)=>s+v,0)/subAcc.length);
+                const subBest = Math.max(...subAcc);
+                const col     = subjectColors[sub] || AZ.ind;
+                const { slope: subSlope } = linReg(subAcc);
+                const subTrend = subAcc.length < 2 ? null : subSlope > 1 ? { t:"↑", c:AZ.grn } : subSlope < -1 ? { t:"↓", c:AZ.red } : { t:"→", c:AZ.amb };
+                return (
+                  <div key={sub} style={{ flex:"1 1 160px", background:AZ.card2, borderRadius:10, padding:"14px 16px", border:`1px solid ${AZ.bord}` }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
+                      <div>
+                        <div style={{ fontWeight:700, fontSize:13, color:AZ.text }}>{subjectLabels[sub] || sub}</div>
+                        <div style={{ fontSize:10, color:AZ.textM, marginTop:2 }}>{tests.length} test{tests.length!==1?"s":""}</div>
                       </div>
+                      {subTrend && <span style={{ fontSize:16, color:subTrend.c, fontWeight:700 }}>{subTrend.t}</span>}
+                    </div>
+                    <Spark data={subAcc} color={col} w={isMobile ? 120 : 140} h={30} />
+                    <div style={{ display:"flex", justifyContent:"space-between", marginTop:8 }}>
+                      <div>
+                        <div style={{ fontFamily:"var(--font-mono)", fontSize:18, fontWeight:800, color:col }}>{subAvg}%</div>
+                        <div style={{ fontSize:9, color:AZ.textM }}>avg accuracy</div>
+                      </div>
+                      <div style={{ textAlign:"right" }}>
+                        <div style={{ fontFamily:"var(--font-mono)", fontSize:18, fontWeight:800, color:AZ.grn }}>{subBest}%</div>
+                        <div style={{ fontSize:9, color:AZ.textM }}>best score</div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ── Topic Heatmap ─────────────────────────────────────────── */}
+        {heatTests.length >= 2 && allTopics.length > 0 && (
+          <div style={{ background:AZ.card, borderRadius:12, padding:"16px 18px", marginBottom:16, border:`1px solid ${AZ.bord}` }}>
+            {sLabel("Topic Performance Heatmap")}
+            <p style={{ fontSize:11, color:AZ.textS, marginBottom:12 }}>
+              How each topic performed across your tests. Darker green = stronger. Red = needs work.
+            </p>
+            <div style={{ overflowX:"auto" }}>
+              <table style={{ borderCollapse:"separate", borderSpacing:"3px 3px", fontSize:10, minWidth:300 }}>
+                <thead>
+                  <tr>
+                    <th style={{ padding:"4px 8px", textAlign:"left", fontSize:9, fontWeight:700, textTransform:"uppercase", color:AZ.textM, minWidth:130 }}>Topic</th>
+                    {heatTests.map((_,i) => (
+                      <th key={i} style={{ padding:"4px 6px", textAlign:"center", fontSize:9, fontWeight:700, color:AZ.textM, minWidth:44 }}>T{i+1}</th>
+                    ))}
+                    <th style={{ padding:"4px 6px", textAlign:"center", fontSize:9, fontWeight:700, color:AZ.text, minWidth:44 }}>Avg</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allTopics.map(topic => {
+                    const accs = heatTests.map(t => {
+                      const r = (t.topicResults||[]).find(x => x.topic === topic);
+                      return r ? r.accuracy : null;
+                    });
+                    const valid = accs.filter(a => a !== null);
+                    const avg   = valid.length > 0 ? Math.round(valid.reduce((s,a)=>s+a,0)/valid.length) : null;
+                    const last  = [...accs].reverse().find(a => a !== null);
+                    const trend = avg !== null && last !== null ? (last > avg ? "▲" : last < avg ? "▼" : "→") : "";
+                    const tCol  = trend === "▲" ? AZ.grn : trend === "▼" ? AZ.red : AZ.amb;
+                    return (
+                      <tr key={topic}>
+                        <td style={{ padding:"5px 8px", fontSize:11, color:AZ.textS, whiteSpace:"nowrap", maxWidth:160, overflow:"hidden", textOverflow:"ellipsis" }}>{topic}</td>
+                        {accs.map((acc, i) => (
+                          <td key={i} style={{ padding:"5px 6px", textAlign:"center", background:cellBg(acc), borderRadius:5 }}>
+                            <span style={{ fontFamily:"var(--font-mono)", fontSize:10, fontWeight:700, color:cellCol(acc) }}>
+                              {acc !== null ? `${acc}%` : "—"}
+                            </span>
+                          </td>
+                        ))}
+                        <td style={{ padding:"5px 6px", textAlign:"center", background:cellBg(avg), borderRadius:5 }}>
+                          <span style={{ fontFamily:"var(--font-mono)", fontSize:10, fontWeight:700, color:cellCol(avg) }}>{avg !== null ? `${avg}%` : "—"}</span>
+                          {trend && <span style={{ fontSize:9, color:tCol, marginLeft:2 }}>{trend}</span>}
+                        </td>
+                      </tr>
                     );
                   })}
-                </div>
-                <div style={{ display: "flex", gap: 16, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-muted)", marginBottom: 8, flexWrap: "wrap" }}>
-                  {!skip && <span>Your Answer: <span style={{ color: ok ? "var(--success)" : "var(--danger)" }}>{String.fromCharCode(65 + ua)} — {q.options[ua]}</span></span>}
-                  <span>Correct Answer: <span style={{ color: "var(--success)" }}>{String.fromCharCode(65 + q.correct)} — {q.options[q.correct]}</span></span>
-                </div>
-                {q.explanation && (
-                  <div style={{ background: "var(--bg-alt)", border: "1px solid var(--border)", borderRadius: 6, padding: "10px 14px", fontSize: 12.5, color: "var(--text-secondary)", lineHeight: 1.65 }}>
-                    <span style={{ fontWeight: 600, color: "var(--navy)", marginRight: 4 }}>Explanation:</span>{q.explanation}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ marginTop:10, fontSize:10, color:AZ.textM }}>
+              <span style={{color:AZ.grn}}>■</span> ≥70% Strong &nbsp;
+              <span style={{color:AZ.amb}}>■</span> 45–69% Average &nbsp;
+              <span style={{color:AZ.red}}>■</span> &lt;45% Needs Work &nbsp;
+              <span style={{color:AZ.textM}}>■</span> Not attempted
+            </div>
+          </div>
+        )}
+
+        {/* ── Focus Areas ───────────────────────────────────────────── */}
+        {focusAreas.length > 0 && (
+          <div style={{ background:AZ.card, borderRadius:12, padding:"16px 18px", marginBottom:16, border:`1px solid ${AZ.bord}` }}>
+            {sLabel("Where to Focus")}
+            <p style={{ fontSize:11, color:AZ.textS, marginBottom:12 }}>Your weakest topics across all tests — put extra time here.</p>
+            <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
+              {focusAreas.map((f, i) => {
+                const col = f.avg >= 70 ? AZ.grn : f.avg >= 45 ? AZ.amb : AZ.red;
+                const trendDir = f.last > f.avg ? "▲" : f.last < f.avg ? "▼" : "→";
+                const trendC   = trendDir === "▲" ? AZ.grn : trendDir === "▼" ? AZ.red : AZ.amb;
+                return (
+                  <div key={f.topic} style={{ flex:"1 1 140px", background:AZ.card2, borderRadius:10, padding:"12px 14px", border:`1px solid ${AZ.bord}` }}>
+                    <div style={{ fontWeight:700, fontSize:12, color:AZ.text, marginBottom:6, lineHeight:1.3 }}>{f.topic}</div>
+                    <div style={{ fontFamily:"var(--font-mono)", fontSize:26, fontWeight:800, color:col, lineHeight:1 }}>{f.avg}%</div>
+                    <div style={{ fontSize:10, color:AZ.textM, marginTop:3 }}>avg over {f.n} test{f.n!==1?"s":""}</div>
+                    <div style={{ height:4, background:"rgba(255,255,255,0.07)", borderRadius:2, margin:"8px 0 4px" }}>
+                      <div style={{ height:"100%", width:`${f.avg}%`, background:col, borderRadius:2 }} />
+                    </div>
+                    <span style={{ fontSize:10, color:trendC, fontWeight:700 }}>{trendDir} Last: {f.last}%</span>
                   </div>
-                )}
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ── All Attempts Log ──────────────────────────────────────── */}
+        <div style={{ background:AZ.card, borderRadius:12, padding:"14px 18px", marginBottom:24, border:`1px solid ${AZ.bord}` }}>
+          {sLabel("All Attempts")}
+          <div style={{ overflowX:"auto" }}>
+            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+              <thead>
+                <tr style={{ borderBottom:`1px solid ${AZ.bord}` }}>
+                  {["#","Date","Subject","Mode","Score","Correct","Wrong","Accuracy","Status"].map(h => (
+                    <th key={h} style={{ padding:"6px 10px", textAlign:"left", fontSize:9, fontWeight:700, textTransform:"uppercase", letterSpacing:".05em", color:AZ.textM }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {[...attempts].reverse().map((t, i) => {
+                  const p = t.accuracy || 0;
+                  const modeLabel = { Mock:"Mock", QuickPractice:"QP", GAT_Mock:"Mock", GAT_QP:"QP", Economics_Mock:"Mock", Economics_QP:"QP" }[t.mode] || t.mode;
+                  const sc = p >= 70 ? AZ.grn : p >= 45 ? AZ.amb : AZ.red;
+                  return (
+                    <tr key={i} style={{ borderBottom:`1px solid ${AZ.bord2}` }}>
+                      <td style={{ padding:"9px 10px", color:AZ.textM, fontFamily:"var(--font-mono)" }}>{attempts.length - i}</td>
+                      <td style={{ padding:"9px 10px", color:AZ.textS, whiteSpace:"nowrap" }}>{fmtDate(t.completedAt)}</td>
+                      <td style={{ padding:"9px 10px" }}><span style={{ background:"rgba(129,140,248,0.18)", color:AZ.ind, fontSize:9, padding:"2px 7px", borderRadius:4, fontWeight:700 }}>{t.subject||"Eng"}</span></td>
+                      <td style={{ padding:"9px 10px" }}><span style={{ background:"rgba(255,255,255,0.08)", color:AZ.textS, fontSize:9, padding:"2px 7px", borderRadius:4 }}>{modeLabel}</span></td>
+                      <td style={{ padding:"9px 10px", fontFamily:"var(--font-mono)", fontWeight:700, color:AZ.text }}>{t.totalScore ?? "—"}</td>
+                      <td style={{ padding:"9px 10px", fontFamily:"var(--font-mono)", fontWeight:700, color:AZ.grn }}>{t.correct ?? "—"}</td>
+                      <td style={{ padding:"9px 10px", fontFamily:"var(--font-mono)", fontWeight:700, color:AZ.red }}>{t.wrong ?? "—"}</td>
+                      <td style={{ padding:"9px 10px", fontFamily:"var(--font-mono)", fontWeight:700, color:sc }}>{p}%</td>
+                      <td style={{ padding:"9px 10px" }}>
+                        <span style={{ fontSize:9, fontWeight:700, padding:"2px 8px", borderRadius:4,
+                          background: p>=70 ? "rgba(52,211,153,0.18)" : p>=45 ? "rgba(251,191,36,0.18)" : "rgba(248,113,113,0.18)",
+                          color: sc }}>
+                          {p >= 70 ? "Strong" : p >= 45 ? "Average" : "Needs Work"}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
-        <button className="btn-primary" style={{ marginTop: 28, width: "100%" }} onClick={onBack}>
-          ← Back to Performance Report
-        </button>
       </div>
     </div>
   );
 }
+
 
 // ── Question Generator ────────────────────────────────────────────────────────
 async function generateQuestions(config, uid) {
@@ -2351,6 +2982,7 @@ export default function App() {
   const [testConfig,  setConfig]     = useState(null);
   const [questions,   setQuestions]  = useState([]);
   const [answers,     setAnswers]    = useState({});
+  const [timePerQ,    setTimePerQ]   = useState({});
   const [toast,       setToast]      = useState(null);
   const [authLoading, setAuthLoad]   = useState(true);
   const [showRating,  setShowRating] = useState(false);
@@ -2364,7 +2996,7 @@ export default function App() {
     try {
       const snap = await getDoc(doc(db, "users", u.uid));
       if (snap.exists()) setUserData(snap.data());
-      const q = query(collection(db, "tests"), where("uid", "==", u.uid), orderBy("completedAt", "desc"), limit(10));
+      const q = query(collection(db, "tests"), where("uid", "==", u.uid), orderBy("completedAt", "desc"), limit(20));
       const hs = await getDocs(q);
       setHistory(hs.docs.map(d => ({ id: d.id, ...d.data(), questions: undefined, answers: undefined })));
     } catch(e) { /* Firestore unavailable — continue without history */ }
@@ -2483,7 +3115,7 @@ export default function App() {
     }
   }
 
-  async function handleSubmitTest(submittedAnswers) {
+  async function handleSubmitTest(submittedAnswers, tpq = {}) {
     // ── Grace window: if student exits within 60s with 0 answers, return the test credit ──
     // Prevents accidentally opening an exam from consuming a free test
     const answeredCount = Object.keys(submittedAnswers).length;
@@ -2527,18 +3159,39 @@ export default function App() {
       }
     });
     const accuracy = (correct + wrong) > 0 ? Math.round((correct / (correct + wrong)) * 100) : 0;
+    // Compute per-topic breakdown
+    const _tmap = {};
+    questions.forEach((q, i) => {
+      if (!_tmap[q.topic]) _tmap[q.topic] = { att: 0, cor: 0, wrong: 0 };
+      const ua = submittedAnswers[i];
+      if (ua === undefined) return;
+      _tmap[q.topic].att++;
+      if (ua === q.correct) _tmap[q.topic].cor++;
+      else _tmap[q.topic].wrong++;
+    });
+    const topicResults = Object.entries(_tmap).map(([topic, s]) => ({
+      topic, attempted: s.att, correct: s.cor, wrong: s.wrong,
+      accuracy: s.att > 0 ? Math.round((s.cor / s.att) * 100) : 0,
+    }));
+    const skipped = questions.length - (correct + wrong);
+    const marksEarned = correct * 5;
+    const negativeMarks = wrong * 1;
+    const optimisedScore = correct * 5;
+    setTimePerQ(tpq);
     try {
       await addDoc(collection(db, "tests"), {
         uid: user.uid,
-        email: user.email || null,          // stored for admin visibility — no join needed
+        email: user.email || null,
         displayName: user.displayName || null,
         mode: testConfig?.mode,
         subject: testConfig?.subject || "English",
-        totalScore: total,
-        correct, wrong, attempted: correct + wrong, accuracy, score: accuracy,
+        totalScore: total, correct, wrong, attempted: correct + wrong,
+        skipped, accuracy, score: accuracy,
+        marksEarned, negativeMarks, optimisedScore,
+        timePerQuestion: tpq,
+        topicResults,
         completedAt: serverTimestamp(),
-        questions,          // stored for past-exam review
-        answers: submittedAnswers, // stored for past-exam review
+        questions, answers: submittedAnswers,
       });
       await loadUserData(user);
     } catch(_) { /* non-blocking — results still show */ }
@@ -2563,17 +3216,18 @@ export default function App() {
     <React.Fragment>
       {toast && <Toast key={toast.key} message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
       {screen === "auth"       && <AuthScreen      onLogin={u => { setUser(u); loadUserData(u); setScreen("dashboard"); }} showToast={showToast} />}
-      {screen === "dashboard"  && <DashboardScreen user={user} userData={userData} testHistory={testHistory} onBeginTest={handleBeginTest} onReviewTest={handleReviewPastTest} onLogout={() => auth ? signOut(auth) : setScreen("auth")} showToast={showToast} subjects={SUBJECTS} showPaywallOverride={showPaywall} setShowPaywallOverride={setShowPaywall} />}
+      {screen === "dashboard"  && <DashboardScreen user={user} userData={userData} testHistory={testHistory} onBeginTest={handleBeginTest} onReviewTest={handleReviewPastTest} onViewAnalytics={() => setScreen("performance")} onLogout={() => auth ? signOut(auth) : setScreen("auth")} showToast={showToast} subjects={SUBJECTS} showPaywallOverride={showPaywall} setShowPaywallOverride={setShowPaywall} />}
       {screen === "generating" && <GeneratingScreen config={testConfig} />}
       {screen === "exam"       && <ExamScreen      questions={questions} config={testConfig} user={user} onSubmit={handleSubmitTest} showToast={showToast} />}
-      {screen === "results"    && <ResultsScreen   questions={questions} answers={answers} config={testConfig} user={user} testHistory={testHistory} onNewTest={() => setScreen("dashboard")} onReview={() => setScreen("review")} />}
+      {screen === "results"    && <ResultsScreen   questions={questions} answers={answers} config={testConfig} user={user} testHistory={testHistory} timePerQ={timePerQ} onNewTest={() => setScreen("dashboard")} onReview={() => setScreen("review")} onViewAnalytics={() => setScreen("performance")} />}
       {/* Feedback button — always visible when logged in */}
       {user && screen !== "auth" && screen !== "exam" && <FeedbackWidget user={user} />}
       {/* Star rating — shown once per login session */}
       {user && showRating && (screen === "results" || screen === "dashboard") && (
         <StarRatingModal user={user} onDismiss={() => setShowRating(false)} />
       )}
-      {screen === "review"     && <ReviewScreen    questions={questions} answers={answers} onBack={() => setScreen("results")} />}
+      {screen === "review"      && <ReviewScreen          questions={questions} answers={answers} onBack={() => setScreen("results")} />}
+      {screen === "performance" && <PerformanceDashboard  testHistory={testHistory} user={user} onBack={() => setScreen("dashboard")} />}
     </React.Fragment>
   );
 }
