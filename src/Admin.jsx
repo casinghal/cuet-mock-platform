@@ -476,10 +476,10 @@ function CacheBar({ mode, config, current }) {
 function CacheCommandCentre({ cacheStatus, filling, fillProgress, fillMode, fillAllCache, stopFill }) {
   const modes = [
     { key: "Mock",            label: "Eng Mock",   color: "#4338CA", bg: "#EEF2FF" },
-    { key: "QuickPractice",   label: "Eng QP",     color: "#059669", bg: "#ECFDF5" },
     { key: "GAT_Mock",        label: "GAT Mock",   color: "#DC2626", bg: "#FEF2F2" },
-    { key: "GAT_QP",          label: "GAT QP",     color: "#D97706", bg: "#FEF3C7" },
     { key: "Economics_Mock",  label: "Eco Mock",   color: "#7C3AED", bg: "#F5F3FF" },
+    { key: "QuickPractice",   label: "Eng QP",     color: "#059669", bg: "#ECFDF5" },
+    { key: "GAT_QP",          label: "GAT QP",     color: "#D97706", bg: "#FEF3C7" },
     { key: "Economics_QP",    label: "Eco QP",     color: "#0891B2", bg: "#ECFEFF" },
   ];
   const activeMode = fillProgress?.targetMode || (filling && !fillProgress?.targetMode ? "All" : null);
