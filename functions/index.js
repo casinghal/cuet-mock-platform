@@ -1764,7 +1764,7 @@ exports.triggerCacheWarm = functions
 
 // ─── 1. generateQuestions ────────────────────────────────────────────────────
 exports.generateQuestions = functions
-  .runWith({ timeoutSeconds: 60, memory: "256MB" }) // raised from 30s — cold start + Firestore reads can exceed 30s
+  .runWith({ timeoutSeconds: 120, memory: "256MB" }) // 120s — covers cache-miss live generation (Haiku 5-batch can reach 75s+ cold)
   .https.onRequest(async (req, res) => {
     setCORS(res);
     if (req.method === "OPTIONS") { res.status(204).send(""); return; }

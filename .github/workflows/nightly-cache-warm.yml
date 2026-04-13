@@ -1,6 +1,9 @@
 name: Nightly Cache Fill Engine
 
 on:
+  schedule:
+    - cron: '30 20 * * *'   # 2:00 AM IST (8:30 PM UTC)
+    - cron: '0 6 * * *'     # 11:30 AM IST (6:00 AM UTC)
   workflow_dispatch:
     inputs:
       reason:

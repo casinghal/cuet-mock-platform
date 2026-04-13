@@ -318,7 +318,7 @@ function PaywallModal({ user, onSuccess, onClose, subject }) {
             Unlock Full Access
           </h2>
           <p style={{ color: "var(--text-secondary)", fontSize: 14, lineHeight: 1.6 }}>
-            You have used all 4 free Mock Exams. Unlock unlimited access for all CUET subjects 2026.
+            You have used all 4 free {subject === "GAT" ? "GAT" : subject === "Economics" ? "Economics" : "English"} Mock Exams. Unlock unlimited access across all CUET subjects till 30 June 2026.
           </p>
         </div>
         <div style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 10, padding: "16px 20px", marginBottom: 24 }}>
@@ -922,8 +922,8 @@ function AuthScreen({ onLogin, showToast }) {
           <div style={{ ...S.trialBadge, marginTop: 4 }}>
             <span style={S.trialIcon}>&#127381;</span>
             <div style={S.trialText}>
-              <span style={S.trialStrong}>4 full Mock Exams free.</span>{" "}
-              Quick Practice free forever. Unlimited Mock Exams at ₹199 till 30 June.
+              <span style={S.trialStrong}>4 free Mock Exams per subject.</span>{" "}
+              Quick Practice free forever. Unlimited access at ₹199 till 30 June.
             </div>
           </div>
 
@@ -933,7 +933,7 @@ function AuthScreen({ onLogin, showToast }) {
               "Never the same paper twice",
               "Exact 50-question format, +5/−1 marking",
               "Topic mix calibrated to NTA’s declared weightage",
-              "First 4 tests free — no card required",
+              "4 free Mock Exams per subject — no card required",
             ].filter((_, i) => !isMobile || i < 2).map((v) => (
               <div key={v} className="value-stagger" style={{ display:"flex", alignItems:"flex-start", gap:8, marginBottom:7 }}>
                 <span style={{ color:"#6EE7B7", fontWeight:700, fontSize:13, marginTop:1, flexShrink:0 }}>✓</span>
@@ -1275,7 +1275,7 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onReviewTes
             { label: "Tests Taken",  val: activeSubject === "GAT" ? gatTestsUsed : activeSubject === "Economics" ? econTestsUsed : testsUsed, sub: unlocked ? "Unlimited" : `${testsLeft} free left`, accent: "var(--indigo)" },
             { label: "Avg. Score",   val: avgScore != null ? `${avgScore}%` : "—", sub: "across all tests", accent: "#D97706" },
             { label: "Best Score",   val: bestScore != null ? `${bestScore}%` : "—", sub: "personal best", accent: "var(--success)" },
-            { label: "Access",       val: unlocked ? "Pro" : "Free", sub: unlocked ? "Unlimited till 30 Jun" : `${testsLeft} of 4 Mock Exams free`, accent: unlocked ? "var(--success)" : "var(--indigo)" },
+            { label: "Access",       val: unlocked ? "Pro" : "Free", sub: unlocked ? "Unlimited till 30 Jun" : `${testsLeft} of 4 free (this subject)`, accent: unlocked ? "var(--success)" : "var(--indigo)" },
           ].map(s => (
             <div key={s.label} className="stat-strip" style={{ borderLeft: `3px solid ${s.accent}`, padding: "10px 14px" }}>
               <div style={{ fontSize: 18, fontWeight: 700, color: s.label === "Access" && unlocked ? "var(--success)" : "var(--navy)", fontFamily: "var(--font-mono)", lineHeight: 1 }}>{s.val}</div>
@@ -1560,7 +1560,7 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
         <span className="nta-logo">Vantiq <span>CUET</span></span>
         <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 10 : 20, minWidth: 0 }}>
           {isTimed && (
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: isMobile ? 14 : 16, fontWeight: 700, color: warn ? "#FCD34D" : "#fff", background: warn ? "rgba(220,38,38,.2)" : "rgba(255,255,255,.1)", padding: "4px 8px", borderRadius: 6, transition: "all .3s", flexShrink: 0 }}>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: isMobile ? 14 : 16, fontWeight: 700, color: warn ? "#FCA5A5" : "#fff", background: warn ? "rgba(220,38,38,.25)" : "rgba(255,255,255,.1)", padding: "4px 8px", borderRadius: 6, transition: "all .3s", flexShrink: 0 }}>
               &#9201; {fmtTimer(timeLeft)}
             </div>
           )}
@@ -1658,7 +1658,7 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
 
       <div className="exam-footer" style={{ borderTop: "1px solid var(--border)", background: "#fff", padding: isMobile ? "8px 12px" : "12px 32px", display: "flex", alignItems: "center", gap: isMobile ? 6 : 12, flexShrink: 0, position: isMobile ? "sticky" : "relative", bottom: 0, zIndex: 10, paddingBottom: isMobile ? "calc(8px + env(safe-area-inset-bottom))" : "12px" }}>
         <button className="btn-amber" onClick={() => setMarked(p => { const n = new Set(p); n.has(current) ? n.delete(current) : n.add(current); return n; })}>
-          {marked.has(current) ? "✓ Marked" : "Mark"}
+          {marked.has(current) ? "✓ Marked" : isMobile ? "Mark" : "Mark for Review"}
         </button>
         {isMobile && (
           <button onClick={() => setShowPalette(true)} style={{ height: 32, padding: "0 10px", border: "1.5px solid var(--border)", borderRadius: 6, background: "#fff", fontSize: 11, fontWeight: 600, color: "var(--navy)", cursor: "pointer", fontFamily: "var(--font-body)", whiteSpace: "nowrap" }}>
