@@ -40,12 +40,12 @@ const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || "";
 
 // ─── Cache config ─────────────────────────────────────────────────────────────
 const CACHE_CONFIG = {
-  Mock:            { size: 120, threshold: 100, label: "Mock Cache" },
-  QuickPractice:   { size: 200, threshold: 160, label: "QP Cache" },
-  GAT_Mock:        { size: 80,  threshold: 60,  label: "GAT Mock Cache" },
-  GAT_QP:          { size: 150, threshold: 120, label: "GAT QP Cache" },
-  Economics_Mock:  { size: 40,  threshold: 30,  label: "Economics Mock Cache" },
-  Economics_QP:    { size: 150, threshold: 120, label: "Economics QP Cache" },
+  Mock:            { size: 20,  threshold: 12,  label: "Mock Cache" },
+  QuickPractice:   { size: 30,  threshold: 20,  label: "QP Cache" },
+  GAT_Mock:        { size: 20,  threshold: 12,  label: "GAT Mock Cache" },
+  GAT_QP:          { size: 30,  threshold: 20,  label: "GAT QP Cache" },
+  Economics_Mock:  { size: 20,  threshold: 12,  label: "Economics Mock Cache" },
+  Economics_QP:    { size: 30,  threshold: 20,  label: "Economics QP Cache" },
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -475,23 +475,19 @@ function CacheBar({ mode, config, current }) {
 // ─── Cache Command Centre ─────────────────────────────────────────────────────
 function CacheCommandCentre({ cacheStatus, filling, fillProgress, fillMode, fillAllCache, stopFill }) {
   const modes = [
-    { key: "Mock",          label: "Eng Mock",  color: "#4338CA", bg: "#EEF2FF" },
-    { key: "QuickPractice", label: "Eng QP",    color: "#059669", bg: "#ECFDF5" },
-    { key: "GAT_Mock",      label: "GAT Mock",  color: "#DC2626", bg: "#FEF2F2" },
-    { key: "GAT_QP",        label: "GAT QP",    color: "#D97706", bg: "#FEF3C7" },
+    { key: "Mock",            label: "Eng Mock",   color: "#4338CA", bg: "#EEF2FF" },
+    { key: "GAT_Mock",        label: "GAT Mock",   color: "#DC2626", bg: "#FEF2F2" },
+    { key: "Economics_Mock",  label: "Eco Mock",   color: "#7C3AED", bg: "#F5F3FF" },
+    { key: "QuickPractice",   label: "Eng QP",     color: "#059669", bg: "#ECFDF5" },
+    { key: "GAT_QP",          label: "GAT QP",     color: "#D97706", bg: "#FEF3C7" },
+    { key: "Economics_QP",    label: "Eco QP",     color: "#0891B2", bg: "#ECFEFF" },
   ];
   const activeMode = fillProgress?.targetMode || (filling && !fillProgress?.targetMode ? "All" : null);
   const elapsed = fillProgress?.elapsed ?? 0;
   const elapsedStr = elapsed >= 60 ? `${Math.floor(elapsed/60)}m ${elapsed%60}s` : `${elapsed}s`;
 
   const getNeeded = (key) => cacheStatus?.[key]?.needed ?? 0;
-  const getCurrent = (key) => {
-    if (filling && fillProgress) {
-      if (key === "Mock" || key === "GAT_Mock") return fillProgress.mock ?? cacheStatus?.[key]?.current ?? 0;
-      if (key === "QuickPractice" || key === "GAT_QP") return fillProgress.qp ?? cacheStatus?.[key]?.current ?? 0;
-    }
-    return cacheStatus?.[key]?.current ?? 0;
-  };
+  const getCurrent = (key) => cacheStatus?.[key]?.current ?? 0;
 
   return (
     <div style={{ background:"#fff", borderBottom:"2px solid #E2E8F0" }}>
@@ -520,8 +516,8 @@ function CacheCommandCentre({ cacheStatus, filling, fillProgress, fillMode, fill
         </div>
       </div>
 
-      {/* 4-mode grid */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)" }}>
+      {/* 6-mode grid: 3 cols × 2 rows — Eng / GAT / Economics */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)" }}>
         {modes.map((m, i) => {
           const total   = CACHE_CONFIG[m.key]?.size ?? 100;
           const current = getCurrent(m.key);
@@ -535,7 +531,7 @@ function CacheCommandCentre({ cacheStatus, filling, fillProgress, fillMode, fill
           const sBg     = isFull?"#ECFDF5": isActive?m.bg: isCrit?"#FEF2F2":"#F8FAFC";
           const sCol    = isFull?"#059669": isActive?m.color: isCrit?"#DC2626":"#64748B";
           return (
-            <div key={m.key} style={{ padding:"10px 14px", borderRight: i<3?"1px solid #F1F5F9":"none", background: isActive?`${m.bg}88`:"#fff", transition:"background .3s" }}>
+            <div key={m.key} style={{ padding:"10px 14px", borderRight: i%3<2?"1px solid #F1F5F9":"none", borderBottom: i<3?"1px solid #F1F5F9":"none", background: isActive?`${m.bg}88`:"#fff", transition:"background .3s" }}>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5 }}>
                 <span style={{ fontSize:11, fontWeight:700, color:"#0F2747" }}>{m.label}</span>
                 <span style={{ fontSize:9, fontWeight:800, letterSpacing:".06em", textTransform:"uppercase", background:sBg, color:sCol, padding:"1px 6px", borderRadius:10 }}>{status}</span>
@@ -563,16 +559,22 @@ function CacheCommandCentre({ cacheStatus, filling, fillProgress, fillMode, fill
 
       {/* Detail bar when filling */}
       {filling && fillProgress && !fillProgress.locked && (
-        <div style={{ padding:"7px 20px", background:"#F8FAFF", borderTop:"1px solid #E2E8F0", display:"flex", alignItems:"center", gap:20, flexWrap:"wrap" }}>
+        <div style={{ padding:"7px 20px", background:"#F8FAFF", borderTop:"1px solid #E2E8F0", display:"flex", alignItems:"center", gap:16, flexWrap:"wrap" }}>
           <span style={{ fontSize:11, color:"#64748B" }}>Elapsed: <strong style={{ fontFamily:"'JetBrains Mono',monospace", color:"#0F2747" }}>{elapsedStr}</strong></span>
-          {fillProgress.mock !== undefined && <span style={{ fontSize:11, color:"#64748B" }}>Mock: <strong style={{ fontFamily:"'JetBrains Mono',monospace", color:"#4338CA" }}>{fillProgress.mock}/{fillProgress.mockTarget ?? CACHE_CONFIG.Mock.size}</strong></span>}
-          {fillProgress.qp  !== undefined && <span style={{ fontSize:11, color:"#64748B" }}>QP: <strong style={{ fontFamily:"'JetBrains Mono',monospace", color:"#059669" }}>{fillProgress.qp}/{fillProgress.qpTarget ?? CACHE_CONFIG.QuickPractice.size}</strong></span>}
-          <div style={{ flex:1, minWidth:120, height:4, background:"#E2E8F0", borderRadius:3, overflow:"hidden" }}>
-            <div style={{ height:"100%", background:"linear-gradient(90deg,#4338CA,#059669)", borderRadius:3,
-              width:`${Math.round(((fillProgress.mock??0)+(fillProgress.qp??0))/((fillProgress.mockTarget??120)+(fillProgress.qpTarget??200))*100)}%`,
-              transition:"width 2s ease" }}/>
-          </div>
-          <span style={{ fontSize:10, color:"#94A3B8" }}>updates every 15s</span>
+          {fillProgress.targetMode
+            ? <span style={{ fontSize:11, color:"#64748B" }}>Filling: <strong style={{ fontFamily:"'JetBrains Mono',monospace", color:"#4338CA" }}>{fillProgress.targetMode}</strong> — <strong style={{ fontFamily:"'JetBrains Mono',monospace" }}>{cacheStatus?.[fillProgress.targetMode]?.current ?? 0}/{CACHE_CONFIG[fillProgress.targetMode]?.size ?? 20}</strong></span>
+            : [
+                { key:"Mock", label:"Eng Mock", col:"#4338CA" },
+                { key:"GAT_Mock", label:"GAT Mock", col:"#DC2626" },
+                { key:"Economics_Mock", label:"Eco Mock", col:"#7C3AED" },
+                { key:"QuickPractice", label:"Eng QP", col:"#059669" },
+                { key:"GAT_QP", label:"GAT QP", col:"#D97706" },
+                { key:"Economics_QP", label:"Eco QP", col:"#0891B2" },
+              ].map(m => (
+                <span key={m.key} style={{ fontSize:11, color:"#64748B" }}>{m.label}: <strong style={{ fontFamily:"'JetBrains Mono',monospace", color:m.col }}>{cacheStatus?.[m.key]?.current ?? 0}/{CACHE_CONFIG[m.key]?.size ?? 20}</strong></span>
+              ))
+          }
+          <span style={{ fontSize:10, color:"#94A3B8", marginLeft:"auto" }}>updates every 15s</span>
         </div>
       )}
       {filling && fillProgress?.locked && (
@@ -861,20 +863,14 @@ export default function AdminDashboard() {
       const elapsed = Math.round((Date.now() - fillStartRef.current) / 1000);
       const status = await loadCacheStatus(true); // silent=true — no log spam during polling
       if (status) {
+        setFillProgress({ elapsed, locked: status.locked });
+
+        // Done when all 6 modes are at target, or stale/timeout
+        const allFull = ["Mock","QuickPractice","GAT_Mock","GAT_QP","Economics_Mock","Economics_QP"]
+          .every(k => (status[k]?.current ?? 0) >= (CACHE_CONFIG[k]?.size ?? 20));
+
         const mCurrent = status.Mock?.current ?? 0;
         const qCurrent = status.QuickPractice?.current ?? 0;
-        const mFull = mCurrent >= CACHE_CONFIG.Mock.size;
-        const qFull = qCurrent >= CACHE_CONFIG.QuickPractice.size;
-
-        setFillProgress({
-          mock: mCurrent,
-          qp: qCurrent,
-          mockTarget: CACHE_CONFIG.Mock.size,
-          qpTarget: CACHE_CONFIG.QuickPractice.size,
-          elapsed,
-          locked: status.locked,
-        });
-
         const prevMock = fillProgress?.mock;
         const prevQp = fillProgress?.qp;
         if (mCurrent === prevMock && qCurrent === prevQp) {
@@ -883,11 +879,11 @@ export default function AdminDashboard() {
           stalePollsRef.current = 0;
         }
 
-        if ((mFull && qFull) || stalePollsRef.current >= 8 || elapsed > 570) {
+        if (allFull || stalePollsRef.current >= 8 || elapsed > 570) {
           clearInterval(fillPollRef.current);
           setFilling(false);
           setFillProgress(null);
-          if (mFull && qFull) addLog("Cache full — all modes at target", "success");
+          if (allFull) addLog("Cache full — all modes at target", "success");
           else addLog("Fill cycle ended — check status", "warn");
         }
       }
@@ -922,7 +918,7 @@ export default function AdminDashboard() {
       if (status) {
         const cur = status[mode]?.current ?? 0;
         const tgt = CACHE_CONFIG[mode]?.size ?? 80;
-        setFillProgress({ mock: cur, qp: cur, mockTarget: tgt, qpTarget: tgt, elapsed, targetMode: mode });
+        setFillProgress({ elapsed, targetMode: mode });
         if (cur >= tgt || elapsed > 590) {
           clearInterval(fillPollRef.current);
           setFilling(false);
@@ -962,7 +958,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (authed && fbUser) {
       loadData();
-      checkAndFill();
+      // NOTE: auto-fill removed — all cache fills are manual only via Fill buttons
       setTimeout(() => runAnomalyDetection(), 4000);
     } else if (authed && !fbUser && !fbLoading) {
       loadCacheStatus();
@@ -972,7 +968,7 @@ export default function AdminDashboard() {
   // ── Auto-refresh every 60s — full dashboard data ──────────────────────────
   // If fill is active: only refresh cache status + presence (lightweight, won't disrupt fill)
   // If fill is idle: full loadData so KPIs, students, tests all update
-  const [nextRefreshIn, setNextRefreshIn] = useState(60);
+  const [nextRefreshIn, setNextRefreshIn] = useState(300);
   const refreshCountdownRef = useRef(null);
 
   useEffect(() => {
@@ -982,10 +978,10 @@ export default function AdminDashboard() {
       loadCacheStatus(true);
       if (!filling) loadData();
       setNextRefreshIn(60);
-    }, 60000);
+    }, 300000);
     // Countdown ticker
     refreshCountdownRef.current = setInterval(() => {
-      setNextRefreshIn(n => n > 0 ? n - 1 : 60);
+      setNextRefreshIn(n => n > 0 ? n - 1 : 300);
     }, 1000);
     return () => {
       clearInterval(statusPollRef.current);

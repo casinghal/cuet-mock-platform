@@ -15,7 +15,7 @@ import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 if (!document.getElementById("cuet-fonts")) {
   const l = document.createElement("link");
   l.id = "cuet-fonts"; l.rel = "stylesheet";
-  l.href = "https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=DM+Serif+Display:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap";
+  l.href = "https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=DM+Serif+Display:ital@0;1&family=JetBrains+Mono:wght@400;500&family=Poppins:wght@400;500;600;700&display=swap";
   document.head.appendChild(l);
 }
 
@@ -76,7 +76,7 @@ button{cursor:pointer;border:none;outline:none;font-family:var(--font-body);}
 .topic-bar{width:0%;transition:width 1.1s cubic-bezier(0.25,0.46,0.45,0.94);}
 .pbar-track{width:100%;height:4px;background:#E0E7FF;border-radius:2px;overflow:hidden;}
 .pbar-fill{height:100%;background:var(--indigo);border-radius:2px;animation:indeterminate 1.6s ease-in-out infinite;transform-origin:left;}
-.option-box{display:flex;align-items:flex-start;gap:12px;padding:14px 16px;border:1.5px solid var(--border);border-radius:4px;cursor:pointer;transition:border-color .12s,background .12s;background:#fff;}
+.option-box{display:flex;align-items:flex-start;gap:12px;padding:12px 16px;border:1.5px solid var(--border);border-radius:4px;cursor:pointer;transition:border-color .12s,background .12s;background:#fff;}
 .option-box:hover{border-color:var(--indigo-light);background:#EEF2FF;}
 .option-box.selected{border-color:var(--indigo);background:#EEF2FF;}
 .option-box.correct{border-color:var(--success);background:#ECFDF5;}
@@ -318,7 +318,7 @@ function PaywallModal({ user, onSuccess, onClose, subject }) {
             Unlock Full Access
           </h2>
           <p style={{ color: "var(--text-secondary)", fontSize: 14, lineHeight: 1.6 }}>
-            You have used all 4 free Mock Exams. Unlock unlimited access for all CUET subjects 2026.
+            You have used all 4 free {subject === "GAT" ? "GAT" : subject === "Economics" ? "Economics" : "English"} Mock Exams. Unlock unlimited access across all CUET subjects till 30 June 2026.
           </p>
         </div>
         <div style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 10, padding: "16px 20px", marginBottom: 24 }}>
@@ -376,7 +376,7 @@ function PaywallModal({ user, onSuccess, onClose, subject }) {
 const SUBJECTS = [
   { name: "English (101)",               live: true  },
   { name: "General Aptitude Test (GAT)", live: true  }, // GAT is live
-  { name: "Economics (118)",             live: false }, // flip to true after cache filled + reviewed
+  { name: "Economics (118)",             live: true  }, // LIVE — Economics IED engine deployed
 ];
 
 function AuthScreen({ onLogin, showToast }) {
@@ -392,6 +392,9 @@ function AuthScreen({ onLogin, showToast }) {
     "Every question reflects the current NTA exam pattern.",
     "Built fresh for CUET 2026 — not last year's coaching material.",
     "The platform reads the syllabus. You take the test.",
+    "Economics 2026 has a brand-new IED section. We cover it. No one else does yet.",
+    "Indian Economic Development is new in CUET 2026 — no past papers exist anywhere. We built them.",
+    "IED question bank refreshed every week. Be the student who prepared while others guessed.",
   ];
   const [hookIdx,   setHookIdx]   = useState(0);
   const [hookText,  setHookText]  = useState("");
@@ -426,7 +429,9 @@ function AuthScreen({ onLogin, showToast }) {
     if (!snap.exists()) {
       await setDoc(ref, {
         uid: user.uid, email: user.email, displayName: user.displayName,
-        photoURL: user.photoURL, testsUsed: 0, createdAt: serverTimestamp(),
+        photoURL: user.photoURL, createdAt: serverTimestamp(),
+        // testsUsed intentionally omitted — Firestore create rule blocks it;
+        // CF increments via admin SDK on test start
       });
     } else {
       const data = snap.data();
@@ -487,10 +492,6 @@ function AuthScreen({ onLogin, showToast }) {
     { icon: "✨", title: "Lifetime Free Mock Papers", desc: "15-question practice papers — free forever, no card needed, no limits. Test yourself daily." },
     { icon: "✅", title: "Exact NTA Pattern",        desc: "+5 correct, −1 wrong. Same interface, same marking, same pressure as the real exam. Not a simulation — a replica." },
   ];
-
-  // Recency timestamp — simulated; in production pull from Firestore questionCache.createdAt
-  const recencyMins = [2,3,4,5,3,6,2,4][Math.floor(Date.now()/60000) % 8];
-  const recencyCount = (820 + ((Math.floor(Date.now()/3600000)) % 80)).toLocaleString("en-IN");
 
   // IntersectionObserver for stagger animations
   useEffect(() => {
@@ -749,7 +750,7 @@ function AuthScreen({ onLogin, showToast }) {
             }}>
               <span style={{ width:6, height:6, borderRadius:"50%", background:"#6EE7B7",
                 boxShadow:"0 0 6px #6EE7B7", display:"inline-block" }} />
-              English (101) + GAT (501) Live Now
+              English (101) + GAT (501) + Economics (118) Live Now
             </div>
 
             {/* Headline */}
@@ -770,7 +771,7 @@ function AuthScreen({ onLogin, showToast }) {
                 { num:"50Q", label:"Per Paper" },
                 { num:"+5/−1", label:"NTA Marking" },
                 { num:"60min", label:"Timed" },
-                { num:recencyCount, label:"Tests today", live:true },
+                { num:"3", label:"Subjects live" },
               ].map(p => (
                 <div key={p.label} style={{ display:"flex", flexDirection:"column", gap:2, flexShrink:0 }}>
                   <span style={{ fontFamily:"var(--font-mono)", fontSize:20, fontWeight:700,
@@ -812,7 +813,7 @@ function AuthScreen({ onLogin, showToast }) {
         <div style={S.hero}>
           <div style={S.eyebrow} className="eyebrow-live">
             <span style={S.dot} />
-            Continuously updated · English (101) + GAT (501) Live Now
+            Continuously updated · English (101) + GAT (501) + Economics (118) Live Now
           </div>
 
           <h1 style={S.h1}>
@@ -831,7 +832,7 @@ function AuthScreen({ onLogin, showToast }) {
               { num: "6", label: "Topics Covered" },
               { num: "+5/−1", label: "NTA Marking" },
               { num: "60min", label: "Timed Exam" },
-              { num: recencyCount, label: "Papers today", live: true },
+              { num: "3", label: "Subjects live" },
             ].map(p => (
               <div key={p.label} style={{ ...S.proofItem }} className="proof-stagger">
                 <span style={{ ...S.proofNum, ...(p.live ? { color:"#6EE7B7" } : {}) }}>{p.num}</span>
@@ -860,57 +861,35 @@ function AuthScreen({ onLogin, showToast }) {
             ))}
           </div>
 
-          {/* Subjects — CUET-LIVE-PREMIUM: Economics "preparing" shimmer state */}
-          <div style={S.subjectLabel}>Subjects on this platform</div>
-          <div style={S.subjectChips}>
-            {subjects.map(s => {
-              const isEcon = s.name.includes("Economics");
-              return (
-                <span key={s.name}
-                  className={isEcon ? "chip-prep-shimmer" : ""}
-                  style={s.live ? S.chipLive : {
-                    ...S.chipSoon,
-                    ...(isEcon ? {
-                      background:"rgba(99,102,241,0.08)",
-                      border:"1px solid rgba(99,102,241,0.2)",
-                      color:"rgba(255,255,255,0.4)",
-                    } : {}),
-                  }}>
-                  {s.live && <span className="live-pulse-dot" style={{ width:6, height:6, borderRadius:"50%", background:"#6EE7B7", display:"inline-block" }} />}
-                  {s.name}
-                  {!s.live && <span style={{ fontSize:10, marginLeft:4, opacity:0.6 }}>{isEcon ? "preparing" : "soon"}</span>}
-                </span>
-              );
-            })}
-          </div>
         </div>
         )}
 
         {/* ── Right: Auth Card ── */}
         <div style={S.authCard}>
 
+          {/* ── Subject Status Block — above typewriter ── */}
+          <div style={{ background:"#1C1C1E", borderRadius:12, padding:"14px 16px", marginBottom: isMobile ? 10 : 14, border:"1px solid rgba(255,255,255,0.08)" }}>
+            <div style={{ fontSize:9, fontWeight:700, letterSpacing:"0.12em", textTransform:"uppercase", color:"rgba(255,255,255,0.35)", marginBottom:10, fontFamily:"'Poppins', sans-serif" }}>Live on this platform</div>
+            <div style={{ display:"flex", flexDirection:"column", gap:7 }}>
+              {[
+                { code:"101", name:"English", section:"Section IA — Languages" },
+                { code:"501", name:"General Aptitude Test", section:"Section III — GAT" },
+                { code:"118", name:"Economics", section:"Section II — Domain" },
+              ].map(s => (
+                <div key={s.code} style={{ display:"flex", alignItems:"center", gap:10 }}>
+                  <span style={{ width:6, height:6, borderRadius:"50%", background:"#6EE7B7", flexShrink:0, boxShadow:"0 0 5px rgba(110,231,183,0.6)", animation:"livePulse 2.4s ease-in-out infinite" }} />
+                  <span style={{ fontFamily:"'Poppins', sans-serif", fontSize:12, fontWeight:600, color:"#FFFFFF", letterSpacing:"0.01em" }}>{s.name}</span>
+                  <span style={{ fontFamily:"'Poppins', sans-serif", fontSize:10, color:"rgba(255,255,255,0.35)", marginLeft:"auto", letterSpacing:"0.03em" }}>{s.code}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
           {/* ── Typewriter hook — always shown, compact on mobile ── */}
           <div style={{ minHeight: isMobile ? 42 : 52, marginBottom: isMobile ? 12 : 18, padding: isMobile ? "8px 12px" : "10px 14px", background:"rgba(251,191,36,0.07)", border:"1px solid rgba(251,191,36,0.22)", borderRadius:10, borderLeft:"3px solid #FBBF24" }}>
             <span className="hook-text" style={{ fontSize: isMobile ? 12 : 13, fontWeight:600, color:"#FCD34D", lineHeight:1.5, letterSpacing:0.1, display:"inline" }}>{hookText}</span>
             <span className="hook-caret" />
           </div>
-
-          {/* Heading — always shown */}
-          <h2 style={{ ...S.authHeading, marginBottom: isMobile ? 4 : undefined }}>Try a Free Mock Test Now</h2>
-          <p style={{ ...S.authSub, marginBottom: isMobile ? 14 : undefined }}>
-            No coaching. No content. Just the real exam — simulated.
-          </p>
-
-          {/* Recency strip — desktop only (mobile hero already shows it) */}
-          {!isMobile && (
-          <div className="recency-pop" style={{ display:"flex", alignItems:"center", gap:8, marginBottom:16, padding:"7px 12px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:8 }}>
-            <span className="live-pulse-dot" style={{ width:6, height:6, borderRadius:"50%", background:"#6EE7B7", display:"inline-block", flexShrink:0 }} />
-            <span style={{ fontFamily:"var(--font-mono)", fontSize:11, color:"rgba(255,255,255,0.42)", letterSpacing:"0.2px" }}>
-              Last paper generated: <strong style={{ color:"rgba(110,231,183,0.8)", fontWeight:600 }}>{recencyMins} min ago</strong>
-              {" · "}<strong style={{ color:"rgba(110,231,183,0.7)", fontWeight:600 }}>{recencyCount}</strong> tests today
-            </span>
-          </div>
-          )}
 
           {/* ── GOOGLE BUTTON — first visible CTA, no scroll required ── */}
           <button
@@ -928,8 +907,8 @@ function AuthScreen({ onLogin, showToast }) {
           <div style={{ ...S.trialBadge, marginTop: 4 }}>
             <span style={S.trialIcon}>&#127381;</span>
             <div style={S.trialText}>
-              <span style={S.trialStrong}>4 full Mock Exams free.</span>{" "}
-              Quick Practice free forever. Unlimited Mock Exams at ₹199 till 30 June.
+              <span style={S.trialStrong}>4 free Mock Exams per subject.</span>{" "}
+              Quick Practice free forever. Unlimited access at ₹199 till 30 June.
             </div>
           </div>
 
@@ -939,7 +918,7 @@ function AuthScreen({ onLogin, showToast }) {
               "Never the same paper twice",
               "Exact 50-question format, +5/−1 marking",
               "Topic mix calibrated to NTA’s declared weightage",
-              "First 4 tests free — no card required",
+              "4 free Mock Exams per subject — no card required",
             ].filter((_, i) => !isMobile || i < 2).map((v) => (
               <div key={v} className="value-stagger" style={{ display:"flex", alignItems:"flex-start", gap:8, marginBottom:7 }}>
                 <span style={{ color:"#6EE7B7", fontWeight:700, fontSize:13, marginTop:1, flexShrink:0 }}>✓</span>
@@ -1047,8 +1026,73 @@ function GoogleIcon() {
     </svg>
   );
 }
+
+// ── IED Disclaimer Banner — typewriter, shown on Economics dashboard tab ─────
+// Informs students that IED is new in 2026 with no past papers.
+// Also serves as a hook — "first platform to cover this section."
+function IEDDisclaimerBanner() {
+  const LINES = [
+    "Indian Economic Development is brand new in CUET 2026 — no past papers exist. We built the questions from scratch.",
+    "No other platform covers IED yet. Vantiq is first. Every question is purpose-built for CUET 2026.",
+    "IED questions are reviewed and refreshed every week as the exam pattern evolves.",
+    "Getting ahead on IED now is the smartest move — most students are skipping it. Don't be one of them.",
+  ];
+  const [idx,   setIdx]   = React.useState(0);
+  const [text,  setText]  = React.useState("");
+  const [phase, setPhase] = React.useState("typing");
+
+  React.useEffect(() => {
+    const full = LINES[idx];
+    let t;
+    if (phase === "typing") {
+      if (text.length < full.length) {
+        t = setTimeout(() => setText(full.slice(0, text.length + 1)), 28);
+      } else {
+        t = setTimeout(() => setPhase("pausing"), 3200);
+      }
+    } else if (phase === "pausing") {
+      t = setTimeout(() => setPhase("deleting"), 400);
+    } else {
+      if (text.length > 0) {
+        t = setTimeout(() => setText(text.slice(0, -1)), 14);
+      } else {
+        setIdx(i => (i + 1) % LINES.length);
+        setPhase("typing");
+      }
+    }
+    return () => clearTimeout(t);
+  }, [text, phase, idx]);
+
+  return (
+    <div style={{
+      padding: "10px 18px 10px 16px",
+      borderBottom: "1px solid rgba(99,102,241,0.14)",
+      background: "linear-gradient(90deg, rgba(99,102,241,0.06) 0%, rgba(99,102,241,0.02) 100%)",
+      borderLeft: "3px solid var(--indigo)",
+      display: "flex", alignItems: "flex-start", gap: 10,
+    }}>
+      <span style={{ fontSize: 14, lineHeight: 1, marginTop: 2, flexShrink: 0 }}>📘</span>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".09em", textTransform: "uppercase", color: "var(--indigo)", marginBottom: 3 }}>
+          New in CUET 2026 · Indian Economic Development
+        </div>
+        <div style={{ fontSize: 12, color: "var(--navy)", fontWeight: 500, lineHeight: 1.5, minHeight: 18 }}>
+          {text}<span style={{
+            display: "inline-block", width: 1.5, height: "1em",
+            background: "var(--indigo)", marginLeft: 1.5, verticalAlign: "text-bottom",
+            animation: "caretBlink 0.8s step-end infinite",
+          }} />
+        </div>
+      </div>
+      <div style={{ fontSize: 9, fontWeight: 700, color: "var(--success)", background: "#ECFDF5", border: "1px solid #A7F3D0", padding: "3px 8px", borderRadius: 20, flexShrink: 0, whiteSpace: "nowrap" }}>
+        Refreshed weekly
+      </div>
+    </div>
+  );
+}
+
 // ── DASHBOARD SCREEN ──────────────────────────────────────────────────────────
-function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, showToast, subjects, showPaywallOverride, setShowPaywallOverride }) {
+function DashboardScreen({ user, userData, testHistory, onBeginTest, onReviewTest, onLogout, showToast, subjects, showPaywallOverride, setShowPaywallOverride }) {
   const [mode,          setMode]          = useState(null);   // null = no selection yet
   const [activeSubject, setActiveSubject] = useState(null);   // null = no selection yet
   // showPaywall can be triggered from inside (handleBegin gate) or outside (handleBeginTest 402 catch)
@@ -1169,7 +1213,7 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
   }
 
   // Section label and subject badge
-  const subjectBadge = activeSubject === "GAT" ? "General Aptitude Test (501)" : activeSubject === "Economics" ? "Economics (218)" : "English (101)";
+  const subjectBadge = activeSubject === "GAT" ? "General Aptitude Test (501)" : activeSubject === "Economics" ? "Economics (118)" : "English (101)";
   const sectionLabel = activeSubject === "GAT"
     ? "Your Practice Summary — CUET GAT (501) 2026"
     : activeSubject === "Economics"
@@ -1216,7 +1260,7 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
             { label: "Tests Taken",  val: activeSubject === "GAT" ? gatTestsUsed : activeSubject === "Economics" ? econTestsUsed : testsUsed, sub: unlocked ? "Unlimited" : `${testsLeft} free left`, accent: "var(--indigo)" },
             { label: "Avg. Score",   val: avgScore != null ? `${avgScore}%` : "—", sub: "across all tests", accent: "#D97706" },
             { label: "Best Score",   val: bestScore != null ? `${bestScore}%` : "—", sub: "personal best", accent: "var(--success)" },
-            { label: "Access",       val: unlocked ? "Pro" : "Free", sub: unlocked ? "Unlimited till 30 Jun" : `${testsLeft} of 4 Mock Exams free`, accent: unlocked ? "var(--success)" : "var(--indigo)" },
+            { label: "Access",       val: unlocked ? "Pro" : "Free", sub: unlocked ? "Unlimited till 30 Jun" : `${testsLeft} of 4 free (this subject)`, accent: unlocked ? "var(--success)" : "var(--indigo)" },
           ].map(s => (
             <div key={s.label} className="stat-strip" style={{ borderLeft: `3px solid ${s.accent}`, padding: "10px 14px" }}>
               <div style={{ fontSize: 18, fontWeight: 700, color: s.label === "Access" && unlocked ? "var(--success)" : "var(--navy)", fontFamily: "var(--font-mono)", lineHeight: 1 }}>{s.val}</div>
@@ -1227,6 +1271,9 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
         </div>
 
         <div className="card" style={{ padding: 0, marginBottom: 20, overflow: "hidden" }}>
+
+          {/* ── IED Disclaimer Banner — shown only when Economics subject is active ── */}
+          {activeSubject === "Economics" && <IEDDisclaimerBanner />}
 
           {/* ── Card header ─────────────────────────────────────────── */}
           <div style={{ padding: "11px 18px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -1247,7 +1294,7 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
             <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 14 }}>
               {liveSubjects.map(s => {
                 const key   = s.name.includes("GAT") ? "GAT" : s.name.includes("Economics") ? "Economics" : "English";
-                const label = s.name.includes("GAT") ? "General Aptitude Test (501)" : s.name.includes("Economics") ? "Economics (218)" : "English (101)";
+                const label = s.name.includes("GAT") ? "General Aptitude Test (501)" : s.name.includes("Economics") ? "Economics (118)" : "English (101)";
                 const isActive = activeSubject === key;
                 return (
                   <button key={key} onClick={() => handleSubjectChange(key)} style={{
@@ -1263,10 +1310,6 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
                   </button>
                 );
               })}
-              {/* Economics coming soon chip */}
-              <span style={{ padding: "5px 14px", borderRadius: 20, border: "1.5px solid #F1F5F9", background: "#F8FAFC", color: "#CBD5E1", fontWeight: 600, fontSize: 12, display: "flex", alignItems: "center", gap: 5 }}>
-                Economics (218) <span style={{ fontSize: 9, opacity: 0.6 }}>soon</span>
-              </span>
             </div>
 
             {/* ── FORMAT tiles — horizontal compact ────────────────────── */}
@@ -1340,7 +1383,7 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: isMobile ? 500 : "auto" }}>
               <thead>
                 <tr style={{ background: "var(--bg-alt)", borderBottom: "1px solid var(--border)" }}>
-                  {["Date", "Mode", "Score", "Correct", "Accuracy", "Status"].map(h => (
+                  {["Date", "Mode", "Score", "Correct", "Accuracy", "Status", ""].map(h => (
                     <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontWeight: 600, fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-secondary)" }}>{h}</th>
                   ))}
                 </tr>
@@ -1360,6 +1403,13 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
                         <span className={"pill " + (p >= 70 ? "pill-green" : p >= 45 ? "pill-amber" : "pill-red")}>
                           {p >= 70 ? "Strong" : p >= 45 ? "Average" : "Needs Work"}
                         </span>
+                      </td>
+                      <td style={{ padding: "12px 14px" }}>
+                        <button
+                          onClick={() => onReviewTest && onReviewTest(t.id)}
+                          style={{ fontSize: 12, fontWeight: 600, color: "var(--indigo)", background: "none", border: "1px solid var(--indigo)", borderRadius: 6, padding: "4px 10px", cursor: "pointer", whiteSpace: "nowrap" }}>
+                          Review
+                        </button>
                       </td>
                     </tr>
                   );
@@ -1413,6 +1463,7 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
   const [marked,    setMarked]    = useState(new Set());
   const [timeLeft,  setTimeLeft]  = useState(isTimed ? EXAM_SECS : null);
   const [exitModal, setExitModal] = useState(false);
+  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
   const isMobile = useMobile();
   const timerRef = useRef(null);
@@ -1440,7 +1491,7 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
   const warn = isTimed && timeLeft !== null && timeLeft < 300;
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", background: "#fff" }}>
+    <div style={{ height: isMobile ? "auto" : "100dvh", minHeight: "100vh", display: "flex", flexDirection: "column", background: "#fff" }}>
       {exitModal && (
         <div className="modal-overlay">
           <div className="modal-box" style={{ maxWidth: 380 }}>
@@ -1456,11 +1507,45 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
         </div>
       )}
 
+      {showSubmitConfirm && (() => {
+        const answered  = Object.keys(answers).length;
+        const unanswered = questions.length - answered;
+        const markedCount = marked.size;
+        return (
+          <div className="modal-overlay">
+            <div className="modal-box" style={{ maxWidth: 400 }}>
+              <h3 style={{ fontFamily: "var(--font-display)", fontSize: 20, color: "var(--navy)", marginBottom: 16 }}>Submit Test?</h3>
+              <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
+                {[
+                  { label: "Answered",   val: answered,   bg: "#ECFDF5", cl: "#059669" },
+                  { label: "Unanswered", val: unanswered, bg: "#FEF2F2", cl: "#DC2626" },
+                  { label: "Marked",     val: markedCount,bg: "#FFFBEB", cl: "#D97706" },
+                ].map(s => (
+                  <div key={s.label} style={{ flex: 1, minWidth: 80, textAlign: "center", background: s.bg, borderRadius: 8, padding: "10px 8px" }}>
+                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 22, fontWeight: 700, color: s.cl }}>{s.val}</div>
+                    <div style={{ fontSize: 10, color: s.cl, opacity: 0.75, textTransform: "uppercase", letterSpacing: ".04em", marginTop: 2 }}>{s.label}</div>
+                  </div>
+                ))}
+              </div>
+              {unanswered > 0 && (
+                <p style={{ fontSize: 12.5, color: "var(--text-secondary)", background: "var(--bg-alt)", borderRadius: 8, padding: "10px 12px", marginBottom: 16, lineHeight: 1.6 }}>
+                  ⚠ {unanswered} unanswered question{unanswered !== 1 ? "s" : ""} will score 0 marks.
+                </p>
+              )}
+              <div style={{ display: "flex", gap: 10 }}>
+                <button className="btn-outline" style={{ flex: 1, height: 40, fontSize: 13 }} onClick={() => setShowSubmitConfirm(false)}>Review More</button>
+                <button className="btn-primary" style={{ flex: 1, height: 40, fontSize: 13 }} onClick={() => { setShowSubmitConfirm(false); submitTest(false); }}>Submit →</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       <div className="nta-header">
         <span className="nta-logo">Vantiq <span>CUET</span></span>
         <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 10 : 20, minWidth: 0 }}>
           {isTimed && (
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: isMobile ? 14 : 16, fontWeight: 700, color: warn ? "#FCD34D" : "#fff", background: warn ? "rgba(220,38,38,.2)" : "rgba(255,255,255,.1)", padding: "4px 8px", borderRadius: 6, transition: "all .3s", flexShrink: 0 }}>
+            <div style={{ fontFamily: "var(--font-mono)", fontSize: isMobile ? 14 : 16, fontWeight: 700, color: warn ? "#FCA5A5" : "#fff", background: warn ? "rgba(220,38,38,.25)" : "rgba(255,255,255,.1)", padding: "4px 8px", borderRadius: 6, transition: "all .3s", flexShrink: 0 }}>
               &#9201; {fmtTimer(timeLeft)}
             </div>
           )}
@@ -1479,24 +1564,23 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
         <span className="pill pill-navy" style={{ marginLeft: 8 }}>{Object.keys(answers).length} answered</span>
       </div>
 
-      <div style={{ flex: 1, display: "flex", overflow: "hidden", flexDirection: "column" }}>
-        <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? "20px 16px" : "28px 32px" }}>
+      <div style={{ flex: 1, display: "flex", overflow: "hidden", flexDirection: isMobile ? "column" : "row" }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? "16px 16px" : "20px 24px" }}>
           {q.passage && (
-            <div style={{ borderLeft: "4px solid var(--indigo)", background: "#F5F7FF", borderRadius: "0 8px 8px 0", padding: isMobile ? "12px 14px" : "16px 20px", marginBottom: 20, fontSize: isMobile ? 13 : 13.5, lineHeight: 1.8, color: "var(--text-primary)", overflowWrap: "break-word", wordBreak: "break-word" }}>
+            <div style={{ borderLeft: "4px solid var(--indigo)", background: "#F5F7FF", borderRadius: "0 8px 8px 0", padding: isMobile ? "12px 14px" : "14px 18px", marginBottom: 16, fontSize: 13, lineHeight: 1.7, color: "var(--text-primary)", overflowWrap: "break-word", wordBreak: "break-word" }}>
               <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".05em", textTransform: "uppercase", color: "var(--indigo)", marginBottom: 8 }}>Reading Passage</div>
               {q.passage}
             </div>
           )}
           <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 14 }}>
-            <span className="pill pill-indigo">{q.topic}</span>
             <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Q.{current + 1}</span>
           </div>
-          <div style={{ fontSize: isMobile ? 14 : 15, fontWeight: 500, color: "var(--text-primary)", lineHeight: 1.65, marginBottom: 24 }}>{q.question}</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ fontSize: isMobile ? 14 : 15, fontWeight: 500, color: "var(--text-primary)", lineHeight: 1.6, marginBottom: 16 }}>{q.question}</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 8 : 9 }}>
             {q.options.map((opt, i) => (
               <div key={i} className={"option-box" + (answers[current] === i ? " selected" : "")} onClick={() => setAnswers(p => ({ ...p, [current]: i }))}>
                 <span className="option-key">{String.fromCharCode(65 + i)}</span>
-                <span style={{ fontSize: isMobile ? 13 : 14, color: "var(--text-primary)", flex: 1 }}>{opt}</span>
+                <span style={{ fontSize: isMobile ? 13 : 13.5, color: "var(--text-primary)", flex: 1 }}>{opt}</span>
               </div>
             ))}
           </div>
@@ -1523,7 +1607,7 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
             <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.8, marginBottom: 16 }}>
               <div>&#x1F7E9; Answered</div><div>&#x1F7E8; Marked</div><div>&#x2B1C; Not visited</div>
             </div>
-            <button className="btn-primary" onClick={() => submitTest(false)} style={{ width: "100%", fontSize: 12, height: 38, marginTop: "auto" }}>
+            <button className="btn-primary" onClick={() => setShowSubmitConfirm(true)} style={{ width: "100%", fontSize: 12, height: 38, marginTop: "auto" }}>
               Submit Test
             </button>
           </div>
@@ -1552,14 +1636,14 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
                 );
               })}
             </div>
-            <button className="btn-primary full" onClick={() => { setShowPalette(false); submitTest(false); }}>Submit Test</button>
+            <button className="btn-primary full" onClick={() => { setShowPalette(false); setShowSubmitConfirm(true); }}>Submit Test</button>
           </div>
         </div>
       )}
 
-      <div className="exam-footer" style={{ borderTop: "1px solid var(--border)", background: "#fff", padding: isMobile ? "10px 12px" : "12px 32px", display: "flex", alignItems: "center", gap: isMobile ? 6 : 12, flexShrink: 0 }}>
+      <div className="exam-footer" style={{ borderTop: "1px solid var(--border)", background: "#fff", padding: isMobile ? "8px 12px" : "12px 32px", display: "flex", alignItems: "center", gap: isMobile ? 6 : 12, flexShrink: 0, position: isMobile ? "sticky" : "relative", bottom: 0, zIndex: 10, paddingBottom: isMobile ? "calc(8px + env(safe-area-inset-bottom))" : "12px" }}>
         <button className="btn-amber" onClick={() => setMarked(p => { const n = new Set(p); n.has(current) ? n.delete(current) : n.add(current); return n; })}>
-          {marked.has(current) ? "✓ Marked" : "Mark"}
+          {marked.has(current) ? "✓ Marked" : isMobile ? "Mark" : "Mark for Review"}
         </button>
         {isMobile && (
           <button onClick={() => setShowPalette(true)} style={{ height: 32, padding: "0 10px", border: "1.5px solid var(--border)", borderRadius: 6, background: "#fff", fontSize: 11, fontWeight: 600, color: "var(--navy)", cursor: "pointer", fontFamily: "var(--font-body)", whiteSpace: "nowrap" }}>
@@ -1573,9 +1657,15 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
           >
             ← {!isMobile && "Back"}
           </button>
-          <button className="btn-navy-sm" onClick={() => { if (current < questions.length - 1) setCurrent(c => c + 1); else showToast("Last question. Submit when ready.", "info"); }}>
-            {isMobile ? "Next →" : "Save & Next →"}
-          </button>
+          {isMobile && current === questions.length - 1 ? (
+            <button className="btn-navy-sm" onClick={() => setShowSubmitConfirm(true)} style={{ background: "var(--success)", minWidth: 80 }}>
+              Submit ✓
+            </button>
+          ) : (
+            <button className="btn-navy-sm" onClick={() => { if (current < questions.length - 1) setCurrent(c => c + 1); else showToast("Last question. Submit when ready.", "info"); }}>
+              {isMobile ? "Next →" : "Save & Next →"}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -1617,6 +1707,7 @@ function ResultsScreen({ questions, answers, config, user, testHistory, onNewTes
     }
   });
   const topicRows = Object.entries(topicStats)
+    .filter(([, s]) => s.att > 0)   // ← only show topics the student actually attempted
     .map(([t, s]) => ({ topic: t, attempted: s.att, correct: s.cor, accuracy: s.att > 0 ? Math.round((s.cor / s.att) * 100) : 0 }))
     .sort((a, b) => a.accuracy - b.accuracy);
   const weakest = topicRows[0] || null;
@@ -1639,19 +1730,25 @@ function ResultsScreen({ questions, answers, config, user, testHistory, onNewTes
         const token = await getAuthToken();
         const subjectName = isGAT ? "GAT (General Aptitude Test)" : isEcon ? "Economics (118)" : "CUET English (101)";
         const subjectContext = isEcon
-          ? "Focus on Microeconomics, Macroeconomics, Indian Economic Development, and Statistics for Economics."
+          ? "Focus on Microeconomics (Course I), Macroeconomics (Course II), and Indian Economic Development (Course III — new in 2026). IED covers Development Policies 1947-90, Economic Reforms 1991 (LPG), Current Challenges, and India-China-Pakistan comparison."
           : isGAT
           ? "Focus on Quantitative Aptitude, Logical Reasoning, and General Knowledge."
           : "Focus on Reading Comprehension, Vocabulary, and Grammar.";
         const weakStr = weakest ? `Weakest topic: ${weakest.topic} at ${weakest.accuracy}% accuracy (${weakest.correct}/${weakest.attempted} correct).` : "";
         const prompt = `You are a CUET ${subjectName} expert analysing a student's test result.
-Score: ${pct}% | Correct: ${correct}/${questions.length} | Wrong: ${wrong} | Skipped: ${unanswered} | Mode: ${config?.mode}
+
+SCORING DATA (NTA system: +5 correct, -1 wrong, 0 skipped):
+- NTA points scored: ${totalScore} out of ${maxScore} possible (${pct}%)
+- Questions correct: ${correct} out of ${questions.length} attempted (raw accuracy: ${Math.round(correct / questions.length * 100)}%)
+- Questions wrong: ${wrong} | Questions skipped: ${unanswered} | Mode: ${config?.mode}
 ${subjectContext}
 ${weakStr}
 
+CRITICAL: The ${pct}% score comes from NTA points (${totalScore}/${maxScore}), NOT from questions correct (${correct}/${questions.length}). Do NOT write "${pct}% (${correct}/${questions.length} correct)" — that is factually wrong. State them separately.
+
 Return ONLY a JSON object — no markdown, no preamble:
 {
-  "summary": "One honest sentence on overall performance — specific, not generic. Mention the score.",
+  "summary": "One honest sentence. State the NTA score (${totalScore}/${maxScore} points = ${pct}%) and separately note that ${correct} out of ${questions.length} questions were correct. Do not conflate the two.",
   "actions": [
     "Action 1: start with a verb (Revise/Review/Practice). Specific to weakest topic.",
     "Action 2: start with a verb. About reviewing wrong answers or second-weakest area.",
@@ -1659,7 +1756,7 @@ Return ONLY a JSON object — no markdown, no preamble:
   ]
 }
 Begin with { — nothing before it.`;
-        const res = await fetch(\`\${CF_BASE}/generateAdvisory\`, {
+        const res = await fetch(`${CF_BASE}/generateAdvisory`, {
           method: "POST", headers: authHeaders(token),
           body: JSON.stringify({ prompt }),
         });
@@ -1685,7 +1782,7 @@ Begin with { — nothing before it.`;
     setTpLoading(true); setTpQuestions(null); setTpAnswers({}); setTpCurrent(0); setTpSubmitted(false);
     try {
       const token = await getAuthToken();
-      const res = await fetch(\`\${CF_BASE}/generateQuestions\`, {
+      const res = await fetch(`${CF_BASE}/generateQuestions`, {
         method: "POST", headers: authHeaders(token),
         body: JSON.stringify({ uid: user?.uid, config: { mode: "TopicPractice", focusTopic: topic, focusSubject: isGAT ? "GAT" : isEcon ? "Economics" : "English" } }),
       });
@@ -1719,18 +1816,18 @@ Begin with { — nothing before it.`;
 
         {/* ── Score + stats ───────────────────────────────────────────────── */}
         <div className="card" style={{ marginBottom:12 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:isMobile?14:24, padding: isMobile?"14px 14px":"16px 20px", flexWrap:"wrap" }}>
-            <div>
+          <div style={{ display:"flex", alignItems:"center", gap:isMobile?12:20, padding: isMobile?"14px 14px":"16px 20px", flexWrap:"wrap" }}>
+            <div style={{ flexShrink:0 }}>
               <div style={{ fontSize:11, fontWeight:700, color:"var(--navy)", textTransform:"uppercase", letterSpacing:".05em", marginBottom:3 }}>Total Score</div>
               <div style={{ fontFamily:"var(--font-mono)", fontSize:40, fontWeight:700, color:scoreColor(pct), lineHeight:1 }}>{pct}%</div>
               <div style={{ fontFamily:"var(--font-mono)", fontSize:15, color:"var(--navy)", marginTop:3 }}>{totalScore} / {maxScore}</div>
             </div>
-            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+            <div style={{ flex:1, display:"flex", justifyContent:"space-between", alignItems:"center", gap:6, flexWrap:"wrap", minWidth:0 }}>
               {[{l:"Attempted",v:attempted,bg:"#E8EDF5",cl:"#0F2747"},{l:"Correct",v:correct,bg:"#ECFDF5",cl:"#059669"},{l:"Accuracy",v:`${accuracy}%`,bg:"#EEF2FF",cl:"#4338CA"},{l:"Wrong",v:wrong,bg:"#FEF2F2",cl:"#DC2626"},{l:"Skipped",v:unanswered,bg:"#FFFBEB",cl:"#D97706"}]
                 .map(s => (
-                <div key={s.l} style={{ textAlign:"center" }}>
-                  <div className="result-stat-pill" style={{ display:"inline-block", padding:"3px 10px", borderRadius:5, fontFamily:"var(--font-mono)", fontSize:16, fontWeight:700, background:s.bg, color:s.cl }}>{s.v}</div>
-                  <div style={{ fontSize:9, color:"var(--text-muted)", marginTop:3, textTransform:"uppercase", letterSpacing:".04em" }}>{s.l}</div>
+                <div key={s.l} style={{ textAlign:"center", flex:1, minWidth:isMobile?48:56 }}>
+                  <div className="result-stat-pill" style={{ display:"block", padding:"6px 4px", borderRadius:6, fontFamily:"var(--font-mono)", fontSize:isMobile?15:18, fontWeight:700, background:s.bg, color:s.cl }}>{s.v}</div>
+                  <div style={{ fontSize:9, color:"var(--text-muted)", marginTop:4, textTransform:"uppercase", letterSpacing:".04em" }}>{s.l}</div>
                 </div>
               ))}
             </div>
@@ -1865,12 +1962,14 @@ Begin with { — nothing before it.`;
         <div className="card" style={{ marginBottom:12, padding:"14px 16px" }}>
           <div style={{ fontSize:10, fontWeight:700, letterSpacing:".07em", textTransform:"uppercase", color:"var(--text-muted)", marginBottom:10 }}>Topic Accuracy — Weakest First</div>
           {topicRows.map((r, i) => (
-            <div key={i} style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
-              <div style={{ fontSize:11, color: i===0 ? "#DC2626" : "var(--text-sec)", fontWeight: i===0 ? 700 : 400, width:isMobile?110:150, flexShrink:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{r.topic}</div>
-              <div style={{ flex:1, height:6, background:"#E2E8F0", borderRadius:3, overflow:"hidden" }}>
+            <div key={i} style={{ marginBottom: 10 }}>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:4, gap:8 }}>
+                <div style={{ fontSize:11, color: i===0 ? "#DC2626" : "var(--navy)", fontWeight: i===0 ? 700 : 500, lineHeight:1.4 }}>{r.topic}</div>
+                <div style={{ fontFamily:"var(--font-mono)", fontSize:11, fontWeight:700, color:barColor(r.accuracy), flexShrink:0 }}>{r.accuracy}%</div>
+              </div>
+              <div style={{ height:5, background:"#E2E8F0", borderRadius:3, overflow:"hidden" }}>
                 <div style={{ height:"100%", width:`${r.accuracy}%`, background:barColor(r.accuracy), borderRadius:3, transition:"width .6s ease" }} />
               </div>
-              <div style={{ fontFamily:"var(--font-mono)", fontSize:11, fontWeight:700, color:barColor(r.accuracy), width:32, textAlign:"right", flexShrink:0 }}>{r.accuracy}%</div>
             </div>
           ))}
         </div>
@@ -1934,7 +2033,8 @@ function ReviewScreen({ questions, answers, onBack }) {
                 </div>
                 {q.passage && (
                   <div style={{ background: "#F5F7FF", borderLeft: "3px solid var(--indigo)", padding: "10px 14px", borderRadius: "0 6px 6px 0", fontSize: 12.5, lineHeight: 1.7, color: "var(--text-secondary)", marginBottom: 10 }}>
-                    <em>Passage: {q.passage.substring(0, 200)}...</em>
+                    <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".05em", textTransform: "uppercase", color: "var(--indigo)", marginBottom: 6 }}>Reading Passage</div>
+                    {q.passage}
                   </div>
                 )}
                 <p style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)", lineHeight: 1.6, marginBottom: 14 }}>{q.question}</p>
@@ -2181,6 +2281,64 @@ function StarRatingModal({ user, onDismiss }) {
   );
 }
 
+// ── QUESTION SHUFFLER ─────────────────────────────────────────────────────────
+// Keeps RC passage groups intact; shuffles group order + non-RC questions randomly.
+// CUET CBT serves questions in random order — topic labels must never hint at structure.
+function shuffleQuestions(qs) {
+  const arr = [...qs];
+  // Fisher-Yates
+  const fyShuffle = (a) => {
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  };
+
+  // Bucket RC questions into groups keyed by passage (first 60 chars as key)
+  const passageGroups = new Map(); // passageKey → [questions]
+  const nonRC = [];
+
+  arr.forEach(q => {
+    if (q.passage) {
+      const key = q.passage.slice(0, 60);
+      if (!passageGroups.has(key)) passageGroups.set(key, []);
+      passageGroups.get(key).push(q);
+    } else {
+      nonRC.push(q);
+    }
+  });
+
+  // Shuffle within each passage group (question order within a passage can vary)
+  const groups = [...passageGroups.values()].map(g => fyShuffle(g));
+  // Shuffle the group order
+  fyShuffle(groups);
+  // Shuffle non-RC questions
+  fyShuffle(nonRC);
+
+  // Interleave: alternate a passage group and a slice of non-RC to avoid all RC bunching
+  const result = [];
+  const nonRCChunks = [];
+  if (nonRC.length > 0 && groups.length > 0) {
+    const chunkSize = Math.ceil(nonRC.length / (groups.length + 1));
+    for (let i = 0; i < nonRC.length; i += chunkSize) nonRCChunks.push(nonRC.slice(i, i + chunkSize));
+  } else {
+    nonRCChunks.push(...nonRC.map(q => [q]));
+  }
+
+  // Place first non-RC chunk, then alternate passage groups and non-RC chunks
+  let gi = 0, ci = 0;
+  if (nonRCChunks[ci]) { result.push(...nonRCChunks[ci]); ci++; }
+  while (gi < groups.length) {
+    result.push(...groups[gi++]);
+    if (nonRCChunks[ci]) { result.push(...nonRCChunks[ci]); ci++; }
+  }
+  // Drain any remaining (shouldn't happen but safety net)
+  while (ci < nonRCChunks.length) { result.push(...nonRCChunks[ci]); ci++; }
+
+  return result;
+}
+
 // ── ROOT APP ──────────────────────────────────────────────────────────────────
 export default function App() {
   const [screen,      setScreen]     = useState("auth");
@@ -2205,7 +2363,7 @@ export default function App() {
       if (snap.exists()) setUserData(snap.data());
       const q = query(collection(db, "tests"), where("uid", "==", u.uid), orderBy("completedAt", "desc"), limit(10));
       const hs = await getDocs(q);
-      setHistory(hs.docs.map(d => d.data()));
+      setHistory(hs.docs.map(d => ({ id: d.id, ...d.data(), questions: undefined, answers: undefined })));
     } catch(e) { /* Firestore unavailable — continue without history */ }
   }
 
@@ -2264,6 +2422,23 @@ export default function App() {
     try { return localStorage.getItem("cuet_unlocked") === "true"; } catch(_) { return false; }
   }
 
+  async function handleReviewPastTest(testId) {
+    if (!db || !testId) { showToast("Test data unavailable.", "error"); return; }
+    try {
+      const snap = await getDoc(doc(db, "tests", testId));
+      if (!snap.exists()) { showToast("Test record not found.", "error"); return; }
+      const data = snap.data();
+      if (!data.questions || !data.answers) {
+        showToast("Detailed review is only available for tests taken after this update. Older tests stored summary data only.", "info");
+        return;
+      }
+      setQuestions(data.questions);
+      setAnswers(data.answers);
+      setConfig({ mode: data.mode, subject: data.subject || "English" });
+      setScreen("review");
+    } catch(e) { showToast("Could not load test. Please try again.", "error"); }
+  }
+
   async function handleBeginTest(config) {
     setConfig(config); setScreen("generating");
     logEvent("test_started", { user_id: user?.uid, mode: config.mode, subject: config.subject });
@@ -2271,7 +2446,8 @@ export default function App() {
       const qs = await generateQuestions(config, user?.uid);
       const required = (config.mode === "Mock" || config.mode === "GAT_Mock" || config.mode === "Economics_Mock") ? 50 : 15;
       if (!qs || qs.length !== required) throw new Error(`Incomplete test paper (${qs?.length ?? 0}/${required} questions). Please try again.`);
-      setQuestions(qs); setAnswers({}); setScreen("exam");
+      const shuffled = shuffleQuestions(qs);
+      setQuestions(shuffled); setAnswers({}); setScreen("exam");
       examStartedAt.current = Date.now();
       // Optimistic local update per separate pool
       if (config.mode === "GAT_Mock") {
@@ -2353,9 +2529,13 @@ export default function App() {
         uid: user.uid,
         email: user.email || null,          // stored for admin visibility — no join needed
         displayName: user.displayName || null,
-        mode: testConfig?.mode, totalScore: total,
+        mode: testConfig?.mode,
+        subject: testConfig?.subject || "English",
+        totalScore: total,
         correct, wrong, attempted: correct + wrong, accuracy, score: accuracy,
         completedAt: serverTimestamp(),
+        questions,          // stored for past-exam review
+        answers: submittedAnswers, // stored for past-exam review
       });
       await loadUserData(user);
     } catch(_) { /* non-blocking — results still show */ }
@@ -2380,7 +2560,7 @@ export default function App() {
     <React.Fragment>
       {toast && <Toast key={toast.key} message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
       {screen === "auth"       && <AuthScreen      onLogin={u => { setUser(u); loadUserData(u); setScreen("dashboard"); }} showToast={showToast} />}
-      {screen === "dashboard"  && <DashboardScreen user={user} userData={userData} testHistory={testHistory} onBeginTest={handleBeginTest} onLogout={() => auth ? signOut(auth) : setScreen("auth")} showToast={showToast} subjects={SUBJECTS} showPaywallOverride={showPaywall} setShowPaywallOverride={setShowPaywall} />}
+      {screen === "dashboard"  && <DashboardScreen user={user} userData={userData} testHistory={testHistory} onBeginTest={handleBeginTest} onReviewTest={handleReviewPastTest} onLogout={() => auth ? signOut(auth) : setScreen("auth")} showToast={showToast} subjects={SUBJECTS} showPaywallOverride={showPaywall} setShowPaywallOverride={setShowPaywall} />}
       {screen === "generating" && <GeneratingScreen config={testConfig} />}
       {screen === "exam"       && <ExamScreen      questions={questions} config={testConfig} user={user} onSubmit={handleSubmitTest} showToast={showToast} />}
       {screen === "results"    && <ResultsScreen   questions={questions} answers={answers} config={testConfig} user={user} testHistory={testHistory} onNewTest={() => setScreen("dashboard")} onReview={() => setScreen("review")} />}
