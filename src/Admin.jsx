@@ -487,13 +487,7 @@ function CacheCommandCentre({ cacheStatus, filling, fillProgress, fillMode, fill
   const elapsedStr = elapsed >= 60 ? `${Math.floor(elapsed/60)}m ${elapsed%60}s` : `${elapsed}s`;
 
   const getNeeded = (key) => cacheStatus?.[key]?.needed ?? 0;
-  const getCurrent = (key) => {
-    if (filling && fillProgress) {
-      if (key === "Mock" || key === "GAT_Mock" || key === "Economics_Mock") return fillProgress.mock ?? cacheStatus?.[key]?.current ?? 0;
-      if (key === "QuickPractice" || key === "GAT_QP" || key === "Economics_QP") return fillProgress.qp ?? cacheStatus?.[key]?.current ?? 0;
-    }
-    return cacheStatus?.[key]?.current ?? 0;
-  };
+  const getCurrent = (key) => cacheStatus?.[key]?.current ?? 0;
 
   return (
     <div style={{ background:"#fff", borderBottom:"2px solid #E2E8F0" }}>
@@ -565,16 +559,22 @@ function CacheCommandCentre({ cacheStatus, filling, fillProgress, fillMode, fill
 
       {/* Detail bar when filling */}
       {filling && fillProgress && !fillProgress.locked && (
-        <div style={{ padding:"7px 20px", background:"#F8FAFF", borderTop:"1px solid #E2E8F0", display:"flex", alignItems:"center", gap:20, flexWrap:"wrap" }}>
+        <div style={{ padding:"7px 20px", background:"#F8FAFF", borderTop:"1px solid #E2E8F0", display:"flex", alignItems:"center", gap:16, flexWrap:"wrap" }}>
           <span style={{ fontSize:11, color:"#64748B" }}>Elapsed: <strong style={{ fontFamily:"'JetBrains Mono',monospace", color:"#0F2747" }}>{elapsedStr}</strong></span>
-          {fillProgress.mock !== undefined && <span style={{ fontSize:11, color:"#64748B" }}>Mock: <strong style={{ fontFamily:"'JetBrains Mono',monospace", color:"#4338CA" }}>{fillProgress.mock}/{fillProgress.mockTarget ?? CACHE_CONFIG.Mock.size}</strong></span>}
-          {fillProgress.qp  !== undefined && <span style={{ fontSize:11, color:"#64748B" }}>QP: <strong style={{ fontFamily:"'JetBrains Mono',monospace", color:"#059669" }}>{fillProgress.qp}/{fillProgress.qpTarget ?? CACHE_CONFIG.QuickPractice.size}</strong></span>}
-          <div style={{ flex:1, minWidth:120, height:4, background:"#E2E8F0", borderRadius:3, overflow:"hidden" }}>
-            <div style={{ height:"100%", background:"linear-gradient(90deg,#4338CA,#059669)", borderRadius:3,
-              width:`${Math.round(((fillProgress.mock??0)+(fillProgress.qp??0))/((fillProgress.mockTarget??120)+(fillProgress.qpTarget??200))*100)}%`,
-              transition:"width 2s ease" }}/>
-          </div>
-          <span style={{ fontSize:10, color:"#94A3B8" }}>updates every 15s</span>
+          {fillProgress.targetMode
+            ? <span style={{ fontSize:11, color:"#64748B" }}>Filling: <strong style={{ fontFamily:"'JetBrains Mono',monospace", color:"#4338CA" }}>{fillProgress.targetMode}</strong> — <strong style={{ fontFamily:"'JetBrains Mono',monospace" }}>{cacheStatus?.[fillProgress.targetMode]?.current ?? 0}/{CACHE_CONFIG[fillProgress.targetMode]?.size ?? 20}</strong></span>
+            : [
+                { key:"Mock", label:"Eng Mock", col:"#4338CA" },
+                { key:"GAT_Mock", label:"GAT Mock", col:"#DC2626" },
+                { key:"Economics_Mock", label:"Eco Mock", col:"#7C3AED" },
+                { key:"QuickPractice", label:"Eng QP", col:"#059669" },
+                { key:"GAT_QP", label:"GAT QP", col:"#D97706" },
+                { key:"Economics_QP", label:"Eco QP", col:"#0891B2" },
+              ].map(m => (
+                <span key={m.key} style={{ fontSize:11, color:"#64748B" }}>{m.label}: <strong style={{ fontFamily:"'JetBrains Mono',monospace", color:m.col }}>{cacheStatus?.[m.key]?.current ?? 0}/{CACHE_CONFIG[m.key]?.size ?? 20}</strong></span>
+              ))
+          }
+          <span style={{ fontSize:10, color:"#94A3B8", marginLeft:"auto" }}>updates every 15s</span>
         </div>
       )}
       {filling && fillProgress?.locked && (
@@ -863,20 +863,14 @@ export default function AdminDashboard() {
       const elapsed = Math.round((Date.now() - fillStartRef.current) / 1000);
       const status = await loadCacheStatus(true); // silent=true — no log spam during polling
       if (status) {
+        setFillProgress({ elapsed, locked: status.locked });
+
+        // Done when all 6 modes are at target, or stale/timeout
+        const allFull = ["Mock","QuickPractice","GAT_Mock","GAT_QP","Economics_Mock","Economics_QP"]
+          .every(k => (status[k]?.current ?? 0) >= (CACHE_CONFIG[k]?.size ?? 20));
+
         const mCurrent = status.Mock?.current ?? 0;
         const qCurrent = status.QuickPractice?.current ?? 0;
-        const mFull = mCurrent >= CACHE_CONFIG.Mock.size;
-        const qFull = qCurrent >= CACHE_CONFIG.QuickPractice.size;
-
-        setFillProgress({
-          mock: mCurrent,
-          qp: qCurrent,
-          mockTarget: CACHE_CONFIG.Mock.size,
-          qpTarget: CACHE_CONFIG.QuickPractice.size,
-          elapsed,
-          locked: status.locked,
-        });
-
         const prevMock = fillProgress?.mock;
         const prevQp = fillProgress?.qp;
         if (mCurrent === prevMock && qCurrent === prevQp) {
@@ -885,11 +879,11 @@ export default function AdminDashboard() {
           stalePollsRef.current = 0;
         }
 
-        if ((mFull && qFull) || stalePollsRef.current >= 8 || elapsed > 570) {
+        if (allFull || stalePollsRef.current >= 8 || elapsed > 570) {
           clearInterval(fillPollRef.current);
           setFilling(false);
           setFillProgress(null);
-          if (mFull && qFull) addLog("Cache full — all modes at target", "success");
+          if (allFull) addLog("Cache full — all modes at target", "success");
           else addLog("Fill cycle ended — check status", "warn");
         }
       }
@@ -924,7 +918,7 @@ export default function AdminDashboard() {
       if (status) {
         const cur = status[mode]?.current ?? 0;
         const tgt = CACHE_CONFIG[mode]?.size ?? 80;
-        setFillProgress({ mock: cur, qp: cur, mockTarget: tgt, qpTarget: tgt, elapsed, targetMode: mode });
+        setFillProgress({ elapsed, targetMode: mode });
         if (cur >= tgt || elapsed > 590) {
           clearInterval(fillPollRef.current);
           setFilling(false);
