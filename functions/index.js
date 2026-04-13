@@ -1881,7 +1881,7 @@ Return ONLY the JSON object. Begin with { — nothing before it.`;
     try {
       const allSnap   = await db.collection("questionCache").where("mode", "==", mode).get();
       const usedSet   = new Set(usedSetIds);
-      const REQUIRED_Q = { Mock: 50, QuickPractice: 15, GAT_Mock: 50, GAT_QP: 15 }[mode] ?? 50;
+      const REQUIRED_Q = { Mock: 50, QuickPractice: 15, GAT_Mock: 50, GAT_QP: 15, Economics_Mock: 50, Economics_QP: 15 }[mode] ?? 50;
       const available = allSnap.docs.filter(d => {
         if (usedSet.has(d.id)) return false;
         if (d.data().createdAt?.toDate() <= cutoff) return false;
@@ -1901,7 +1901,7 @@ Return ONLY the JSON object. Begin with { — nothing before it.`;
     if (!cacheDoc) {
       functions.logger.info("CACHE_EXHAUSTED_FOR_USER", { uid, mode });
       res.status(503).json({
-        error: (mode === "QuickPractice" || mode === "GAT_QP")
+        error: (mode === "QuickPractice" || mode === "GAT_QP" || mode === "Economics_QP")
           ? "Quick Practice is being refreshed. Please try again in a few minutes."
           : "You have completed all available tests for this mode. More tests are being prepared — please check back later.",
         code: "no_tests_available"
@@ -2577,7 +2577,7 @@ exports.platformHealthCheck = functions
         const pct   = Math.round((count / modeSize) * 100);
 
         // Detect substandard sets — flag only, never delete
-        const REQUIRED_Q  = mode === "Mock" ? 50 : 15;
+        const REQUIRED_Q  = (mode === "Mock" || mode === "GAT_Mock" || mode === "Economics_Mock") ? 50 : 15;
         const substandard = fresh.filter(d => {
           const qc = d.data().questionCount || (d.data().questions?.length ?? 0);
           return qc !== REQUIRED_Q;
