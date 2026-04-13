@@ -1105,7 +1105,7 @@ function IEDDisclaimerBanner() {
 }
 
 // ── DASHBOARD SCREEN ──────────────────────────────────────────────────────────
-function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, showToast, subjects, showPaywallOverride, setShowPaywallOverride }) {
+function DashboardScreen({ user, userData, testHistory, onBeginTest, onReviewTest, onLogout, showToast, subjects, showPaywallOverride, setShowPaywallOverride }) {
   const [mode,          setMode]          = useState(null);   // null = no selection yet
   const [activeSubject, setActiveSubject] = useState(null);   // null = no selection yet
   // showPaywall can be triggered from inside (handleBegin gate) or outside (handleBeginTest 402 catch)
@@ -1396,7 +1396,7 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: isMobile ? 500 : "auto" }}>
               <thead>
                 <tr style={{ background: "var(--bg-alt)", borderBottom: "1px solid var(--border)" }}>
-                  {["Date", "Mode", "Score", "Correct", "Accuracy", "Status"].map(h => (
+                  {["Date", "Mode", "Score", "Correct", "Accuracy", "Status", ""].map(h => (
                     <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontWeight: 600, fontSize: 11, textTransform: "uppercase", letterSpacing: ".05em", color: "var(--text-secondary)" }}>{h}</th>
                   ))}
                 </tr>
@@ -1416,6 +1416,13 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onLogout, s
                         <span className={"pill " + (p >= 70 ? "pill-green" : p >= 45 ? "pill-amber" : "pill-red")}>
                           {p >= 70 ? "Strong" : p >= 45 ? "Average" : "Needs Work"}
                         </span>
+                      </td>
+                      <td style={{ padding: "12px 14px" }}>
+                        <button
+                          onClick={() => onReviewTest && onReviewTest(t.id)}
+                          style={{ fontSize: 12, fontWeight: 600, color: "var(--indigo)", background: "none", border: "1px solid var(--indigo)", borderRadius: 6, padding: "4px 10px", cursor: "pointer", whiteSpace: "nowrap" }}>
+                          Review
+                        </button>
                       </td>
                     </tr>
                   );
@@ -1544,7 +1551,6 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
             </div>
           )}
           <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 14 }}>
-            <span className="pill pill-indigo">{q.topic}</span>
             <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Q.{current + 1}</span>
           </div>
           <div style={{ fontSize: isMobile ? 14 : 15, fontWeight: 500, color: "var(--text-primary)", lineHeight: 1.6, marginBottom: 16 }}>{q.question}</div>
@@ -2252,6 +2258,64 @@ function StarRatingModal({ user, onDismiss }) {
   );
 }
 
+// ── QUESTION SHUFFLER ─────────────────────────────────────────────────────────
+// Keeps RC passage groups intact; shuffles group order + non-RC questions randomly.
+// CUET CBT serves questions in random order — topic labels must never hint at structure.
+function shuffleQuestions(qs) {
+  const arr = [...qs];
+  // Fisher-Yates
+  const fyShuffle = (a) => {
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  };
+
+  // Bucket RC questions into groups keyed by passage (first 60 chars as key)
+  const passageGroups = new Map(); // passageKey → [questions]
+  const nonRC = [];
+
+  arr.forEach(q => {
+    if (q.passage) {
+      const key = q.passage.slice(0, 60);
+      if (!passageGroups.has(key)) passageGroups.set(key, []);
+      passageGroups.get(key).push(q);
+    } else {
+      nonRC.push(q);
+    }
+  });
+
+  // Shuffle within each passage group (question order within a passage can vary)
+  const groups = [...passageGroups.values()].map(g => fyShuffle(g));
+  // Shuffle the group order
+  fyShuffle(groups);
+  // Shuffle non-RC questions
+  fyShuffle(nonRC);
+
+  // Interleave: alternate a passage group and a slice of non-RC to avoid all RC bunching
+  const result = [];
+  const nonRCChunks = [];
+  if (nonRC.length > 0 && groups.length > 0) {
+    const chunkSize = Math.ceil(nonRC.length / (groups.length + 1));
+    for (let i = 0; i < nonRC.length; i += chunkSize) nonRCChunks.push(nonRC.slice(i, i + chunkSize));
+  } else {
+    nonRCChunks.push(...nonRC.map(q => [q]));
+  }
+
+  // Place first non-RC chunk, then alternate passage groups and non-RC chunks
+  let gi = 0, ci = 0;
+  if (nonRCChunks[ci]) { result.push(...nonRCChunks[ci]); ci++; }
+  while (gi < groups.length) {
+    result.push(...groups[gi++]);
+    if (nonRCChunks[ci]) { result.push(...nonRCChunks[ci]); ci++; }
+  }
+  // Drain any remaining (shouldn't happen but safety net)
+  while (ci < nonRCChunks.length) { result.push(...nonRCChunks[ci]); ci++; }
+
+  return result;
+}
+
 // ── ROOT APP ──────────────────────────────────────────────────────────────────
 export default function App() {
   const [screen,      setScreen]     = useState("auth");
@@ -2276,7 +2340,7 @@ export default function App() {
       if (snap.exists()) setUserData(snap.data());
       const q = query(collection(db, "tests"), where("uid", "==", u.uid), orderBy("completedAt", "desc"), limit(10));
       const hs = await getDocs(q);
-      setHistory(hs.docs.map(d => d.data()));
+      setHistory(hs.docs.map(d => ({ id: d.id, ...d.data(), questions: undefined, answers: undefined })));
     } catch(e) { /* Firestore unavailable — continue without history */ }
   }
 
@@ -2335,6 +2399,23 @@ export default function App() {
     try { return localStorage.getItem("cuet_unlocked") === "true"; } catch(_) { return false; }
   }
 
+  async function handleReviewPastTest(testId) {
+    if (!db || !testId) { showToast("Test data unavailable.", "error"); return; }
+    try {
+      const snap = await getDoc(doc(db, "tests", testId));
+      if (!snap.exists()) { showToast("Test record not found.", "error"); return; }
+      const data = snap.data();
+      if (!data.questions || !data.answers) {
+        showToast("Detailed review is only available for tests taken after this update. Older tests stored summary data only.", "info");
+        return;
+      }
+      setQuestions(data.questions);
+      setAnswers(data.answers);
+      setConfig({ mode: data.mode, subject: data.subject || "English" });
+      setScreen("review");
+    } catch(e) { showToast("Could not load test. Please try again.", "error"); }
+  }
+
   async function handleBeginTest(config) {
     setConfig(config); setScreen("generating");
     logEvent("test_started", { user_id: user?.uid, mode: config.mode, subject: config.subject });
@@ -2342,7 +2423,8 @@ export default function App() {
       const qs = await generateQuestions(config, user?.uid);
       const required = (config.mode === "Mock" || config.mode === "GAT_Mock" || config.mode === "Economics_Mock") ? 50 : 15;
       if (!qs || qs.length !== required) throw new Error(`Incomplete test paper (${qs?.length ?? 0}/${required} questions). Please try again.`);
-      setQuestions(qs); setAnswers({}); setScreen("exam");
+      const shuffled = shuffleQuestions(qs);
+      setQuestions(shuffled); setAnswers({}); setScreen("exam");
       examStartedAt.current = Date.now();
       // Optimistic local update per separate pool
       if (config.mode === "GAT_Mock") {
@@ -2424,9 +2506,13 @@ export default function App() {
         uid: user.uid,
         email: user.email || null,          // stored for admin visibility — no join needed
         displayName: user.displayName || null,
-        mode: testConfig?.mode, totalScore: total,
+        mode: testConfig?.mode,
+        subject: testConfig?.subject || "English",
+        totalScore: total,
         correct, wrong, attempted: correct + wrong, accuracy, score: accuracy,
         completedAt: serverTimestamp(),
+        questions,          // stored for past-exam review
+        answers: submittedAnswers, // stored for past-exam review
       });
       await loadUserData(user);
     } catch(_) { /* non-blocking — results still show */ }
@@ -2451,7 +2537,7 @@ export default function App() {
     <React.Fragment>
       {toast && <Toast key={toast.key} message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
       {screen === "auth"       && <AuthScreen      onLogin={u => { setUser(u); loadUserData(u); setScreen("dashboard"); }} showToast={showToast} />}
-      {screen === "dashboard"  && <DashboardScreen user={user} userData={userData} testHistory={testHistory} onBeginTest={handleBeginTest} onLogout={() => auth ? signOut(auth) : setScreen("auth")} showToast={showToast} subjects={SUBJECTS} showPaywallOverride={showPaywall} setShowPaywallOverride={setShowPaywall} />}
+      {screen === "dashboard"  && <DashboardScreen user={user} userData={userData} testHistory={testHistory} onBeginTest={handleBeginTest} onReviewTest={handleReviewPastTest} onLogout={() => auth ? signOut(auth) : setScreen("auth")} showToast={showToast} subjects={SUBJECTS} showPaywallOverride={showPaywall} setShowPaywallOverride={setShowPaywall} />}
       {screen === "generating" && <GeneratingScreen config={testConfig} />}
       {screen === "exam"       && <ExamScreen      questions={questions} config={testConfig} user={user} onSubmit={handleSubmitTest} showToast={showToast} />}
       {screen === "results"    && <ResultsScreen   questions={questions} answers={answers} config={testConfig} user={user} testHistory={testHistory} onNewTest={() => setScreen("dashboard")} onReview={() => setScreen("review")} />}

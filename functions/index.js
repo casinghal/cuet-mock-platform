@@ -173,14 +173,15 @@ const CUET_EXAM_INTELLIGENCE = {
       },
       difficultyCalibration: {
         // Calibration ensures questions are neither too easy (no prep value) nor too hard (demoralising)
-        overall: "60% easy-moderate, 30% moderate, 10% challenging",
+        overall: "30% moderate, 55% moderately-challenging, 15% challenging — do NOT generate easy or recall-level questions",
+        antiPattern: "NEVER ask a question whose answer can be found by directly recalling a textbook definition or a single sentence from the passage. All questions must require application, inference, or contextual judgement.",
         byTopic: {
-          ReadingComprehension: "moderate — inference-heavy, not recall-heavy",
-          SynonymsAntonyms:     "moderate-challenging (B2-C1, never trivial)",
-          SentenceRearrangement:"moderate (logical sequencing, 1 clear answer)",
-          ChoosingCorrectWord:  "easy-moderate (collocations and register)",
-          MatchTheFollowing:    "easy-moderate (idioms and phrases)",
-          GrammarVocabulary:    "easy (clear errors, unambiguous)",
+          ReadingComprehension: "moderate-challenging — test inference, implied meaning, tone, and author intent. Never ask a question answered by direct text-lifting. Require the student to synthesise across 2+ sentences.",
+          SynonymsAntonyms:     "challenging (B2-C1 CEFR) — use sophisticated, non-trivial vocabulary: words like equivocal, propitious, inimical, sanguine, perfidious. Avoid common words like happy/sad/big/fast.",
+          SentenceRearrangement:"moderate-challenging — use complex rhetorical structures with transitional logic (however, consequently, furthermore). One clear answer but requires careful logical sequencing.",
+          ChoosingCorrectWord:  "moderate — collocations, register, and idiomatic usage. Not fill-in-the-blank with an obvious single word.",
+          MatchTheFollowing:    "moderate — idioms, phrases, and figurative expressions. Not word-definition pairs a student has memorised.",
+          GrammarVocabulary:    "moderate — subtle errors: dangling modifiers, subject-verb agreement in complex clauses, incorrect prepositions. Avoid obvious errors any student can spot.",
         },
       },
     },
@@ -1344,7 +1345,7 @@ PASSAGE DIVERSITY: Choose a UNIQUE factual topic from this list — rotate acros
   environmental science / space exploration / Indian archaeology / public health policy / climate technology / digital revolution / ocean science / urban planning / agricultural innovation
   Do NOT write about generic "importance of education" or "benefits of exercise" topics.
 SYNONYM/ANTONYM DIVERSITY: Test advanced vocabulary (B2-C1 level). Use underlined words naturally embedded in a sentence, not isolated words. topic = "Synonyms & Antonyms".
-Rules: correct is 0-indexed (0=A,1=B,2=C,3=D). Difficulty: challenging — NTA exam standard. Explanation: 2-3 sentences.
+Rules: correct is 0-indexed (0=A,1=B,2=C,3=D). Difficulty: challenging — NTA exam standard. ANTI-PATTERN: Never generate a question whose answer can be found by lifting a single sentence from the passage or recalling a textbook definition. RC questions must test inference, implied meaning, or author intent — not factual retrieval. Vocabulary questions must use B2-C1 words; never obvious pairs. Explanation: 2-3 sentences.
 Return ONLY the JSON object. Begin with { — nothing before it.`,
 
     2: `You are an NTA CUET English (101) question paper generator.
@@ -1358,7 +1359,7 @@ PASSAGE DIVERSITY: Choose a UNIQUE narrative from this list — rotate across te
   historical figure's defining moment / scientific discovery story / social movement account / indigenous community narrative / expedition/exploration account / invention backstory / migration experience / conservation success story
   Do NOT write generic "a student who worked hard" or "a farmer who was poor" narratives.
 SYNONYM/ANTONYM DIVERSITY: Test words from narrative/literary register (e.g., resilience, perseverance, arduous, lament). topic = "Synonyms & Antonyms".
-Rules: correct is 0-indexed. Difficulty: challenging — NTA exam standard. Explanation: 2-3 sentences.
+Rules: correct is 0-indexed. Difficulty: challenging — NTA exam standard. ANTI-PATTERN: RC questions must require synthesis across 2+ sentences — never a single-sentence lookup. Narrative inference and tone questions required. Synonyms/antonyms must be B2-C1; never words a Class 10 student would know. Explanation: 2-3 sentences.
 Return ONLY the JSON object. Begin with { — nothing before it.`,
 
     3: `You are an NTA CUET English (101) question paper generator.
@@ -1372,7 +1373,7 @@ PASSAGE DIVERSITY: Choose a UNIQUE literary/philosophical theme — rotate acros
   human nature and social behaviour / art and its role in society / technology and ethics / cultural identity / memory and loss / justice and morality / creativity and innovation / solitude and reflection
   Prose must be critical in tone — NOT a story, NOT a biography. Think essay-style.
 SYNONYM/ANTONYM DIVERSITY: Test academic vocabulary (perspicacious, ephemeral, pragmatic, equivocal). topic = "Synonyms & Antonyms".
-Rules: correct is 0-indexed. Difficulty: challenging — NTA exam standard. Explanation: 2-3 sentences.
+Rules: correct is 0-indexed. Difficulty: challenging — NTA exam standard. ANTI-PATTERN: Literary passages require the highest inference load — questions must probe author's argument, implicit assumptions, or rhetorical strategy. Never ask what the passage explicitly states. Vocabulary must be sophisticated academic register; no word a student can guess from common usage. Explanation: 2-3 sentences.
 Return ONLY the JSON object. Begin with { — nothing before it.`,
 
     4: `You are an NTA CUET English (101) question paper generator.
@@ -1388,7 +1389,7 @@ SENTENCE REARRANGEMENT DIVERSITY: Each of the 8 P/Q/R/S sets must:
   - Use a different sentence structure type (cause-effect / chronological / problem-solution / comparison / definition-example)
   - NOT repeat the same opening pattern ("The...", "In...", "A..." — vary the openers)
 GRAMMAR DIVERSITY: Test different error types across the 3 questions (subject-verb agreement / tense consistency / preposition use — one of each).
-Rules: correct is 0-indexed. Difficulty: challenging. Explanation: 2-3 sentences.
+Rules: correct is 0-indexed. Difficulty: challenging. ANTI-PATTERN: Sentence Rearrangement must not have two plausible orderings — only one sequence must be logically correct. Grammar errors must be subtle (complex clause SVA, not obvious tense mismatch). Explanation: 2-3 sentences.
 Return ONLY the JSON object. Begin with { — nothing before it.`,
 
     5: `You are an NTA CUET English (101) question paper generator.
@@ -1402,7 +1403,7 @@ CLOZE DIVERSITY: The 8 fill-in-blank questions must span 4 different registers:
   formal/academic (2q), literary/descriptive (2q), scientific/technical (2q), conversational/idiomatic (2q)
   Sentences must be substantive (15+ words) — not short fill-in-one-word sentences.
 MATCH DIVERSITY: Use 2 word-meaning matches (advanced vocabulary) + 2 idiom/phrase-meaning matches. All 4 must be different word categories.
-Rules: correct is 0-indexed. Difficulty: challenging. Explanation: 2-3 sentences.
+Rules: correct is 0-indexed. Difficulty: challenging. ANTI-PATTERN: Cloze sentences must not have an obvious single word that any student would guess — two options must be genuinely plausible, forcing register and collocation knowledge. Match the Following must use non-trivial idioms, not common phrases. Explanation: 2-3 sentences.
 Return ONLY the JSON object. Begin with { — nothing before it.`,
   };
 
