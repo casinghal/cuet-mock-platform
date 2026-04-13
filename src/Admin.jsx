@@ -475,10 +475,12 @@ function CacheBar({ mode, config, current }) {
 // ─── Cache Command Centre ─────────────────────────────────────────────────────
 function CacheCommandCentre({ cacheStatus, filling, fillProgress, fillMode, fillAllCache, stopFill }) {
   const modes = [
-    { key: "Mock",          label: "Eng Mock",  color: "#4338CA", bg: "#EEF2FF" },
-    { key: "QuickPractice", label: "Eng QP",    color: "#059669", bg: "#ECFDF5" },
-    { key: "GAT_Mock",      label: "GAT Mock",  color: "#DC2626", bg: "#FEF2F2" },
-    { key: "GAT_QP",        label: "GAT QP",    color: "#D97706", bg: "#FEF3C7" },
+    { key: "Mock",            label: "Eng Mock",   color: "#4338CA", bg: "#EEF2FF" },
+    { key: "QuickPractice",   label: "Eng QP",     color: "#059669", bg: "#ECFDF5" },
+    { key: "GAT_Mock",        label: "GAT Mock",   color: "#DC2626", bg: "#FEF2F2" },
+    { key: "GAT_QP",          label: "GAT QP",     color: "#D97706", bg: "#FEF3C7" },
+    { key: "Economics_Mock",  label: "Eco Mock",   color: "#7C3AED", bg: "#F5F3FF" },
+    { key: "Economics_QP",    label: "Eco QP",     color: "#0891B2", bg: "#ECFEFF" },
   ];
   const activeMode = fillProgress?.targetMode || (filling && !fillProgress?.targetMode ? "All" : null);
   const elapsed = fillProgress?.elapsed ?? 0;
@@ -487,8 +489,8 @@ function CacheCommandCentre({ cacheStatus, filling, fillProgress, fillMode, fill
   const getNeeded = (key) => cacheStatus?.[key]?.needed ?? 0;
   const getCurrent = (key) => {
     if (filling && fillProgress) {
-      if (key === "Mock" || key === "GAT_Mock") return fillProgress.mock ?? cacheStatus?.[key]?.current ?? 0;
-      if (key === "QuickPractice" || key === "GAT_QP") return fillProgress.qp ?? cacheStatus?.[key]?.current ?? 0;
+      if (key === "Mock" || key === "GAT_Mock" || key === "Economics_Mock") return fillProgress.mock ?? cacheStatus?.[key]?.current ?? 0;
+      if (key === "QuickPractice" || key === "GAT_QP" || key === "Economics_QP") return fillProgress.qp ?? cacheStatus?.[key]?.current ?? 0;
     }
     return cacheStatus?.[key]?.current ?? 0;
   };
@@ -520,8 +522,8 @@ function CacheCommandCentre({ cacheStatus, filling, fillProgress, fillMode, fill
         </div>
       </div>
 
-      {/* 4-mode grid */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)" }}>
+      {/* 6-mode grid: 3 cols × 2 rows — Eng / GAT / Economics */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)" }}>
         {modes.map((m, i) => {
           const total   = CACHE_CONFIG[m.key]?.size ?? 100;
           const current = getCurrent(m.key);
@@ -535,7 +537,7 @@ function CacheCommandCentre({ cacheStatus, filling, fillProgress, fillMode, fill
           const sBg     = isFull?"#ECFDF5": isActive?m.bg: isCrit?"#FEF2F2":"#F8FAFC";
           const sCol    = isFull?"#059669": isActive?m.color: isCrit?"#DC2626":"#64748B";
           return (
-            <div key={m.key} style={{ padding:"10px 14px", borderRight: i<3?"1px solid #F1F5F9":"none", background: isActive?`${m.bg}88`:"#fff", transition:"background .3s" }}>
+            <div key={m.key} style={{ padding:"10px 14px", borderRight: i%3<2?"1px solid #F1F5F9":"none", borderBottom: i<3?"1px solid #F1F5F9":"none", background: isActive?`${m.bg}88`:"#fff", transition:"background .3s" }}>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5 }}>
                 <span style={{ fontSize:11, fontWeight:700, color:"#0F2747" }}>{m.label}</span>
                 <span style={{ fontSize:9, fontWeight:800, letterSpacing:".06em", textTransform:"uppercase", background:sBg, color:sCol, padding:"1px 6px", borderRadius:10 }}>{status}</span>
