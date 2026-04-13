@@ -429,7 +429,9 @@ function AuthScreen({ onLogin, showToast }) {
     if (!snap.exists()) {
       await setDoc(ref, {
         uid: user.uid, email: user.email, displayName: user.displayName,
-        photoURL: user.photoURL, testsUsed: 0, createdAt: serverTimestamp(),
+        photoURL: user.photoURL, createdAt: serverTimestamp(),
+        // testsUsed intentionally omitted — Firestore create rule blocks it;
+        // CF increments via admin SDK on test start
       });
     } else {
       const data = snap.data();
@@ -1476,6 +1478,7 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
   const [marked,    setMarked]    = useState(new Set());
   const [timeLeft,  setTimeLeft]  = useState(isTimed ? EXAM_SECS : null);
   const [exitModal, setExitModal] = useState(false);
+  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
   const isMobile = useMobile();
   const timerRef = useRef(null);
@@ -1518,6 +1521,40 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
           </div>
         </div>
       )}
+
+      {showSubmitConfirm && (() => {
+        const answered  = Object.keys(answers).length;
+        const unanswered = questions.length - answered;
+        const markedCount = marked.size;
+        return (
+          <div className="modal-overlay">
+            <div className="modal-box" style={{ maxWidth: 400 }}>
+              <h3 style={{ fontFamily: "var(--font-display)", fontSize: 20, color: "var(--navy)", marginBottom: 16 }}>Submit Test?</h3>
+              <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
+                {[
+                  { label: "Answered",   val: answered,   bg: "#ECFDF5", cl: "#059669" },
+                  { label: "Unanswered", val: unanswered, bg: "#FEF2F2", cl: "#DC2626" },
+                  { label: "Marked",     val: markedCount,bg: "#FFFBEB", cl: "#D97706" },
+                ].map(s => (
+                  <div key={s.label} style={{ flex: 1, minWidth: 80, textAlign: "center", background: s.bg, borderRadius: 8, padding: "10px 8px" }}>
+                    <div style={{ fontFamily: "var(--font-mono)", fontSize: 22, fontWeight: 700, color: s.cl }}>{s.val}</div>
+                    <div style={{ fontSize: 10, color: s.cl, opacity: 0.75, textTransform: "uppercase", letterSpacing: ".04em", marginTop: 2 }}>{s.label}</div>
+                  </div>
+                ))}
+              </div>
+              {unanswered > 0 && (
+                <p style={{ fontSize: 12.5, color: "var(--text-secondary)", background: "var(--bg-alt)", borderRadius: 8, padding: "10px 12px", marginBottom: 16, lineHeight: 1.6 }}>
+                  ⚠ {unanswered} unanswered question{unanswered !== 1 ? "s" : ""} will score 0 marks.
+                </p>
+              )}
+              <div style={{ display: "flex", gap: 10 }}>
+                <button className="btn-outline" style={{ flex: 1, height: 40, fontSize: 13 }} onClick={() => setShowSubmitConfirm(false)}>Review More</button>
+                <button className="btn-primary" style={{ flex: 1, height: 40, fontSize: 13 }} onClick={() => { setShowSubmitConfirm(false); submitTest(false); }}>Submit →</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       <div className="nta-header">
         <span className="nta-logo">Vantiq <span>CUET</span></span>
@@ -1585,7 +1622,7 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
             <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.8, marginBottom: 16 }}>
               <div>&#x1F7E9; Answered</div><div>&#x1F7E8; Marked</div><div>&#x2B1C; Not visited</div>
             </div>
-            <button className="btn-primary" onClick={() => submitTest(false)} style={{ width: "100%", fontSize: 12, height: 38, marginTop: "auto" }}>
+            <button className="btn-primary" onClick={() => setShowSubmitConfirm(true)} style={{ width: "100%", fontSize: 12, height: 38, marginTop: "auto" }}>
               Submit Test
             </button>
           </div>
@@ -1614,7 +1651,7 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
                 );
               })}
             </div>
-            <button className="btn-primary full" onClick={() => { setShowPalette(false); submitTest(false); }}>Submit Test</button>
+            <button className="btn-primary full" onClick={() => { setShowPalette(false); setShowSubmitConfirm(true); }}>Submit Test</button>
           </div>
         </div>
       )}
@@ -1636,7 +1673,7 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
             ← {!isMobile && "Back"}
           </button>
           {isMobile && current === questions.length - 1 ? (
-            <button className="btn-navy-sm" onClick={() => submitTest(false)} style={{ background: "var(--success)", minWidth: 80 }}>
+            <button className="btn-navy-sm" onClick={() => setShowSubmitConfirm(true)} style={{ background: "var(--success)", minWidth: 80 }}>
               Submit ✓
             </button>
           ) : (
@@ -2011,7 +2048,8 @@ function ReviewScreen({ questions, answers, onBack }) {
                 </div>
                 {q.passage && (
                   <div style={{ background: "#F5F7FF", borderLeft: "3px solid var(--indigo)", padding: "10px 14px", borderRadius: "0 6px 6px 0", fontSize: 12.5, lineHeight: 1.7, color: "var(--text-secondary)", marginBottom: 10 }}>
-                    <em>Passage: {q.passage.substring(0, 200)}...</em>
+                    <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".05em", textTransform: "uppercase", color: "var(--indigo)", marginBottom: 6 }}>Reading Passage</div>
+                    {q.passage}
                   </div>
                 )}
                 <p style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)", lineHeight: 1.6, marginBottom: 14 }}>{q.question}</p>
