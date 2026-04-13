@@ -173,18 +173,24 @@ const S = {
     cursor: "pointer",
     border: variant === "primary" ? "none" : "1px solid #E2E8F0",
     background:
-      variant === "primary"
-        ? "#4338CA"
-        : variant === "danger"
-        ? "#FEE2E2"
-        : "#fff",
+      variant === "primary" ? "#4338CA" :
+      variant === "danger"  ? "#FEE2E2" :
+      variant === "muted"   ? "#F8FAFC" : "#fff",
     color:
+      variant === "primary" ? "#fff" :
+      variant === "danger"  ? "#DC2626" :
+      variant === "muted"   ? "#64748B" : "#0F2747",
+    // 3D depth — bottom shadow acts as the "base"
+    boxShadow:
       variant === "primary"
-        ? "#fff"
+        ? "0 1px 0 rgba(255,255,255,.12) inset, 0 2px 0 #2d25a0, 0 3px 7px rgba(67,56,202,.28)"
         : variant === "danger"
-        ? "#DC2626"
-        : "#0F2747",
-    transition: "all 0.15s",
+        ? "0 1px 0 rgba(255,255,255,.6) inset, 0 2px 0 #fca5a5, 0 3px 7px rgba(220,38,38,.12)"
+        : "0 1px 0 rgba(255,255,255,.8) inset, 0 2px 0 #cbd5e1, 0 3px 7px rgba(0,0,0,.06)",
+    transition: "transform .1s cubic-bezier(.4,0,.2,1), box-shadow .1s cubic-bezier(.4,0,.2,1), background .1s",
+    outline: "none",
+    position: "relative",
+    userSelect: "none",
   }),
   lastRefresh: {
     fontSize: 11,
@@ -506,11 +512,11 @@ function CacheCommandCentre({ cacheStatus, filling, fillProgress, fillMode, fill
         </div>
         <div style={{ display:"flex", gap:5 }}>
           {filling ? (
-            <button onClick={stopFill} style={{ background:"#FEF2F2", border:"1px solid #FECACA", color:"#DC2626", borderRadius:6, padding:"3px 10px", fontSize:10, fontWeight:700, cursor:"pointer" }}>
+            <button onClick={stopFill} data-tip="Stop the active fill immediately. Partial fills are kept — use only in emergencies." style={{ background:"#FEF2F2", border:"1px solid #FECACA", color:"#DC2626", borderRadius:6, padding:"3px 10px", fontSize:10, fontWeight:700, cursor:"pointer" }}>
               ⏹ Stop
             </button>
           ) : null}
-          <button onClick={fillAllCache} disabled={filling} style={{ background: filling?"#F1F5F9":"#0F2747", border:"none", color: filling?"#94A3B8":"#fff", borderRadius:6, padding:"3px 10px", fontSize:10, fontWeight:700, cursor: filling?"not-allowed":"pointer" }}>
+          <button onClick={fillAllCache} disabled={filling} data-tip={filling ? "Fill already running…" : "Fill all 6 cache modes to target (Eng + GAT + Economics). Takes 5–9 minutes."} style={{ background: filling?"#F1F5F9":"#0F2747", border:"none", color: filling?"#94A3B8":"#fff", borderRadius:6, padding:"3px 10px", fontSize:10, fontWeight:700, cursor: filling?"not-allowed":"pointer" }}>
             ▶ Fill All
           </button>
         </div>
@@ -580,6 +586,7 @@ function CacheCommandCentre({ cacheStatus, filling, fillProgress, fillMode, fill
                 {isActive && elapsed>0 && <span style={{ fontSize:9, color:m.color, fontWeight:600 }}>{elapsedStr}</span>}
               </div>
               <button onClick={() => fillMode(m.key)} disabled={filling || isFull}
+                data-tip={isFull ? `${m.label} is full (${CACHE_CONFIG[m.key]?.size} sets). No action needed.` : filling ? "Another fill is running…" : `Fill only ${m.label} cache to target. Other modes are NOT touched.`}
                 style={{ width:"100%", background: (filling||isFull)?"#F8FAFC":m.bg, border:`1px solid ${(filling||isFull)?"#E2E8F0":barColor+"55"}`, color:(filling||isFull)?"#94A3B8":m.color, borderRadius:5, padding:"4px 0", fontSize:10, fontWeight:700, cursor:(filling||isFull)?"not-allowed":"pointer", textTransform:"uppercase", letterSpacing:".05em" }}>
                 {isActive ? "▶ Running…" : isFull ? "✓ Full" : "▶ Fill Now"}
               </button>
@@ -1487,35 +1494,76 @@ export default function AdminDashboard() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap');
         @keyframes spin { to { transform: rotate(360deg); } }
-        @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
-        @keyframes shimmer { 0%,100% { opacity:0.6; } 50% { opacity:1; } }
+        @keyframes pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.6; transform:scale(0.9); } }
+        @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+        @keyframes adminBtnFlash { 0%{box-shadow:0 0 0 0 rgba(67,56,202,.4);} 60%{box-shadow:0 0 0 6px rgba(67,56,202,0);} 100%{box-shadow:none;} }
         * { box-sizing: border-box; }
         ::-webkit-scrollbar { width: 4px; height: 4px; }
         ::-webkit-scrollbar-track { background: #F1F5F9; }
         ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 4px; }
-        button:hover { opacity: 0.88; }
-        @keyframes pulse {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50% { opacity: 0.6; transform: scale(0.9); }
+
+        /* ── 3D button hover + press ─────────────────────────────── */
+        button:not(:disabled):hover {
+          transform: translateY(-1px);
+          filter: brightness(1.06);
         }
-        @keyframes shimmer {
-          0% { background-position: -200% 0; }
-          100% { background-position: 200% 0; }
+        button:not(:disabled):active {
+          transform: translateY(2px) !important;
+          filter: brightness(0.97);
+          box-shadow: 0 1px 0 rgba(0,0,0,.12) inset !important;
+          transition-duration: .05s !important;
         }
+        button:disabled { opacity: .45; cursor: not-allowed !important; }
+        button:focus-visible { outline: 2px solid #4338CA; outline-offset: 2px; }
+
+        /* ── Tooltip system ─────────────────────────────────────── */
+        [data-tip] { position: relative; }
+        [data-tip]::before, [data-tip]::after {
+          pointer-events: none;
+          opacity: 0;
+          position: absolute;
+          z-index: 9999;
+          bottom: calc(100% + 7px);
+          left: 50%;
+          transform: translateX(-50%) translateY(4px);
+          transition: opacity .15s ease, transform .15s ease;
+        }
+        [data-tip]::before {
+          content: attr(data-tip);
+          background: rgba(15,23,42,0.93);
+          color: #fff;
+          font-size: 11px;
+          font-family: 'Sora', sans-serif;
+          font-weight: 500;
+          line-height: 1.45;
+          white-space: pre-wrap;
+          max-width: 240px;
+          min-width: 80px;
+          text-align: center;
+          padding: 6px 10px;
+          border-radius: 7px;
+          box-shadow: 0 4px 14px rgba(0,0,0,.25);
+        }
+        [data-tip]::after {
+          content: '';
+          border: 5px solid transparent;
+          border-top-color: rgba(15,23,42,0.93);
+          bottom: calc(100% + 2px);
+        }
+        [data-tip]:hover::before, [data-tip]:hover::after {
+          opacity: 1;
+          transform: translateX(-50%) translateY(0);
+        }
+
         @media (max-width: 900px) {
           .kpi-grid { grid-template-columns: repeat(3,1fr) !important; }
           .live-section { grid-template-columns: 1fr !important; }
         }
         @media (max-width: 700px) {
-          /* Header — hide email chip, keep buttons */
           .admin-email-chip { display: none !important; }
-          /* Status bar — smaller pills */
           .status-bar-wrap { padding: 5px 12px !important; gap: 6px !important; }
-          /* Command bar */
           .cmd-bar { padding: 6px 12px !important; flex-wrap: wrap; gap: 6px !important; }
-          /* Body padding */
           .admin-body { padding: 12px !important; }
-          /* Cards */
           .admin-card { padding: 12px 14px !important; }
           /* Tab bar — scrollable */
           .admin-tab-bar { padding: 0 12px !important; overflow-x: auto; flex-wrap: nowrap !important; }
@@ -1598,10 +1646,10 @@ export default function AdminDashboard() {
               {anomalyTs && <span style={{ fontSize:10, color:"#94A3B8" }}>· scanned {anomalyTs.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})}</span>}
             </div>
             <div style={{ display:"flex", gap:6 }}>
-              <button onClick={runAnomalyDetection} disabled={anomalyLoad} style={{ ...S.btnSmall("muted"), fontSize:10, padding:"3px 10px" }}>
+              <button onClick={runAnomalyDetection} disabled={anomalyLoad} data-tip="Re-scan all users from last 24h for zero-score spam, rapid retries, and credit abuse patterns." style={{ ...S.btnSmall("muted"), fontSize:10, padding:"3px 10px" }}>
                 {anomalyLoad?"Scanning…":"Re-scan"}
               </button>
-              <button onClick={()=>setAnomalies([])} style={{ ...S.btnSmall("muted"), fontSize:10, padding:"3px 10px" }}>Dismiss</button>
+              <button onClick={()=>setAnomalies([])} data-tip="Clear all alerts from this panel without taking action. Reappear on next scan." style={{ ...S.btnSmall("muted"), fontSize:10, padding:"3px 10px" }}>Dismiss</button>
             </div>
           </div>
           {anomalies.map((a,i) => (
@@ -1620,10 +1668,10 @@ export default function AdminDashboard() {
               </div>
               <div style={{ display:"flex", gap:6, flexShrink:0, paddingTop:2 }}>
                 {!a.autoBlocked && !a.alreadyBlocked && (<>
-                  <button onClick={()=>blockUser(a.uid,a.email,"1h",`Admin: ${a.pattern} — ${a.detail}`)} disabled={blockLoad===a.uid} style={{ ...S.btnSmall("danger"), fontSize:11 }}>{blockLoad===a.uid?"…":"Block 1h"}</button>
-                  <button onClick={()=>blockUser(a.uid,a.email,"permanent",`Admin: ${a.pattern} — ${a.detail}. Permanent.`)} disabled={blockLoad===a.uid} style={{ ...S.btnSmall("danger"), fontSize:11, background:"#7F1D1D", borderColor:"#7F1D1D" }}>Perm Ban</button>
+                  <button onClick={()=>blockUser(a.uid,a.email,"1h",`Admin: ${a.pattern} — ${a.detail}`)} disabled={blockLoad===a.uid} data-tip="Block this account for 1 hour. Auto-expires. Logs reason." style={{ ...S.btnSmall("danger"), fontSize:11 }}>{blockLoad===a.uid?"…":"Block 1h"}</button>
+                  <button onClick={()=>blockUser(a.uid,a.email,"permanent",`Admin: ${a.pattern} — ${a.detail}. Permanent.`)} disabled={blockLoad===a.uid} data-tip="⚠ Permanent ban. User cannot log in again. Cannot be undone easily." style={{ ...S.btnSmall("danger"), fontSize:11, background:"#7F1D1D", borderColor:"#7F1D1D" }}>Perm Ban</button>
                 </>)}
-                <button onClick={()=>{setLookupEmail(a.email); setTimeout(lookupUser,50);}} style={{ ...S.btnSmall("muted"), fontSize:11 }}>Profile</button>
+                <button onClick={()=>{setLookupEmail(a.email); setTimeout(lookupUser,50);}} data-tip="Open this user's full profile in User Management for review before taking action." style={{ ...S.btnSmall("muted"), fontSize:11 }}>Profile</button>
               </div>
             </div>
           ))}
@@ -1712,10 +1760,10 @@ export default function AdminDashboard() {
       {/* ── ZONE 2: COMMAND ROW ── */}
       <div style={S.commandRow}>
         <div style={S.commandLeft}>
-          <button onClick={() => { loadData(); loadCacheStatus(); }} style={S.btnSmall()}>
+          <button onClick={() => { loadData(); loadCacheStatus(); }} data-tip="Reload all KPI tiles, student data, cache counts, and revenue from Firestore." style={S.btnSmall()}>
             {loading ? <span style={S.spinner} /> : "↻ Refresh"}
           </button>
-          <button onClick={runHealthCheck} style={S.btnSmall()}>
+          <button onClick={runHealthCheck} data-tip="Run the platformHealthCheck Cloud Function. Returns healthy / warning / critical and logs the result." style={S.btnSmall()}>
             {healthLoad ? <span style={S.spinner} /> : "Run Health Check"}
           </button>
           {/* Fill controls moved to Cache Command Centre above */}
@@ -1723,6 +1771,7 @@ export default function AdminDashboard() {
             href="https://console.firebase.google.com/project/vantiq-cuet/functions/logs"
             target="_blank"
             rel="noreferrer"
+            data-tip="Opens Firebase Cloud Functions logs in a new tab. Shows real-time CF errors, timeouts, and generation logs."
             style={{ ...S.btnSmall(), textDecoration: "none", display: "inline-flex", alignItems: "center" }}
           >
             View Logs ↗
@@ -1918,7 +1967,7 @@ export default function AdminDashboard() {
                   onChange={(e) => setLookupEmail(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && lookupUser()}
                 />
-                <button onClick={lookupUser} style={S.btnSmall("primary")}>
+                <button onClick={lookupUser} data-tip="Search Firestore for this email. Shows test count, payment status, block history, and admin notes." style={S.btnSmall("primary")}>
                   {lookupLoad ? <span style={S.spinner} /> : "Lookup"}
                 </button>
               </div>
@@ -1968,16 +2017,17 @@ export default function AdminDashboard() {
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
                         {/* Access controls */}
                         {!lookupResult.unlocked
-                          ? <button onClick={() => grantAccess(lookupResult.id)} style={S.btnSmall("primary")}>Grant Pro Access</button>
-                          : <button onClick={() => revokeAccess(lookupResult.id)} style={S.btnSmall("danger")}>Revoke Access</button>
+                          ? <button onClick={() => grantAccess(lookupResult.id)} data-tip="Write unlocked=true to Firestore via admin SDK. Gives this user unlimited Mock Exam access permanently." style={S.btnSmall("primary")}>Grant Pro Access</button>
+                          : <button onClick={() => revokeAccess(lookupResult.id)} data-tip="Revoke paid access — sets unlocked=false. User drops back to free tier immediately." style={S.btnSmall("danger")}>Revoke Access</button>
                         }
-                        <button onClick={() => resetFreeLimit(lookupResult.id)} style={S.btnSmall()}>Reset Free Limit</button>
+                        <button onClick={() => resetFreeLimit(lookupResult.id)} data-tip="Reset testsUsed to 0. Gives a fresh 4 free Mock Exams. Does not affect payment status." style={S.btnSmall()}>Reset Free Limit</button>
 
                         {/* Block controls */}
                         {lookupResult.blocked || lookupResult.blockedUntil ? (
                           <button
                             onClick={() => blockUser(lookupResult.id, lookupResult.email, "unblock", "")}
                             disabled={blockLoad === lookupResult.id}
+                            data-tip="Remove the block from this account. User can log in and take tests again immediately."
                             style={{ ...S.btnSmall("primary"), background: "#059669", borderColor: "#059669" }}
                           >
                             {blockLoad === lookupResult.id ? "…" : "✓ Unblock"}
@@ -1987,6 +2037,7 @@ export default function AdminDashboard() {
                             <button
                               onClick={() => blockUser(lookupResult.id, lookupResult.email, "1h", "Admin: manual 1-hour suspension")}
                               disabled={blockLoad === lookupResult.id}
+                              data-tip="Block this account for 1 hour. Auto-expires. User sees 'Account temporarily suspended'."
                               style={S.btnSmall("danger")}
                             >
                               {blockLoad === lookupResult.id ? "…" : "Block 1 Hour"}
@@ -1994,6 +2045,7 @@ export default function AdminDashboard() {
                             <button
                               onClick={() => blockUser(lookupResult.id, lookupResult.email, "permanent", "Admin: permanent ban")}
                               disabled={blockLoad === lookupResult.id}
+                              data-tip="⚠ Permanent ban. User can never log in again. Does not auto-expire."
                               style={{ ...S.btnSmall("danger"), background: "#7F1D1D", borderColor: "#7F1D1D" }}
                             >
                               Perm Ban
@@ -2005,6 +2057,7 @@ export default function AdminDashboard() {
                         <button
                           onClick={() => deleteUser(lookupResult.id, lookupResult.email)}
                           disabled={blockLoad === lookupResult.id}
+                          data-tip="⚠⚠ Permanently delete this user's Firestore doc and all test history. Irreversible."
                           style={{ ...S.btnSmall("danger"), marginLeft: "auto", background: "#1F2937", borderColor: "#1F2937" }}
                         >
                           🗑 Delete Account
