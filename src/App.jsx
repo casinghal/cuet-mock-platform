@@ -1791,7 +1791,7 @@ function fmtSecs(s) {
 }
 
 // ── RESULTS SCREEN ────────────────────────────────────────────────────────────
-function ResultsScreen({ questions, answers, config, user, testHistory, timePerQ = {}, onNewTest, onReview, onViewAnalytics }) {
+function ResultsScreen({ questions, answers, config, user, testHistory, timePerQ = {}, isPastReview = false, reviewTestDate = null, onNewTest, onReview, onViewAnalytics }) {
   const [analysis, setAnalysis] = useState(null);
   const isMobile = useMobile();
 
@@ -1885,11 +1885,24 @@ Respond ONLY with valid JSON: {"summary":"One honest sentence about NTA score an
       </div>
 
       <div style={{ flex:1, maxWidth:820, margin:"0 auto", width:"100%", padding: isMobile ? "16px 14px" : "28px 24px" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8, flexWrap:"wrap" }}>
+          <span style={{ fontSize:11, fontWeight:700, padding:"3px 10px", borderRadius:20,
+            background: isPastReview ? "#EEF2FF" : "#ECFDF5",
+            color:       isPastReview ? AZ.ind    : AZ.grn,
+            border:      `1px solid ${isPastReview ? "#C7D2FE" : "#A7F3D0"}` }}>
+            {isPastReview ? "📋 Past Test Review" : "✓ Just Completed"}
+          </span>
+          {isPastReview && reviewTestDate && (
+            <span style={{ fontSize:11, color:AZ.textM }}>
+              {(() => { try { const d = reviewTestDate?.toDate ? reviewTestDate.toDate() : new Date(reviewTestDate); return d.toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}); } catch(_){ return ""; } })()}
+            </span>
+          )}
+        </div>
         <h1 style={{ fontFamily:"var(--font-display)", fontSize:22, color:AZ.text, marginBottom:4 }}>
-          {config?.subject || "English"} Mock — Results
+          {config?.subject || "English"} — {(config?.mode === "QuickPractice" || config?.mode === "GAT_QP" || config?.mode === "Economics_QP") ? "Quick Practice" : "Mock Exam"} Results
         </h1>
         <p style={{ fontSize:12, color:AZ.textM, marginBottom:20 }}>
-          {config?.mode === "QuickPractice" || config?.mode === "GAT_QP" || config?.mode === "Economics_QP" ? "Quick Practice" : "Full Mock Exam"} · {questions.length} Questions
+          {questions.length} Questions · {(config?.mode === "QuickPractice" || config?.mode === "GAT_QP" || config?.mode === "Economics_QP") ? "Ungraded practice · Always free" : "+5 correct · −1 wrong · 0 skipped"}
         </p>
 
         {/* ── BLOCK 1: Score Overview ─────────────────────────────────── */}
@@ -2064,22 +2077,36 @@ Respond ONLY with valid JSON: {"summary":"One honest sentence about NTA score an
           )}
         </div>
 
-        {/* ── BLOCK 7: Action Buttons ───────────────────────────────────── */}
+        {/* ── BLOCK 7: Action Buttons — context-aware ─────────────────── */}
         <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
-          <button onClick={onReview}
-            style={{ flex:1, minWidth:120, height:40, background:"transparent", color:AZ.textS, border:`1px solid ${AZ.bord}`, borderRadius:8, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"var(--font-body)" }}>
+
+          {/* Review Answers: PRIMARY for past review, secondary for fresh */}
+          <button onClick={onReview} style={{ flex:1, minWidth:120, height:40, borderRadius:8,
+            fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"var(--font-body)",
+            background: isPastReview ? AZ.ind : "transparent",
+            color:       isPastReview ? "#fff"  : AZ.textS,
+            border:      isPastReview ? "none"  : `1px solid ${AZ.bord}` }}>
             Review Answers
           </button>
+
+          {/* My Analytics: always outline */}
           {onViewAnalytics && (
-            <button onClick={onViewAnalytics}
-              style={{ flex:1, minWidth:120, height:40, background:AZ.ind, color:"#fff", border:"none", borderRadius:8, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"var(--font-body)" }}>
-              📊 My Analytics →
+            <button onClick={onViewAnalytics} style={{ flex:1, minWidth:120, height:40,
+              background:"transparent", color:AZ.ind, border:`1.5px solid ${AZ.ind}`,
+              borderRadius:8, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"var(--font-body)" }}>
+              📊 My Analytics
             </button>
           )}
-          <button onClick={onNewTest}
-            style={{ flex:1, minWidth:120, height:40, background:AZ.grn, color:"#0D0D0D", border:"none", borderRadius:8, fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"var(--font-body)" }}>
-            New Test Paper
+
+          {/* Right CTA: "Begin New Test" fresh · "Back to Dashboard" past */}
+          <button onClick={onNewTest} style={{ flex:1, minWidth:120, height:40, borderRadius:8,
+            fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"var(--font-body)",
+            background: isPastReview ? "transparent" : AZ.grn,
+            color:       isPastReview ? AZ.textS      : "#0D0D0D",
+            border:      isPastReview ? `1px solid ${AZ.bord}` : "none" }}>
+            {isPastReview ? "← Back to Dashboard" : "Begin New Test →"}
           </button>
+
         </div>
       </div>
     </div>
@@ -2276,7 +2303,7 @@ function ReviewScreen({ questions, answers, onBack }) {
             })}
           </div>
           <button className="btn-primary" style={{ marginTop: 28, width: "100%" }} onClick={onBack}>
-            ← Back to Performance Report
+            ← Back to Results
           </button>
         </div>
       </div>
@@ -2299,7 +2326,7 @@ function ReviewScreen({ questions, answers, onBack }) {
   );
 }
 // ── PERFORMANCE DASHBOARD ────────────────────────────────────────────────────
-function PerformanceDashboard({ testHistory, user, onBack }) {
+function PerformanceDashboard({ testHistory, user, onBack, onBackToResults }) {
   const isMobile = useMobile();
   useEffect(() => { logEvent("page_view", { page: "performance_dashboard" }); }, []);
 
@@ -2308,7 +2335,18 @@ function PerformanceDashboard({ testHistory, user, onBack }) {
       <div style={{ minHeight:"100vh", background:AZ.bg, display:"flex", flexDirection:"column" }}>
         <div className="nta-header">
           <span className="nta-logo">Vantiq <span>CUET</span></span>
-          <button onClick={onBack} style={{ background:"transparent", color:"rgba(255,255,255,.55)", border:"1px solid rgba(255,255,255,.18)", borderRadius:6, padding:"4px 14px", fontSize:13, cursor:"pointer", fontFamily:"var(--font-body)" }}>← Dashboard</button>
+          <div style={{ display:"flex", gap:8 }}>
+            {onBackToResults && (
+              <button onClick={onBackToResults}
+                style={{ background:"transparent", color:"rgba(255,255,255,.7)", border:"1px solid rgba(255,255,255,.25)", borderRadius:6, padding:"4px 12px", fontSize:13, cursor:"pointer", fontFamily:"var(--font-body)" }}>
+                ← Results
+              </button>
+            )}
+            <button onClick={onBack}
+              style={{ background:"transparent", color:"rgba(255,255,255,.5)", border:"1px solid rgba(255,255,255,.18)", borderRadius:6, padding:"4px 14px", fontSize:13, cursor:"pointer", fontFamily:"var(--font-body)" }}>
+              Dashboard
+            </button>
+          </div>
         </div>
         <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center" }}>
           <div style={{ textAlign:"center" }}>
@@ -3035,6 +3073,9 @@ export default function App() {
   const [questions,   setQuestions]  = useState([]);
   const [answers,     setAnswers]    = useState({});
   const [timePerQ,    setTimePerQ]   = useState({});
+  const [isPastReview,  setIsPastReview]  = useState(false);
+  const [reviewTestDate, setReviewTestDate] = useState(null);
+  const [perfDashFrom,   setPerfDashFrom]   = useState("dashboard");
   const [toast,       setToast]      = useState(null);
   const [authLoading, setAuthLoad]   = useState(true);
   const [showRating,  setShowRating] = useState(false);
@@ -3123,7 +3164,10 @@ export default function App() {
       setAnswers(data.answers);
       setTimePerQ(data.timePerQuestion || {});
       setConfig({ mode: data.mode, subject: data.subject || "English" });
-      setScreen("results");   // show full analytics → user can click "Review Answers" from there
+      setIsPastReview(true);
+      setReviewTestDate(data.completedAt || null);
+      setPerfDashFrom("results");
+      setScreen("results");
     } catch(e) { showToast("Could not load test. Please try again.", "error"); }
   }
 
@@ -3231,6 +3275,8 @@ export default function App() {
     const negativeMarks = wrong * 1;
     const optimisedScore = correct * 5;
     setTimePerQ(tpq);
+    setIsPastReview(false);
+    setReviewTestDate(null);
     try {
       await addDoc(collection(db, "tests"), {
         uid: user.uid,
@@ -3269,10 +3315,10 @@ export default function App() {
     <React.Fragment>
       {toast && <Toast key={toast.key} message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
       {screen === "auth"       && <AuthScreen      onLogin={u => { setUser(u); loadUserData(u); setScreen("dashboard"); }} showToast={showToast} />}
-      {screen === "dashboard"  && <DashboardScreen user={user} userData={userData} testHistory={testHistory} onBeginTest={handleBeginTest} onReviewTest={handleReviewPastTest} onViewAnalytics={() => setScreen("performance")} onLogout={() => auth ? signOut(auth) : setScreen("auth")} showToast={showToast} subjects={SUBJECTS} showPaywallOverride={showPaywall} setShowPaywallOverride={setShowPaywall} />}
+      {screen === "dashboard"  && <DashboardScreen user={user} userData={userData} testHistory={testHistory} onBeginTest={handleBeginTest} onReviewTest={handleReviewPastTest} onViewAnalytics={() => { setPerfDashFrom("dashboard"); setScreen("performance"); }} onLogout={() => auth ? signOut(auth) : setScreen("auth")} showToast={showToast} subjects={SUBJECTS} showPaywallOverride={showPaywall} setShowPaywallOverride={setShowPaywall} />}
       {screen === "generating" && <GeneratingScreen config={testConfig} />}
       {screen === "exam"       && <ExamScreen      questions={questions} config={testConfig} user={user} onSubmit={handleSubmitTest} showToast={showToast} />}
-      {screen === "results"    && <ResultsScreen   questions={questions} answers={answers} config={testConfig} user={user} testHistory={testHistory} timePerQ={timePerQ} onNewTest={() => setScreen("dashboard")} onReview={() => setScreen("review")} onViewAnalytics={() => setScreen("performance")} />}
+      {screen === "results"    && <ResultsScreen   questions={questions} answers={answers} config={testConfig} user={user} testHistory={testHistory} timePerQ={timePerQ} isPastReview={isPastReview} reviewTestDate={reviewTestDate} onNewTest={() => setScreen("dashboard")} onReview={() => setScreen("review")} onViewAnalytics={() => { setPerfDashFrom("results"); setScreen("performance"); }} />}
       {/* Feedback button — always visible when logged in */}
       {user && screen !== "auth" && screen !== "exam" && <FeedbackWidget user={user} />}
       {/* Star rating — shown once per login session */}
@@ -3280,7 +3326,7 @@ export default function App() {
         <StarRatingModal user={user} onDismiss={() => setShowRating(false)} />
       )}
       {screen === "review"      && <ReviewScreen          questions={questions} answers={answers} onBack={() => setScreen("results")} />}
-      {screen === "performance" && <PerformanceDashboard  testHistory={testHistory} user={user} onBack={() => setScreen("dashboard")} />}
+      {screen === "performance" && <PerformanceDashboard  testHistory={testHistory} user={user} onBack={() => setScreen("dashboard")} onBackToResults={perfDashFrom === "results" ? () => setScreen("results") : undefined} />}
     </React.Fragment>
   );
 }
