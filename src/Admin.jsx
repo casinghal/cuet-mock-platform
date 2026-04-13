@@ -633,6 +633,12 @@ export default function AdminDashboard() {
 
   // ── UI state ────────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState("students");
+  const [qaQuestions,   setQaQuestions]   = useState(null);   // questions pulled for review
+  const [qaLoading,     setQaLoading]     = useState(false);
+  const [qaMode,        setQaMode]        = useState("Economics_Mock");
+  const [qaEdits,       setQaEdits]       = useState({});     // {idx: {correct: n}}
+  const [qaSaving,      setQaSaving]      = useState(false);
+  const [qaMsg,         setQaMsg]         = useState(null);
   const [loading, setLoading] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(null);
   const [logs, setLogs] = useState([]);
@@ -1816,7 +1822,7 @@ export default function AdminDashboard() {
 
       {/* ── TAB BAR ── */}
       <div style={S.tabBar} className="admin-tab-bar">
-        {["students", "platform", "payments", "content", "settings"].map((t) => (
+        {["students", "platform", "payments", "content", "qa", "settings"].map((t) => (
           <button
             key={t}
             onClick={() => setActiveTab(t)}
@@ -2557,6 +2563,113 @@ export default function AdminDashboard() {
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── QA / CURATION TAB ── */}
+      {activeTab === "qa" && (
+        <div style={S.tabPanel}>
+          <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "var(--navy)" }}>Question Accuracy Review</span>
+            <select
+              value={qaMode}
+              onChange={e => { setQaMode(e.target.value); setQaQuestions(null); setQaEdits({}); setQaMsg(null); }}
+              style={{ fontSize: 12, padding: "4px 10px", borderRadius: 6, border: "1px solid var(--border)", fontFamily: "var(--font-body)" }}
+            >
+              {["Economics_Mock","Economics_QP","GAT_Mock","GAT_QP","Mock","QuickPractice"].map(m => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+            <button
+              style={{ ...S.btnSmall("primary"), background: "#4338CA" }}
+              onClick={async () => {
+                setQaLoading(true); setQaQuestions(null); setQaEdits({}); setQaMsg(null);
+                try {
+                  // Pull a random cached set for this mode
+                  const snap = await import("firebase/firestore").then(async ({ collection, query, where, getDocs }) => {
+                    const q = query(collection(db, "questionCache"), where("mode", "==", qaMode));
+                    return getDocs(q);
+                  }).catch(() => null);
+                  if (!snap || snap.empty) { setQaMsg("No cached sets found for this mode."); return; }
+                  const docs = snap.docs;
+                  const picked = docs[Math.floor(Math.random() * docs.length)];
+                  setQaQuestions({ id: picked.id, questions: picked.data().questions || [], mode: qaMode });
+                  setQaMsg(`Loaded ${picked.data().questions?.length} questions from set ${picked.id.substring(0,8)}...`);
+                } catch(e) {
+                  setQaMsg("Error loading questions: " + e.message);
+                } finally { setQaLoading(false); }
+              }}
+            >
+              {qaLoading ? "Loading..." : "Load Random Set"}
+            </button>
+            {qaQuestions && Object.keys(qaEdits).length > 0 && (
+              <button
+                style={{ ...S.btnSmall("primary"), background: "#DC2626" }}
+                onClick={async () => {
+                  setQaSaving(true);
+                  try {
+                    const { doc, updateDoc } = await import("firebase/firestore");
+                    const corrected = qaQuestions.questions.map((q, i) =>
+                      qaEdits[i] !== undefined ? { ...q, correct: qaEdits[i] } : q
+                    );
+                    await updateDoc(doc(db, "questionCache", qaQuestions.id), { questions: corrected });
+                    setQaQuestions(prev => ({ ...prev, questions: corrected }));
+                    setQaEdits({});
+                    setQaMsg(`✓ Saved ${Object.keys(qaEdits).length} correction(s) to Firestore`);
+                  } catch(e) { setQaMsg("Save failed: " + e.message); }
+                  finally { setQaSaving(false); }
+                }}
+              >
+                {qaSaving ? "Saving..." : `Save ${Object.keys(qaEdits).length} Fix${Object.keys(qaEdits).length !== 1 ? "es" : ""}`}
+              </button>
+            )}
+          </div>
+
+          {qaMsg && (
+            <div style={{ padding: "8px 14px", borderRadius: 8, background: qaMsg.startsWith("✓") ? "#ECFDF5" : "#FEF2F2", border: `1px solid ${qaMsg.startsWith("✓") ? "#6EE7B7" : "#FECACA"}`, fontSize: 12, color: qaMsg.startsWith("✓") ? "#059669" : "#DC2626", marginBottom: 14 }}>
+              {qaMsg}
+            </div>
+          )}
+
+          {qaQuestions && (
+            <div>
+              <p style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 12 }}>
+                Review each question. If the correct answer index is wrong, click the right option below. Highlighted in red = mismatched (explanation contradicts marked answer).
+              </p>
+              {qaQuestions.questions.map((q, i) => {
+                const editedCorrect = qaEdits[i] !== undefined ? qaEdits[i] : q.correct;
+                // Simple heuristic: flag if explanation contains a number that matches a different option
+                const explLower = (q.explanation || "").toLowerCase();
+                const markedOption = q.options[q.correct] || "";
+                const markedNum = parseFloat(markedOption.replace(/[^0-9.]/g, ""));
+                const approxFlag = explLower.includes("approximately") || explLower.includes("closest") || explLower.includes("nearest");
+                const isFlagged = approxFlag;
+                return (
+                  <div key={i} style={{ border: `1.5px solid ${isFlagged ? "#FECACA" : editedCorrect !== q.correct ? "#FDE68A" : "var(--border)"}`, borderRadius: 10, padding: "12px 14px", marginBottom: 12, background: isFlagged ? "#FEF2F2" : editedCorrect !== q.correct ? "#FFFBEB" : "#fff" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)" }}>Q{i+1}</span>
+                      <span style={{ fontSize: 10, fontWeight: 600, padding: "1px 7px", borderRadius: 10, background: "#EEF2FF", color: "#4338CA" }}>{q.topic}</span>
+                      {isFlagged && <span style={{ fontSize: 10, fontWeight: 700, color: "#DC2626", background: "#FEF2F2", padding: "1px 7px", borderRadius: 10, border: "1px solid #FECACA" }}>⚠ APPROXIMATE ANSWER</span>}
+                      {editedCorrect !== q.correct && <span style={{ fontSize: 10, fontWeight: 700, color: "#D97706", background: "#FFFBEB", padding: "1px 7px", borderRadius: 10, border: "1px solid #FDE68A" }}>Edited</span>}
+                    </div>
+                    <p style={{ fontSize: 12, color: "var(--navy)", fontWeight: 500, marginBottom: 10, lineHeight: 1.55 }}>{q.question}</p>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+                      {q.options.map((opt, oi) => (
+                        <button key={oi} onClick={() => setQaEdits(prev => ({ ...prev, [i]: oi }))}
+                          style={{ padding: "5px 12px", borderRadius: 6, border: `2px solid ${editedCorrect === oi ? "#059669" : "var(--border)"}`, background: editedCorrect === oi ? "#ECFDF5" : "#fff", color: editedCorrect === oi ? "#059669" : "var(--text-secondary)", fontSize: 12, fontWeight: editedCorrect === oi ? 700 : 400, fontFamily: "var(--font-body)", cursor: "pointer" }}>
+                          {String.fromCharCode(65+oi)}. {opt}
+                          {editedCorrect === oi && " ✓"}
+                        </button>
+                      ))}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--text-secondary)", background: "var(--bg-alt)", borderRadius: 6, padding: "7px 10px", lineHeight: 1.55 }}>
+                      <strong style={{ color: "var(--navy)" }}>Explanation:</strong> {q.explanation}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 

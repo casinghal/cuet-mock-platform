@@ -1061,6 +1061,11 @@ UNIT IV — Market Equilibrium (6 questions):
 
 DIVERSITY MANDATE: All numerical questions must use different cost/price values. No two demand questions should involve the same type of good. Vary: consumer income levels, production scales, market types in case study.
 Rules: correct is 0-indexed. Round numbers only. No monopoly/oligopoly. Explanation: 2-3 sentences.
+CRITICAL NUMERICAL ACCURACY — MANDATORY FOR ALL QUESTIONS:
+1. For every numerical: compute the answer yourself FIRST, THEN set correct index to match.
+2. NEVER write "approximately", "closest to", or "nearest option" — if your formula gives 0.8, include 0.8 as an option. Exact answers only.
+3. SELF-CHECK: After writing each question, re-read the explanation arithmetic. If it produces a different number than your marked answer, fix the correct index — not the explanation.
+4. Price Elasticity rule: use percentage method OR midpoint method — apply one method consistently per question and compute exactly.
 CRITICAL OUTPUT RULE: NEVER mention "NCERT", "Sandeep Garg", "Class 11", "Class 12", "textbook", or any author/book name in question text, options, or explanations. Write explanations in plain authoritative language.
 Return ONLY the JSON object. Begin with { — nothing before it.`;
 
@@ -1098,6 +1103,12 @@ UNIT V — Open Economy Macroeconomics (3 questions, passage=null):
 - Exchange rate: fixed vs flexible vs managed float; determination: 1 question
 
 Rules: correct is 0-indexed. All numericals: whole number answers, provide all data in question. Explanation: 2-3 sentences.
+CRITICAL NUMERICAL ACCURACY — MANDATORY FOR ALL QUESTIONS:
+1. For every numerical: compute the answer yourself FIRST, THEN set correct index to match.
+2. NEVER write "approximately", "closest to", or "nearest option" — exact answers only. Options must include the precisely calculated value.
+3. SELF-CHECK: After writing each question, re-read your explanation arithmetic. If it gives a different number than your marked correct option, fix the correct index.
+4. M1 rule: M1 = Currency in circulation + Demand Deposits with banks + Other Deposits with RBI. Always sum exactly.
+5. Revenue Deficit rule: Revenue Deficit = Revenue Expenditure − Revenue Receipts. Calculate and verify.
 CRITICAL OUTPUT RULE: NEVER mention "NCERT", "Sandeep Garg", "Class 11", "Class 12", "textbook", or any author/book name in question text, options, or explanations. Write explanations in plain authoritative language.
 Return ONLY the JSON object. Begin with { — nothing before it.`;
 
@@ -1170,6 +1181,7 @@ MANDATORY TOPIC DISTRIBUTION (all passage=null):
 - Course II Macroeconomics: 5 questions (national income definitions, stock vs flow, money aggregates, govt deficit types)
 - Course III IED: 5 questions (LPG 1991 key facts, MGNREGA, HDI rank 130, India-China-Pakistan comparison basics)
 Rules: correct is 0-indexed. Easy-Moderate only. All numericals: provide data in question, round number answers. Explanation: 1-2 sentences.
+CRITICAL NUMERICAL ACCURACY: Calculate every numerical answer yourself first. Set correct index to match your calculation exactly. NEVER approximate — exact answers only. SELF-CHECK each question before output.
 CRITICAL OUTPUT RULE: NEVER mention "NCERT", "Sandeep Garg", "Class 11", "Class 12", "textbook", or any author/book name in question text, options, or explanations.
 Return ONLY the JSON object. Begin with { — nothing before it.`;
 }
@@ -1449,6 +1461,104 @@ function validateQuestionSet(questions, mode) {
   return errors;
 }
 
+
+// ── Post-generation accuracy verifier — runs on Economics numerical questions ──
+// Uses Sonnet to cross-check: does explanation arithmetic match the correct index?
+// Returns corrected questions array (fixes wrong correct index, marks bad questions)
+async function verifyQuestionAccuracy(questions, mode, apiKey) {
+  // Apply to ALL subjects — numerical accuracy errors occur across Economics, GAT (Quant), and English
+  // Filter to numerical questions that need verification
+  const numericalTopics = [
+    // Economics
+    "money supply", "m1", "m3", "revenue deficit", "fiscal deficit",
+    "primary deficit", "price elasticity", "income elasticity",
+    "national income", "gnp", "gdp", "nnp", "ndp", "multiplier",
+    "profit", "loss", "percentage", "ratio", "cost price", "selling price",
+    // GAT Quant
+    "profit and loss", "time and work", "time speed", "mensuration",
+    "number system", "percentage", "data interpretation", "arithmetic",
+    // General numerical indicators
+    "calculate", "find the value", "what is the value", "compute",
+    "profit", "loss", "cost", "revenue", "equilibrium"
+  ];
+
+  const toVerify = questions
+    .map((q, i) => ({ idx: i, q }))
+    .filter(({ q }) => {
+      const lower = (q.question + " " + q.topic).toLowerCase();
+      return numericalTopics.some(t => lower.includes(t));
+    });
+
+  if (toVerify.length === 0) return questions;
+
+  const verifyPrompt = `You are a CUET Economics examiner doing a quality check on generated MCQ questions.
+
+For each question below, check:
+1. Does the explanation's arithmetic EXACTLY match the marked correct option (index ${"`"}correct${"`"})?
+2. Is the answer EXACT — not "approximately" or "closest to"? If the explanation says "approximately X" or "closest to" or "approximately equal", mark as REJECT.
+3. If there is a mismatch, what is the corrected correct index (0=A,1=B,2=C,3=D)?
+4. IMPORTANT: If the calculated answer (from explanation) does not exactly match any of the 4 options, set "reject": true — this question must be discarded.
+
+Questions to verify:
+${toVerify.map(({idx, q}) =>
+  `Q${idx}: topic="${q.topic}" correct=${q.correct}\n` +
+  `Question: ${q.question.substring(0, 200)}\n` +
+  `Options: ${q.options.map((o,i)=> i+"="+o).join(", ")}\n` +
+  `Explanation: ${q.explanation}`
+).join("\n\n")}
+
+Return ONLY a JSON array. For each question with an error: {"idx": N, "issue": "brief description", "correctedCorrect": N}
+For questions that are correct: omit them.
+If all questions are accurate: return []
+Begin with [ — nothing before it.`;
+
+  try {
+    const r = await axios.post(
+      "https://api.anthropic.com/v1/messages",
+      { model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: verifyPrompt }] },
+      { headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" }, timeout: 30000 }
+    );
+    const raw = (r.data?.content?.[0]?.text || "[]").replace(/\`\`\`json|\`\`\`/gi,"").trim();
+    const first = raw.indexOf("["), last = raw.lastIndexOf("]");
+    const corrections = JSON.parse(first !== -1 ? raw.slice(first, last+1) : "[]");
+
+    if (!Array.isArray(corrections) || corrections.length === 0) {
+      return questions; // All good
+    }
+
+    // Apply corrections — fix wrong correct index, or remove questions with no exact answer
+    let corrected = [...questions];
+    const toReject = new Set();
+    corrections.forEach(c => {
+      if (typeof c.idx !== "number") return;
+      if (c.reject === true) {
+        // Question has no exact match in options — must be removed
+        toReject.add(c.idx);
+        functions.logger.warn("QUESTION_REJECTED_NO_EXACT_ANSWER", {
+          mode, questionIdx: c.idx, issue: c.issue,
+          question: (corrected[c.idx]?.question || "").substring(0, 80)
+        });
+      } else if (typeof c.correctedCorrect === "number" &&
+          c.correctedCorrect >= 0 && c.correctedCorrect <= 3) {
+        functions.logger.warn("QUESTION_ACCURACY_FIXED", {
+          mode, questionIdx: c.idx, issue: c.issue,
+          oldCorrect: corrected[c.idx].correct, newCorrect: c.correctedCorrect
+        });
+        corrected[c.idx] = { ...corrected[c.idx], correct: c.correctedCorrect };
+      }
+    });
+    if (toReject.size > 0) {
+      corrected = corrected.filter((_, i) => !toReject.has(i));
+      functions.logger.warn("QUESTIONS_REMOVED_BAD_ANSWERS", { mode, removed: toReject.size, remaining: corrected.length });
+    }
+    functions.logger.info("ACCURACY_VERIFICATION_DONE", { mode, corrections: corrections.length - toReject.size, rejected: toReject.size });
+    return corrected;
+  } catch (e) {
+    functions.logger.warn("ACCURACY_VERIFICATION_FAILED", { mode, error: e.message });
+    return questions; // Don't break generation if verification fails
+  }
+}
+
 async function generateQuestionSet(mode, apiKey) {
   const MAX_RETRIES = 2; // 3 total attempts
   let lastError;
@@ -1618,9 +1728,24 @@ async function generateQuestionSet(mode, apiKey) {
         functions.logger.warn("QUALITY_GATE_FAILED", { mode, attempt, count: questions.length, errors: errorSummary });
         throw new Error(`QUALITY_FAIL:${errorSummary}`);
       }
-
       functions.logger.info("QUALITY_GATE_PASSED", { mode, attempt, count: questions.length });
-      return questions;
+
+      // ── Accuracy verification — fix wrong correct indices, reject approximate answers ──
+      // This catches the class of errors seen in production: correct index set to wrong value
+      // even though the explanation proves a different option is right (e.g. M1 = 11,000 but
+      // correct=0 pointing to 10,500), and questions with no exact option match.
+      const verified = await verifyQuestionAccuracy(questions, mode, apiKey);
+      if (verified.length < questions.length) {
+        // Some questions were rejected — if too many removed, retry generation entirely
+        const removedCount = questions.length - verified.length;
+        const requiredCount = { Mock: 50, QuickPractice: 15, GAT_Mock: 50, GAT_QP: 15, Economics_Mock: 50, Economics_QP: 15, TopicPractice: 10 }[mode] ?? 50;
+        if (verified.length < Math.ceil(requiredCount * 0.85)) {
+          functions.logger.warn("TOO_MANY_REJECTIONS", { mode, attempt, removed: removedCount, remaining: verified.length, required: requiredCount });
+          throw new Error(`ACCURACY_REJECT_TOO_MANY:${removedCount} questions removed, only ${verified.length} remain`);
+        }
+        functions.logger.warn("SOME_QUESTIONS_REMOVED", { mode, attempt, removed: removedCount, remaining: verified.length });
+      }
+      return verified;
 
     } catch (e) {
       lastError = e;
