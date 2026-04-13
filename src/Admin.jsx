@@ -675,6 +675,8 @@ export default function AdminDashboard() {
   const [qaEdits,       setQaEdits]       = useState({});     // {idx: {correct: n}}
   const [qaSaving,      setQaSaving]      = useState(false);
   const [qaMsg,         setQaMsg]         = useState(null);
+  const [auditRunning,  setAuditRunning]  = useState(false);
+  const [auditProgress, setAuditProgress] = useState(null);  // { scanned, fixed, rejected, done }
   const [loading, setLoading] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(null);
   const [logs, setLogs] = useState([]);
@@ -2631,8 +2633,75 @@ export default function AdminDashboard() {
       {/* ── QA / CURATION TAB ── */}
       {activeTab === "qa" && (
         <div style={S.tabPanel}>
+          {/* ── BULK AUDIT SECTION ── */}
+          <div style={{ background: "linear-gradient(135deg,#0F2747,#1a3a6b)", borderRadius: 10, padding: "14px 18px", marginBottom: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", marginBottom: 4 }}>⚡ Bulk Cache Accuracy Audit</div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", marginBottom: 12 }}>
+              Scans every existing cached question set, fixes wrong correct indices, and removes approximate-answer questions. Works across all modes and subjects.
+            </div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: auditProgress ? 12 : 0 }}>
+              {["all","Economics_Mock","Economics_QP","GAT_Mock","GAT_QP","Mock","QuickPractice"].map(m => (
+                <button key={m}
+                  disabled={auditRunning}
+                  onClick={async () => {
+                    if (!window.confirm(`Run bulk accuracy audit on ${m === "all" ? "ALL cached sets" : m}? This will auto-fix wrong answers and remove approximate questions. May take several minutes.`)) return;
+                    setAuditRunning(true);
+                    setAuditProgress({ scanned: 0, fixed: 0, rejected: 0, done: false, batches: 0 });
+                    const adminKey = functions.config ? undefined : undefined; // passed via cfFetch
+                    let startAfter = null;
+                    let totalScanned = 0, totalFixed = 0, totalRejected = 0, batches = 0;
+                    try {
+                      while (true) {
+                        const body = { mode: m === "all" ? undefined : m, limit: 15, startAfter, dryRun: false };
+                        if (m === "all") delete body.mode;
+                        const result = await cfFetch("auditCacheAccuracy", body);
+                        batches++;
+                        totalScanned  += result.scanned || 0;
+                        totalFixed    += result.totalFixed || 0;
+                        totalRejected += result.totalRejected || 0;
+                        setAuditProgress({ scanned: totalScanned, fixed: totalFixed, rejected: totalRejected, done: result.done, batches, mode: m });
+                        addLog(`Audit batch ${batches}: scanned=${totalScanned} fixed=${totalFixed} rejected=${totalRejected}`, totalFixed > 0 ? "warn" : "info");
+                        if (result.done || !result.lastDocId) break;
+                        startAfter = result.lastDocId;
+                        await new Promise(r => setTimeout(r, 500));
+                      }
+                      addLog(`✅ Audit complete: ${totalScanned} sets scanned, ${totalFixed} answers fixed, ${totalRejected} bad questions removed`, "success");
+                    } catch(e) {
+                      addLog("Audit error: " + e.message, "error");
+                    } finally { setAuditRunning(false); }
+                  }}
+                  style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.2)", background: auditRunning ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.1)", color: "#fff", fontSize: 11, fontWeight: 600, fontFamily: "var(--font-body)", cursor: auditRunning ? "not-allowed" : "pointer" }}>
+                  {m === "all" ? "🔍 Audit All" : m}
+                </button>
+              ))}
+            </div>
+            {auditProgress && (
+              <div style={{ background: "rgba(255,255,255,0.08)", borderRadius: 8, padding: "10px 14px" }}>
+                <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+                  {[
+                    { l: "Scanned", v: auditProgress.scanned, c: "#fff" },
+                    { l: "Fixed", v: auditProgress.fixed, c: "#FCD34D" },
+                    { l: "Removed", v: auditProgress.rejected, c: "#FCA5A5" },
+                    { l: "Batches", v: auditProgress.batches, c: "#94A3B8" },
+                  ].map(s => (
+                    <div key={s.l}>
+                      <div style={{ fontFamily: "var(--font-mono)", fontSize: 20, fontWeight: 700, color: s.c }}>{s.v}</div>
+                      <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", textTransform: "uppercase", letterSpacing: ".05em" }}>{s.l}</div>
+                    </div>
+                  ))}
+                  <div style={{ marginLeft: "auto", display: "flex", alignItems: "center" }}>
+                    {auditRunning
+                      ? <span style={{ fontSize: 12, color: "#FCD34D", fontWeight: 600 }}>⏳ Running...</span>
+                      : <span style={{ fontSize: 12, color: "#6EE7B7", fontWeight: 600 }}>✅ Complete</span>}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── MANUAL REVIEW SECTION ── */}
           <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 13, fontWeight: 700, color: "var(--navy)" }}>Question Accuracy Review</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "var(--navy)" }}>Manual Question Review</span>
             <select
               value={qaMode}
               onChange={e => { setQaMode(e.target.value); setQaQuestions(null); setQaEdits({}); setQaMsg(null); }}

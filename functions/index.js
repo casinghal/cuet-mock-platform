@@ -3177,3 +3177,125 @@ exports.clearAndRebuildSubjectCache = functions
       res.status(500).json({ error: e.message });
     }
   });
+
+// ─── BULK CACHE ACCURACY AUDIT ──────────────────────────────────────────────
+// Scans every existing questionCache doc, runs verifyQuestionAccuracy on each,
+// and writes corrections back to Firestore. Fixes all pre-existing bad sets.
+// Runs in batches to stay within timeout. Call repeatedly until done=true.
+exports.auditCacheAccuracy = functions
+  .runWith({ timeoutSeconds: 540, memory: "1GB" })
+  .https.onRequest(async (req, res) => {
+    setCORS(res);
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+    if (req.method !== "POST")    { res.status(405).json({ error: "POST only" }); return; }
+
+    const adminKey    = req.body?.adminKey || req.headers["x-admin-key"] || "";
+    const cfg         = functions.config();
+    const expectedKey = cfg.admin?.key || process.env.ADMIN_KEY || "";
+    if (!adminKey || adminKey !== expectedKey) {
+      res.status(403).json({ error: "Forbidden" }); return;
+    }
+
+    const KEY = cfg.anthropic?.api_key || process.env.ANTHROPIC_API_KEY;
+    if (!KEY) { res.status(500).json({ error: "No Anthropic API key" }); return; }
+
+    // Optional: filter to specific mode, or paginate with startAfter docId
+    const filterMode  = req.body?.mode   || null;  // null = all modes
+    const startAfter  = req.body?.startAfter || null; // doc ID for pagination
+    const batchLimit  = req.body?.limit  || 20;    // docs per call (keep low to avoid OOM)
+    const dryRun      = req.body?.dryRun === true; // true = report but don't write
+
+    try {
+      let query = db.collection("questionCache").orderBy("__name__").limit(batchLimit);
+      if (filterMode) query = query.where("mode", "==", filterMode);
+      if (startAfter) {
+        const startDoc = await db.collection("questionCache").doc(startAfter).get();
+        if (startDoc.exists) query = query.startAfter(startDoc);
+      }
+
+      const snap = await query.get();
+      if (snap.empty) {
+        res.status(200).json({ done: true, message: "No more docs to audit", scanned: 0 });
+        return;
+      }
+
+      const results = [];
+      let totalFixed = 0;
+      let totalRejected = 0;
+      let lastDocId = null;
+
+      for (const docSnap of snap.docs) {
+        lastDocId = docSnap.id;
+        const data = docSnap.data();
+        const mode = data.mode || "Unknown";
+        const questions = data.questions || [];
+
+        if (questions.length === 0) {
+          results.push({ id: docSnap.id, mode, status: "empty", fixed: 0, rejected: 0 });
+          continue;
+        }
+
+        // Run accuracy verifier on this set
+        let verified;
+        try {
+          verified = await verifyQuestionAccuracy(questions, mode, KEY);
+        } catch (e) {
+          results.push({ id: docSnap.id, mode, status: "verify_error", error: e.message, fixed: 0, rejected: 0 });
+          continue;
+        }
+
+        // Count fixes (changed correct field) and rejections (removed questions)
+        let fixedCount = 0;
+        for (let i = 0; i < Math.min(questions.length, verified.length); i++) {
+          if (questions[i].correct !== verified[i].correct) fixedCount++;
+        }
+        const rejectedCount = questions.length - verified.length;
+        totalFixed    += fixedCount;
+        totalRejected += rejectedCount;
+
+        if ((fixedCount > 0 || rejectedCount > 0) && !dryRun) {
+          // Write corrected questions back to Firestore
+          await db.collection("questionCache").doc(docSnap.id).update({
+            questions: verified,
+            questionCount: verified.length,
+            lastAuditedAt: admin.firestore.FieldValue.serverTimestamp(),
+            auditFixCount: fixedCount,
+            auditRejectCount: rejectedCount,
+          });
+          functions.logger.info("AUDIT_SET_CORRECTED", {
+            docId: docSnap.id, mode, fixedCount, rejectedCount, originalCount: questions.length
+          });
+        }
+
+        results.push({
+          id: docSnap.id, mode,
+          status: (fixedCount > 0 || rejectedCount > 0) ? (dryRun ? "would_fix" : "fixed") : "ok",
+          originalCount: questions.length,
+          fixedCount, rejectedCount,
+        });
+
+        // Small delay between docs to avoid hammering the Anthropic API
+        await new Promise(r => setTimeout(r, 1500));
+      }
+
+      const hasMore = snap.docs.length === batchLimit;
+      functions.logger.info("AUDIT_BATCH_COMPLETE", {
+        scanned: snap.docs.length, totalFixed, totalRejected, hasMore, dryRun
+      });
+
+      res.status(200).json({
+        done: !hasMore,
+        scanned: snap.docs.length,
+        totalFixed,
+        totalRejected,
+        dryRun,
+        lastDocId,
+        results,
+        nextCall: hasMore ? { startAfter: lastDocId, limit: batchLimit } : null,
+      });
+
+    } catch (e) {
+      functions.logger.error("AUDIT_CACHE_FAILED", { error: e.message });
+      res.status(500).json({ error: e.message });
+    }
+  });
