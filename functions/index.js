@@ -1466,59 +1466,81 @@ function validateQuestionSet(questions, mode) {
 // Uses Sonnet to cross-check: does explanation arithmetic match the correct index?
 // Returns corrected questions array (fixes wrong correct index, marks bad questions)
 async function verifyQuestionAccuracy(questions, mode, apiKey) {
-  // Apply to ALL subjects — numerical accuracy errors occur across Economics, GAT (Quant), and English
-  // Filter to numerical questions that need verification
-  const numericalTopics = [
-    // Economics
-    "money supply", "m1", "m3", "revenue deficit", "fiscal deficit",
-    "primary deficit", "price elasticity", "income elasticity",
-    "national income", "gnp", "gdp", "nnp", "ndp", "multiplier",
-    "profit", "loss", "percentage", "ratio", "cost price", "selling price",
+  // Filter: numerical + conceptual classification questions — both categories have wrong-correct-index bugs
+  const verifyTopics = [
+    // Economics numerical
+    "money supply", "m1", "m2", "m3", "m4",
+    "revenue deficit", "fiscal deficit", "primary deficit", "budget deficit",
+    "price elasticity", "income elasticity", "cross elasticity",
+    "national income", "gnp", "gdp", "nnp", "ndp", "gnpmp", "nnpmp", "nnpfc",
+    "multiplier", "credit creation", "money multiplier", "crr", "slr",
+    "cost curves", "total cost", "marginal cost", "average cost",
+    "revenue", "equilibrium", "consumer surplus",
+    // Economics conceptual classification — prone to wrong correct index
+    "stock", "flow", "stock vs flow", "stock and flow",
+    "micro", "macro", "positive", "normative",
+    "direct tax", "indirect tax", "depreciation", "capital formation",
     // GAT Quant
-    "profit and loss", "time and work", "time speed", "mensuration",
-    "number system", "percentage", "data interpretation", "arithmetic",
-    // General numerical indicators
+    "profit and loss", "time and work", "time speed distance",
+    "mensuration", "number system", "percentage", "data interpretation",
+    // General numerical / classification indicators
     "calculate", "find the value", "what is the value", "compute",
-    "profit", "loss", "cost", "revenue", "equilibrium"
+    "identify which", "classify", "which of the following is",
+    "profit", "loss", "cost"
   ];
 
   const toVerify = questions
     .map((q, i) => ({ idx: i, q }))
     .filter(({ q }) => {
-      const lower = (q.question + " " + q.topic).toLowerCase();
-      return numericalTopics.some(t => lower.includes(t));
+      const lower = (q.question + " " + q.topic + " " + (q.explanation || "")).toLowerCase();
+      return verifyTopics.some(t => lower.includes(t));
     });
 
   if (toVerify.length === 0) return questions;
 
-  const verifyPrompt = `You are a CUET Economics examiner doing a quality check on generated MCQ questions.
+  const verifyPrompt = `You are a CUET examiner doing a strict accuracy check on MCQ questions.
 
-For each question below, check:
-1. Does the explanation's arithmetic EXACTLY match the marked correct option (index ${"`"}correct${"`"})?
-2. Is the answer EXACT — not "approximately" or "closest to"? If the explanation says "approximately X" or "closest to" or "approximately equal", mark as REJECT.
-3. If there is a mismatch, what is the corrected correct index (0=A,1=B,2=C,3=D)?
-4. IMPORTANT: If the calculated answer (from explanation) does not exactly match any of the 4 options, set "reject": true — this question must be discarded.
+For EACH question below, follow these steps IN ORDER:
+
+STEP 1 — INDEPENDENT ANSWER: Work out the correct answer yourself from first principles.
+  - Numerical: apply the formula, compute the result yourself.
+  - Classification (e.g. stock/flow): apply the textbook definition independently.
+  - Do NOT assume the marked "correct" index is right.
+
+STEP 2 — CHECK EXPLANATION CONSISTENCY: Does the explanation's stated result match what the "correct" index points to?
+  Common bugs to catch:
+  • Explanation says "5,000 + 8,000 + 1,000 = 14,000" but correct=0 points to 13,000 → bug, should be 1
+  • Explanation says "8,000 – 3,000 = 5,000" but correct=0 points to 4,000 → bug, should be 1
+  • Explanation says "Depreciation is a FLOW variable" but correct=1 says "Depreciation is stock" → bug, should be 3
+  • Explanation contradicts itself (states two different numbers, or says both are flows but marks one as stock)
+
+STEP 3 — OPTION MATCH: Does your independently computed answer match one of the 4 options exactly?
+  If no exact match → reject: true.
+
+STEP 4 — APPROXIMATE ANSWERS: If explanation uses "approximately", "closest to", or "about" → reject: true.
 
 Questions to verify:
 ${toVerify.map(({idx, q}) =>
   `Q${idx}: topic="${q.topic}" correct=${q.correct}\n` +
-  `Question: ${q.question.substring(0, 200)}\n` +
-  `Options: ${q.options.map((o,i)=> i+"="+o).join(", ")}\n` +
-  `Explanation: ${q.explanation}`
+  `Question: ${q.question.substring(0, 250)}\n` +
+  `Options: ${q.options.map((o,i) => i+"="+o).join(", ")}\n` +
+  `Explanation: ${(q.explanation || "").substring(0, 350)}`
 ).join("\n\n")}
 
-Return ONLY a JSON array. For each question with an error: {"idx": N, "issue": "brief description", "correctedCorrect": N}
-For questions that are correct: omit them.
-If all questions are accurate: return []
+Return ONLY a JSON array:
+- Questions where your independent answer confirms the marked correct: OMIT.
+- Wrong correct index: { "idx": N, "issue": "explanation says X but correct points to Y; corrected to Z", "correctedCorrect": N }
+- No exact option match or contradictory/approximate: { "idx": N, "issue": "reason", "reject": true }
+- All accurate: []
 Begin with [ — nothing before it.`;
 
   try {
     const r = await axios.post(
       "https://api.anthropic.com/v1/messages",
-      { model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: verifyPrompt }] },
-      { headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" }, timeout: 30000 }
+      { model: "claude-sonnet-4-6", max_tokens: 2000, messages: [{ role: "user", content: verifyPrompt }] },
+      { headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" }, timeout: 45000 }
     );
-    const raw = (r.data?.content?.[0]?.text || "[]").replace(/\`\`\`json|\`\`\`/gi,"").trim();
+    const raw = (r.data?.content?.[0]?.text || "[]").replace(/```json|```/gi,"").trim();
     const first = raw.indexOf("["), last = raw.lastIndexOf("]");
     const corrections = JSON.parse(first !== -1 ? raw.slice(first, last+1) : "[]");
 
