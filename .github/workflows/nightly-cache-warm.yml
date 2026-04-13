@@ -41,7 +41,7 @@ jobs:
 
           echo "========================================"
           echo "Cache Fill Engine — $(date -u '+%Y-%m-%d %H:%M UTC')"
-          echo "Target: Mock=20 / QP=30 / GAT_Mock=20 / GAT_QP=30 / Eco_Mock=20 / Eco_QP=30 | Max loops: $MAX_LOOPS | Fill wait: ${FILL_WAIT_SECS}s"
+          echo "Target: Mock=120 / QP=200 / GAT_Mock=80 / GAT_QP=150 / Eco_Mock=80 / Eco_QP=150 | Max loops: $MAX_LOOPS | Fill wait: ${FILL_WAIT_SECS}s"
           echo "========================================"
 
           # Initial status check
@@ -75,9 +75,9 @@ jobs:
           ECO_QP_NEEDED=$(echo "$INITIAL" | python3 -c \
             "import json,sys; d=json.load(sys.stdin); print(d['status'].get('Economics_QP',{}).get('needed',0))" 2>/dev/null || echo "0")
 
-          echo "Mock: $MOCK_NOW/20 (needed: $MOCK_NEEDED) | QP: $QP_NOW/30 (needed: $QP_NEEDED)"
-          echo "GAT_Mock: $GAT_MOCK_NOW/20 (needed: $GAT_MOCK_NEEDED) | GAT_QP: $GAT_QP_NOW/30 (needed: $GAT_QP_NEEDED)"
-          echo "Eco_Mock: $ECO_MOCK_NOW/20 (needed: $ECO_MOCK_NEEDED) | Eco_QP: $ECO_QP_NOW/30 (needed: $ECO_QP_NEEDED)"
+          echo "Mock: $MOCK_NOW/120 (needed: $MOCK_NEEDED) | QP: $QP_NOW/200 (needed: $QP_NEEDED)"
+          echo "GAT_Mock: $GAT_MOCK_NOW/80 (needed: $GAT_MOCK_NEEDED) | GAT_QP: $GAT_QP_NOW/150 (needed: $GAT_QP_NEEDED)"
+          echo "Eco_Mock: $ECO_MOCK_NOW/80 (needed: $ECO_MOCK_NEEDED) | Eco_QP: $ECO_QP_NOW/150 (needed: $ECO_QP_NEEDED)"
 
           if [ "$MOCK_NEEDED" = "0" ] && [ "$QP_NEEDED" = "0" ] && [ "$GAT_MOCK_NEEDED" = "0" ] && [ "$GAT_QP_NEEDED" = "0" ] && [ "$ECO_MOCK_NEEDED" = "0" ] && [ "$ECO_QP_NEEDED" = "0" ]; then
             echo "Cache already full. Nothing to do."
@@ -89,7 +89,7 @@ jobs:
             ELAPSED=$(( $(date +%s) - START_TIME ))
             echo ""
             echo "--- Loop $LOOP/$MAX_LOOPS | ${ELAPSED}s elapsed ---"
-            echo "    Mock: $MOCK_NOW/20 (needed: $MOCK_NEEDED) | QP: $QP_NOW/30 (needed: $QP_NEEDED)"
+            echo "    Mock: $MOCK_NOW/120 (needed: $MOCK_NEEDED) | QP: $QP_NOW/200 (needed: $QP_NEEDED)"
 
             # Trigger fill — responds immediately, runs in background
             WARM=$(curl -s -w "\n%{http_code}" -X POST "$CF_BASE/triggerCacheWarm" \
@@ -147,15 +147,15 @@ jobs:
             ECO_QP_NEEDED=$(echo "$STATUS" | python3 -c \
               "import json,sys; d=json.load(sys.stdin); print(d['status'].get('Economics_QP',{}).get('needed',0))" 2>/dev/null || echo "0")
 
-            echo "    After loop $LOOP: Mock=$MOCK_NOW/20 | QP=$QP_NOW/30 | GAT_Mock=$GAT_MOCK_NOW/20 | GAT_QP=$GAT_QP_NOW/30 | Eco_Mock=$ECO_MOCK_NOW/20 | Eco_QP=$ECO_QP_NOW/30"
+            echo "    After loop $LOOP: Mock=$MOCK_NOW/120 | QP=$QP_NOW/200 | GAT_Mock=$GAT_MOCK_NOW/80 | GAT_QP=$GAT_QP_NOW/150 | Eco_Mock=$ECO_MOCK_NOW/80 | Eco_QP=$ECO_QP_NOW/150"
 
             if [ "$MOCK_NEEDED" = "0" ] && [ "$QP_NEEDED" = "0" ] && [ "$GAT_MOCK_NEEDED" = "0" ] && [ "$GAT_QP_NEEDED" = "0" ] && [ "$ECO_MOCK_NEEDED" = "0" ] && [ "$ECO_QP_NEEDED" = "0" ]; then
               ELAPSED=$(( $(date +%s) - START_TIME ))
               echo ""
               echo "========================================"
               echo "CACHE FULLY FILLED"
-              echo "  Mock: $MOCK_NOW/20 | QP: $QP_NOW/30 | GAT_Mock: $GAT_MOCK_NOW/20 | GAT_QP: $GAT_QP_NOW/30"
-              echo "  Eco_Mock: $ECO_MOCK_NOW/20 | Eco_QP: $ECO_QP_NOW/30"
+              echo "  Mock: $MOCK_NOW/120 | QP: $QP_NOW/200 | GAT_Mock: $GAT_MOCK_NOW/80 | GAT_QP: $GAT_QP_NOW/150"
+              echo "  Eco_Mock: $ECO_MOCK_NOW/80 | Eco_QP: $ECO_QP_NOW/150"
               echo "  Loops: $LOOP | Time: ${ELAPSED}s"
               echo "========================================"
               exit 0
@@ -168,34 +168,40 @@ jobs:
           echo ""
           echo "========================================"
           echo "MAX LOOPS REACHED ($MAX_LOOPS / ${ELAPSED}s)"
-          echo "  Mock: $MOCK_NOW/20 (needed: $MOCK_NEEDED)"
-          echo "  QP:   $QP_NOW/30 (needed: $QP_NEEDED)"
-          echo "  GAT_Mock: $GAT_MOCK_NOW/20 (needed: $GAT_MOCK_NEEDED)"
-          echo "  GAT_QP:   $GAT_QP_NOW/30 (needed: $GAT_QP_NEEDED)"
-          echo "  Eco_Mock: $ECO_MOCK_NOW/20 (needed: $ECO_MOCK_NEEDED)"
-          echo "  Eco_QP:   $ECO_QP_NOW/30 (needed: $ECO_QP_NEEDED)"
+          echo "  Mock: $MOCK_NOW/120 (needed: $MOCK_NEEDED)"
+          echo "  QP:   $QP_NOW/200 (needed: $QP_NEEDED)"
+          echo "  GAT_Mock: $GAT_MOCK_NOW/80 (needed: $GAT_MOCK_NEEDED)"
+          echo "  GAT_QP:   $GAT_QP_NOW/150 (needed: $GAT_QP_NEEDED)"
+          echo "  Eco_Mock: $ECO_MOCK_NOW/80 (needed: $ECO_MOCK_NEEDED)"
+          echo "  Eco_QP:   $ECO_QP_NOW/150 (needed: $ECO_QP_NEEDED)"
           echo "========================================"
           CRITICAL=0
-          if [ "$MOCK_NOW" -lt 4 ] 2>/dev/null; then
-            echo "CRITICAL: English Mock below threshold — manual fill required"
+          if [ "$MOCK_NOW" -lt 24 ] 2>/dev/null; then
+            echo "CRITICAL: English Mock below threshold (24) — manual fill required"
             CRITICAL=1
           fi
-          if [ "$QP_NOW" -lt 6 ] 2>/dev/null; then
-            echo "CRITICAL: English QP below threshold — manual fill required"
+          if [ "$QP_NOW" -lt 40 ] 2>/dev/null; then
+            echo "CRITICAL: English QP below threshold (40) — manual fill required"
             CRITICAL=1
           fi
-          if [ "$GAT_MOCK_NOW" -lt 4 ] 2>/dev/null; then
-            echo "CRITICAL: GAT Mock below threshold — manual fill required"
+          if [ "$GAT_MOCK_NOW" -lt 16 ] 2>/dev/null; then
+            echo "CRITICAL: GAT Mock below threshold (16) — manual fill required"
             CRITICAL=1
           fi
-          if [ "$GAT_QP_NOW" -lt 6 ] 2>/dev/null; then
-            echo "CRITICAL: GAT QP below threshold — manual fill required"
+          if [ "$GAT_QP_NOW" -lt 30 ] 2>/dev/null; then
+            echo "CRITICAL: GAT QP below threshold (30) — manual fill required"
             CRITICAL=1
           fi
           # Economics only checked when it has been seeded (ECO_MOCK target > 0 means live)
           if [ "$ECO_MOCK_NOW" -gt 0 ] || [ "$ECO_MOCK_NEEDED" -gt 0 ]; then
-            if [ "$ECO_MOCK_NOW" -lt 4 ] 2>/dev/null; then
-              echo "CRITICAL: Economics Mock below threshold — manual fill required"
+            if [ "$ECO_MOCK_NOW" -lt 16 ] 2>/dev/null; then
+              echo "CRITICAL: Economics Mock below threshold (16) — manual fill required"
+              CRITICAL=1
+            fi
+          fi
+          if [ "$ECO_QP_NOW" -gt 0 ] || [ "$ECO_QP_NEEDED" -gt 0 ]; then
+            if [ "$ECO_QP_NOW" -lt 30 ] 2>/dev/null; then
+              echo "CRITICAL: Economics QP below threshold (30) — manual fill required"
               CRITICAL=1
             fi
           fi
