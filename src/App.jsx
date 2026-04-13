@@ -1275,21 +1275,21 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onReviewTes
             onClick={() => onViewAnalytics && onViewAnalytics()}
             style={{ width:"100%", height:42, marginBottom:14, display:"flex", alignItems:"center",
               justifyContent:"space-between", paddingLeft:16, paddingRight:16,
-              background:"#111111", border:"1px solid rgba(129,140,248,0.4)",
+              background:"#FFFFFF", border:"1px solid #C7D2FE",
               borderRadius:10, cursor:"pointer", fontFamily:"var(--font-body)", transition:"border-color .2s" }}
-            onMouseEnter={e => e.currentTarget.style.borderColor = "rgba(129,140,248,0.8)"}
-            onMouseLeave={e => e.currentTarget.style.borderColor = "rgba(129,140,248,0.4)"}
+            onMouseEnter={e => e.currentTarget.style.borderColor = "#4338CA"}
+            onMouseLeave={e => e.currentTarget.style.borderColor = "#C7D2FE"}
           >
             <span style={{ display:"flex", alignItems:"center", gap:10 }}>
               <span style={{ fontSize:18 }}>📊</span>
-              <span style={{ fontWeight:700, fontSize:14, color:"#FFFFFF" }}>My Analytics</span>
-              <span style={{ fontSize:11, color:"rgba(129,140,248,0.8)", background:"rgba(129,140,248,0.12)", padding:"2px 8px", borderRadius:4, fontWeight:600 }}>Progression · Topics · Trends</span>
+              <span style={{ fontWeight:700, fontSize:14, color:"#0F172A" }}>My Analytics</span>
+              <span style={{ fontSize:11, color:"#4338CA", background:"#EEF2FF", padding:"2px 8px", borderRadius:4, fontWeight:600, border:"1px solid #C7D2FE" }}>Progression · Topics · Trends</span>
             </span>
             <span style={{ display:"flex", alignItems:"center", gap:8 }}>
-              <span style={{ fontSize:11, color:"rgba(255,255,255,0.4)" }}>
+              <span style={{ fontSize:11, color:"#94A3B8" }}>
                 {testHistory[0]?.accuracy || 0}% last test
               </span>
-              <span style={{ fontSize:14, color:"rgba(129,140,248,0.9)" }}>→</span>
+              <span style={{ fontSize:14, color:"#4338CA" }}>→</span>
             </span>
           </button>
         )}
@@ -1713,10 +1713,10 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
 
 // ── ANALYTICS ZONE COLOR CONSTANTS ──────────────────────────────────────────
 const AZ = {
-  bg:"#111111", card:"#1C1C1C", card2:"#252525",
-  bord:"rgba(255,255,255,0.10)", bord2:"rgba(255,255,255,0.06)",
-  text:"#FFFFFF", textS:"rgba(255,255,255,0.65)", textM:"rgba(255,255,255,0.38)",
-  grn:"#34D399", red:"#F87171", amb:"#FBBF24", ind:"#818CF8", blu:"#60A5FA",
+  bg:"#F5F7FA", card:"#FFFFFF", card2:"#F1F5F9",
+  bord:"#E2E8F0", bord2:"#EEF2F7",
+  text:"#0F172A", textS:"#475569", textM:"#94A3B8",
+  grn:"#059669", red:"#DC2626", amb:"#D97706", ind:"#4338CA", blu:"#3B82F6",
 };
 
 // ── REUSABLE ANALYTICS COMPONENTS ────────────────────────────────────────────
@@ -1726,7 +1726,7 @@ function DonutChart({ segments, centerLabel, centerSub, size = 108 }) {
   let offset = 0;
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={11} />
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke="#E2E8F0" strokeWidth={11} />
       {segments.filter(s => s.value > 0).map((seg, i) => {
         const dash = (seg.value / total) * circ;
         const el = (
@@ -1761,7 +1761,7 @@ function Spark({ data, color = "#818CF8", w = 110, h = 34 }) {
     <svg width={w} height={h}>
       <polyline points={pts} fill="none" stroke={color} strokeWidth={1.8}
         strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx={lx} cy={ly} r={3} fill={color} stroke="#1C1C1C" strokeWidth={1.5} />
+      <circle cx={lx} cy={ly} r={3} fill={color} stroke="#F5F7FA" strokeWidth={1.5} />
     </svg>
   );
 }
@@ -1877,7 +1877,7 @@ Respond ONLY with valid JSON: {"summary":"One honest sentence about NTA score an
   return (
     <div style={{ minHeight:"100vh", background: AZ.bg, display:"flex", flexDirection:"column" }}>
       {/* Header */}
-      <div className="nta-header" style={{ background:"#0D0D0D", borderBottom:`1px solid ${AZ.bord}` }}>
+      <div className="nta-header">
         <span className="nta-logo">Vantiq <span>CUET</span></span>
         <button onClick={onNewTest} style={{ background:"transparent", color:"rgba(255,255,255,.55)", border:"1px solid rgba(255,255,255,.18)", borderRadius:6, padding:"4px 14px", fontSize:13, cursor:"pointer", fontFamily:"var(--font-body)" }}>
           ← Dashboard
@@ -2306,7 +2306,7 @@ function PerformanceDashboard({ testHistory, user, onBack }) {
   if (!testHistory || testHistory.length === 0) {
     return (
       <div style={{ minHeight:"100vh", background:AZ.bg, display:"flex", flexDirection:"column" }}>
-        <div className="nta-header" style={{ background:"#0D0D0D", borderBottom:`1px solid ${AZ.bord}` }}>
+        <div className="nta-header">
           <span className="nta-logo">Vantiq <span>CUET</span></span>
           <button onClick={onBack} style={{ background:"transparent", color:"rgba(255,255,255,.55)", border:"1px solid rgba(255,255,255,.18)", borderRadius:6, padding:"4px 14px", fontSize:13, cursor:"pointer", fontFamily:"var(--font-body)" }}>← Dashboard</button>
         </div>
@@ -2410,7 +2410,7 @@ function PerformanceDashboard({ testHistory, user, onBack }) {
   return (
     <div style={{ minHeight:"100vh", background:AZ.bg, display:"flex", flexDirection:"column" }}>
       {/* Header */}
-      <div className="nta-header" style={{ background:"#0D0D0D", borderBottom:`1px solid ${AZ.bord}` }}>
+      <div className="nta-header">
         <span className="nta-logo">Vantiq <span>CUET</span></span>
         <button onClick={onBack} style={{ background:"transparent", color:"rgba(255,255,255,.55)", border:"1px solid rgba(255,255,255,.18)", borderRadius:6, padding:"4px 14px", fontSize:13, cursor:"pointer", fontFamily:"var(--font-body)" }}>← Dashboard</button>
       </div>
@@ -2491,7 +2491,7 @@ function PerformanceDashboard({ testHistory, user, onBack }) {
                     {data.map((v,i) => {
                       const dx = ((i/(data.length-1))*(w-10)+5).toFixed(1);
                       const dy = (h-5-((v-min)/range)*(h-14)).toFixed(1);
-                      return <circle key={i} cx={dx} cy={dy} r={i===li?4:2.5} fill={i===li?AZ.ind:"rgba(129,140,248,0.7)"} stroke="#1C1C1C" strokeWidth={1} />;
+                      return <circle key={i} cx={dx} cy={dy} r={i===li?4:2.5} fill={i===li?AZ.ind:"rgba(129,140,248,0.7)"} stroke="#F5F7FA" strokeWidth={1} />;
                     })}
                     {/* Latest value label */}
                     <text x={lx} y={parseFloat(ly)-8} textAnchor="middle" fontSize={9} fill={AZ.ind} fontFamily="JetBrains Mono,monospace" fontWeight={700}>{data[li]}%</text>
