@@ -2389,7 +2389,7 @@ function PerformanceDashboard({ testHistory, user, onBack }) {
   const wrongTrend = attempts.map(t => t.wrong || 0);
   const { slope: wrongSlope } = linReg(wrongTrend);
 
-  const subjectColors = { English:"#818CF8", GAT:"#34D399", Economics:"#FBBF24" };
+  const subjectColors = { English: AZ.ind, GAT: AZ.grn, Economics: AZ.amb };
   const subjectLabels = { English:"English (101)", GAT:"GAT (501)", Economics:"Economics (118)" };
 
   const sLabel = (txt) => (
@@ -2481,20 +2481,30 @@ function PerformanceDashboard({ testHistory, user, onBack }) {
                     {/* Grid lines */}
                     {[0,25,50,75,100].map(v => {
                       const y = h-5-((v-min)/range)*(h-14);
-                      return y >= 0 && y <= h ? <line key={v} x1={5} y1={y} x2={w-5} y2={y} stroke="rgba(255,255,255,0.06)" strokeWidth={1} /> : null;
+                      return y >= 0 && y <= h ? <line key={v} x1={5} y1={y} x2={w-5} y2={y} stroke="rgba(0,0,0,0.07)" strokeWidth={1} /> : null;
                     })}
                     {/* Trend regression line */}
                     <line x1={x0} y1={y0} x2={x1} y2={y1} stroke={AZ.amb} strokeWidth={1} strokeDasharray="4 3" opacity={0.7} />
                     {/* Score line */}
                     <polyline points={pts} fill="none" stroke={AZ.ind} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-                    {/* All dots */}
+                    {/* All dots + per-dot labels */}
                     {data.map((v,i) => {
                       const dx = ((i/(data.length-1))*(w-10)+5).toFixed(1);
                       const dy = (h-5-((v-min)/range)*(h-14)).toFixed(1);
-                      return <circle key={i} cx={dx} cy={dy} r={i===li?4:2.5} fill={i===li?AZ.ind:"rgba(129,140,248,0.7)"} stroke="#F5F7FA" strokeWidth={1} />;
+                      const showLbl = data.length <= 8 || i === li || i === 0;
+                      const lblY = parseFloat(dy) - 7;
+                      const anchor = i === 0 ? "start" : i === li ? "end" : "middle";
+                      return (
+                        <g key={i}>
+                          <circle cx={dx} cy={dy} r={i===li?4:2.5} fill={i===li?AZ.ind:"rgba(67,56,202,0.55)"} stroke="#F5F7FA" strokeWidth={1} />
+                          {showLbl && <text x={dx} y={lblY} textAnchor={anchor} fontSize={8}
+                            fill={i===li ? AZ.ind : AZ.textM}
+                            fontFamily="JetBrains Mono,monospace" fontWeight={i===li ? 700 : 500}>
+                            {v}%
+                          </text>}
+                        </g>
+                      );
                     })}
-                    {/* Latest value label */}
-                    <text x={lx} y={parseFloat(ly)-8} textAnchor="middle" fontSize={9} fill={AZ.ind} fontFamily="JetBrains Mono,monospace" fontWeight={700}>{data[li]}%</text>
                   </svg>
                 );
               })()}
@@ -2526,8 +2536,10 @@ function PerformanceDashboard({ testHistory, user, onBack }) {
                       return (
                         <g key={i}>
                           <rect x={x} y={y} width={bw} height={bh} rx={2}
-                            fill={v === 0 ? AZ.grn : isLast ? AZ.red : "rgba(248,113,113,0.55)"} />
-                          {isLast && <text x={x+bw/2} y={y-4} textAnchor="middle" fontSize={9} fill={AZ.red} fontFamily="JetBrains Mono,monospace">{v}</text>}
+                            fill={v === 0 ? AZ.grn : isLast ? AZ.red : "rgba(220,38,38,0.45)"} />
+                          <text x={x+bw/2} y={y-3} textAnchor="middle" fontSize={8}
+                            fill={v === 0 ? AZ.grn : isLast ? AZ.red : AZ.textM}
+                            fontFamily="JetBrains Mono,monospace" fontWeight={isLast ? 700 : 500}>{v}</text>
                         </g>
                       );
                     })}
@@ -2539,44 +2551,84 @@ function PerformanceDashboard({ testHistory, user, onBack }) {
           </div>
         </div>
 
-        {/* ── Subject-wise Cards ────────────────────────────────────── */}
-        {Object.keys(bySubject).length > 0 && (
-          <div style={{ background:AZ.card, borderRadius:12, padding:"16px 18px", marginBottom:16, border:`1px solid ${AZ.bord}` }}>
-            {sLabel("Subject-Wise Progression")}
-            <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
-              {Object.entries(bySubject).map(([sub, tests]) => {
-                const subAcc  = tests.map(t => t.accuracy || 0);
-                const subAvg  = Math.round(subAcc.reduce((s,v)=>s+v,0)/subAcc.length);
-                const subBest = Math.max(...subAcc);
-                const col     = subjectColors[sub] || AZ.ind;
-                const { slope: subSlope } = linReg(subAcc);
-                const subTrend = subAcc.length < 2 ? null : subSlope > 1 ? { t:"↑", c:AZ.grn } : subSlope < -1 ? { t:"↓", c:AZ.red } : { t:"→", c:AZ.amb };
-                return (
-                  <div key={sub} style={{ flex:"1 1 160px", background:AZ.card2, borderRadius:10, padding:"14px 16px", border:`1px solid ${AZ.bord}` }}>
-                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
-                      <div>
-                        <div style={{ fontWeight:700, fontSize:13, color:AZ.text }}>{subjectLabels[sub] || sub}</div>
-                        <div style={{ fontSize:10, color:AZ.textM, marginTop:2 }}>{tests.length} test{tests.length!==1?"s":""}</div>
-                      </div>
-                      {subTrend && <span style={{ fontSize:16, color:subTrend.c, fontWeight:700 }}>{subTrend.t}</span>}
+        {/* ── Subject-wise Cards — always show all 3 ─────────────────── */}
+        <div style={{ background:AZ.card, borderRadius:12, padding:"16px 18px", marginBottom:16, border:`1px solid ${AZ.bord}` }}>
+          {sLabel("Subject-Wise Progression")}
+          <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
+            {["English","GAT","Economics"].map(sub => {
+              const tests   = bySubject[sub] || [];
+              const col     = subjectColors[sub] || AZ.ind;
+              const hasData = tests.length > 0;
+              if (!hasData) return (
+                <div key={sub} style={{ flex:"1 1 160px", background:AZ.card2, borderRadius:10, padding:"14px 16px",
+                  border:`1px solid ${AZ.bord}`, opacity:0.7 }}>
+                  <div style={{ fontWeight:700, fontSize:13, color:AZ.text }}>{subjectLabels[sub]}</div>
+                  <div style={{ fontSize:10, color:AZ.textM, marginTop:4, marginBottom:16 }}>No tests yet</div>
+                  <div style={{ height:30, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                    <div style={{ height:2, width:"80%", background:AZ.bord, borderRadius:1 }} />
+                  </div>
+                  <div style={{ marginTop:8, fontFamily:"var(--font-mono)", fontSize:13, color:AZ.textM }}>—</div>
+                  <div style={{ fontSize:9, color:AZ.textM }}>avg accuracy</div>
+                </div>
+              );
+              const subAcc  = tests.map(t => t.accuracy || 0);
+              const subAvg  = Math.round(subAcc.reduce((s,v)=>s+v,0)/subAcc.length);
+              const subBest = Math.max(...subAcc);
+              const subLast = subAcc[subAcc.length-1];
+              const { slope: subSlope } = linReg(subAcc);
+              const subTrend = subAcc.length < 2 ? null : subSlope > 1 ? { t:"↑", c:AZ.grn } : subSlope < -1 ? { t:"↓", c:AZ.red } : { t:"→", c:AZ.amb };
+              return (
+                <div key={sub} style={{ flex:"1 1 160px", background:AZ.card2, borderRadius:10, padding:"14px 16px", border:`1px solid ${AZ.bord}` }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}>
+                    <div>
+                      <div style={{ fontWeight:700, fontSize:13, color:AZ.text }}>{subjectLabels[sub]}</div>
+                      <div style={{ fontSize:10, color:AZ.textM, marginTop:2 }}>{tests.length} test{tests.length!==1?"s":""}</div>
                     </div>
-                    <Spark data={subAcc} color={col} w={isMobile ? 120 : 140} h={30} />
-                    <div style={{ display:"flex", justifyContent:"space-between", marginTop:8 }}>
-                      <div>
-                        <div style={{ fontFamily:"var(--font-mono)", fontSize:18, fontWeight:800, color:col }}>{subAvg}%</div>
-                        <div style={{ fontSize:9, color:AZ.textM }}>avg accuracy</div>
+                    {subTrend && <span style={{ fontSize:15, color:subTrend.c, fontWeight:700 }}>{subTrend.t}</span>}
+                  </div>
+                  {subAcc.length >= 2
+                    ? (() => {
+                        const w2 = isMobile ? 120 : 140, h2 = 36;
+                        const mx = Math.max(...subAcc), mn = Math.min(...subAcc), rng = mx-mn || 1;
+                        const pts2 = subAcc.map((v,i) =>
+                          `${((i/(subAcc.length-1))*(w2-10)+5).toFixed(1)},${(h2-5-((v-mn)/rng)*(h2-12)).toFixed(1)}`
+                        ).join(" ");
+                        const li2 = subAcc.length-1;
+                        const lx2 = ((li2/(subAcc.length-1))*(w2-10)+5).toFixed(1);
+                        const ly2 = (h2-5-((subAcc[li2]-mn)/rng)*(h2-12)).toFixed(1);
+                        return (
+                          <svg width={w2} height={h2}>
+                            <polyline points={pts2} fill="none" stroke={col} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+                            {subAcc.map((v,i) => {
+                              const dx2 = ((i/(subAcc.length-1))*(w2-10)+5).toFixed(1);
+                              const dy2 = (h2-5-((v-mn)/rng)*(h2-12)).toFixed(1);
+                              return <circle key={i} cx={dx2} cy={dy2} r={i===li2?3.5:2} fill={i===li2?col:"rgba(67,56,202,0.4)"} stroke="#F1F5F9" strokeWidth={1}/>;
+                            })}
+                            <text x={lx2} y={parseFloat(ly2)-7} textAnchor="end" fontSize={8}
+                              fill={col} fontFamily="JetBrains Mono,monospace" fontWeight={700}>{subAcc[li2]}%</text>
+                          </svg>
+                        );
+                      })()
+                    : <div style={{ height:36, display:"flex", alignItems:"center" }}>
+                        <div style={{ fontFamily:"var(--font-mono)", fontSize:20, fontWeight:800, color:col }}>{subAcc[0]}%</div>
+                        <div style={{ fontSize:9, color:AZ.textM, marginLeft:6 }}>1 test only</div>
                       </div>
-                      <div style={{ textAlign:"right" }}>
-                        <div style={{ fontFamily:"var(--font-mono)", fontSize:18, fontWeight:800, color:AZ.grn }}>{subBest}%</div>
-                        <div style={{ fontSize:9, color:AZ.textM }}>best score</div>
-                      </div>
+                  }
+                  <div style={{ display:"flex", justifyContent:"space-between", marginTop:8 }}>
+                    <div>
+                      <div style={{ fontFamily:"var(--font-mono)", fontSize:17, fontWeight:800, color:col }}>{subAvg}%</div>
+                      <div style={{ fontSize:9, color:AZ.textM }}>avg accuracy</div>
+                    </div>
+                    <div style={{ textAlign:"right" }}>
+                      <div style={{ fontFamily:"var(--font-mono)", fontSize:17, fontWeight:800, color:AZ.grn }}>{subBest}%</div>
+                      <div style={{ fontSize:9, color:AZ.textM }}>best score</div>
                     </div>
                   </div>
-                );
-              })}
-            </div>
+                </div>
+              );
+            })}
           </div>
-        )}
+        </div>
 
         {/* ── Topic Heatmap ─────────────────────────────────────────── */}
         {heatTests.length >= 2 && allTopics.length > 0 && (
@@ -3069,8 +3121,9 @@ export default function App() {
       }
       setQuestions(data.questions);
       setAnswers(data.answers);
+      setTimePerQ(data.timePerQuestion || {});
       setConfig({ mode: data.mode, subject: data.subject || "English" });
-      setScreen("review");
+      setScreen("results");   // show full analytics → user can click "Review Answers" from there
     } catch(e) { showToast("Could not load test. Please try again.", "error"); }
   }
 
