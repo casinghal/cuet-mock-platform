@@ -393,8 +393,8 @@ function AuthScreen({ onLogin, showToast }) {
     "Built fresh for CUET 2026 — not last year's coaching material.",
     "The platform reads the syllabus. You take the test.",
     "Economics 2026 has a brand-new IED section. We cover it. No one else does yet.",
-    "Indian Economic Development is new in CUET 2026 — no past papers. We built the questions.",
-    "IED questions built from NCERT + 2025-26 govt data. Refreshed weekly.",
+    "Indian Economic Development is new in CUET 2026 — no past papers exist anywhere. We built them.",
+    "IED question bank refreshed every week. Be the student who prepared while others guessed.",
   ];
   const [hookIdx,   setHookIdx]   = useState(0);
   const [hookText,  setHookText]  = useState("");
@@ -1032,10 +1032,10 @@ function GoogleIcon() {
 // Also serves as a hook — "first platform to cover this section."
 function IEDDisclaimerBanner() {
   const LINES = [
-    "India's 1st mock tests for the new Indian Economic Development section — built from NCERT + 2025-26 govt data.",
-    "No past CUET papers exist for IED. Our questions are crafted from the NCERT Class 11 curriculum.",
-    "IED is brand new in CUET 2026. We refresh our question bank every week as new data and updates emerge.",
-    "If you studied IED for CBSE boards, you're already ahead. Our questions match that exact curriculum.",
+    "Indian Economic Development is brand new in CUET 2026 — no past papers exist. We built the questions from scratch.",
+    "No other platform covers IED yet. Vantiq is first. Every question is purpose-built for CUET 2026.",
+    "IED questions are reviewed and refreshed every week as the exam pattern evolves.",
+    "Getting ahead on IED now is the smartest move — most students are skipping it. Don't be one of them.",
   ];
   const [idx,   setIdx]   = React.useState(0);
   const [text,  setText]  = React.useState("");
