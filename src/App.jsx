@@ -1578,7 +1578,10 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
           <div style={{ fontSize: isMobile ? 14 : 15, fontWeight: 500, color: "var(--text-primary)", lineHeight: 1.6, marginBottom: 16 }}>{q.question}</div>
           <div style={{ display: "flex", flexDirection: "column", gap: isMobile ? 8 : 9 }}>
             {q.options.map((opt, i) => (
-              <div key={i} className={"option-box" + (answers[current] === i ? " selected" : "")} onClick={() => setAnswers(p => ({ ...p, [current]: i }))}>
+              <div key={i} className={"option-box" + (answers[current] === i ? " selected" : "")} onClick={() => setAnswers(p => {
+                if (p[current] === i) { const n = { ...p }; delete n[current]; return n; } // deselect
+                return { ...p, [current]: i }; // select
+              })}>
                 <span className="option-key">{String.fromCharCode(65 + i)}</span>
                 <span style={{ fontSize: isMobile ? 13 : 13.5, color: "var(--text-primary)", flex: 1 }}>{opt}</span>
               </div>
