@@ -493,10 +493,6 @@ function AuthScreen({ onLogin, showToast }) {
     { icon: "✅", title: "Exact NTA Pattern",        desc: "+5 correct, −1 wrong. Same interface, same marking, same pressure as the real exam. Not a simulation — a replica." },
   ];
 
-  // Recency timestamp — simulated; in production pull from Firestore questionCache.createdAt
-  const recencyMins = [2,3,4,5,3,6,2,4][Math.floor(Date.now()/60000) % 8];
-  const recencyCount = (820 + ((Math.floor(Date.now()/3600000)) % 80)).toLocaleString("en-IN");
-
   // IntersectionObserver for stagger animations
   useEffect(() => {
     const io = new IntersectionObserver((entries) => {
@@ -775,7 +771,7 @@ function AuthScreen({ onLogin, showToast }) {
                 { num:"50Q", label:"Per Paper" },
                 { num:"+5/−1", label:"NTA Marking" },
                 { num:"60min", label:"Timed" },
-                { num:recencyCount, label:"Tests today", live:true },
+                { num:"3", label:"Subjects live" },
               ].map(p => (
                 <div key={p.label} style={{ display:"flex", flexDirection:"column", gap:2, flexShrink:0 }}>
                   <span style={{ fontFamily:"var(--font-mono)", fontSize:20, fontWeight:700,
@@ -836,7 +832,7 @@ function AuthScreen({ onLogin, showToast }) {
               { num: "6", label: "Topics Covered" },
               { num: "+5/−1", label: "NTA Marking" },
               { num: "60min", label: "Timed Exam" },
-              { num: recencyCount, label: "Papers today", live: true },
+              { num: "3", label: "Subjects live" },
             ].map(p => (
               <div key={p.label} style={{ ...S.proofItem }} className="proof-stagger">
                 <span style={{ ...S.proofNum, ...(p.live ? { color:"#6EE7B7" } : {}) }}>{p.num}</span>
@@ -894,17 +890,6 @@ function AuthScreen({ onLogin, showToast }) {
             <span className="hook-text" style={{ fontSize: isMobile ? 12 : 13, fontWeight:600, color:"#FCD34D", lineHeight:1.5, letterSpacing:0.1, display:"inline" }}>{hookText}</span>
             <span className="hook-caret" />
           </div>
-
-          {/* Recency strip — desktop only (mobile hero already shows it) */}
-          {!isMobile && (
-          <div className="recency-pop" style={{ display:"flex", alignItems:"center", gap:8, marginBottom:16, padding:"7px 12px", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.07)", borderRadius:8 }}>
-            <span className="live-pulse-dot" style={{ width:6, height:6, borderRadius:"50%", background:"#6EE7B7", display:"inline-block", flexShrink:0 }} />
-            <span style={{ fontFamily:"var(--font-mono)", fontSize:11, color:"rgba(255,255,255,0.42)", letterSpacing:"0.2px" }}>
-              Last paper generated: <strong style={{ color:"rgba(110,231,183,0.8)", fontWeight:600 }}>{recencyMins} min ago</strong>
-              {" · "}<strong style={{ color:"rgba(110,231,183,0.7)", fontWeight:600 }}>{recencyCount}</strong> tests today
-            </span>
-          </div>
-          )}
 
           {/* ── GOOGLE BUTTON — first visible CTA, no scroll required ── */}
           <button
