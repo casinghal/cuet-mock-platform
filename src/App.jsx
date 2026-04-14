@@ -1773,6 +1773,7 @@ const CZ = {
   title:"#FFFFFF",
   grn:"#59A14F", grnDk:"#2D6E28",  // Tableau sage green
   red:"#E15759", redDk:"#961618",  // Tableau muted red (calmer than pure crimson)
+  pch:"#F4845F", pchDk:"#C4542F",  // Peach-coral — for wrong bars in time chart
   amb:"#F28E2C",                    // Tableau orange
   ind:"#4E79A7",                    // Tableau blue
 };
@@ -1923,8 +1924,8 @@ function TimeBarChart({ timePerQ, questions, answers }) {
           const ua = answers[i];
           const isCorrect = ua !== undefined && ua === questions[i]?.correct;
           const isSkipped = ua === undefined;
-          const col = isSkipped ? CZ.amb : isCorrect ? CZ.grn : CZ.red;
-          const shadowCol = isSkipped ? "#9A5E1A" : isCorrect ? CZ.grnDk : CZ.redDk;
+          const col = isSkipped ? CZ.amb : isCorrect ? CZ.grn : CZ.pch;
+          const shadowCol = isSkipped ? "#9A5E1A" : isCorrect ? CZ.grnDk : CZ.pchDk;
           const bh = Math.max(4, Math.round((t / maxT) * (H_bar - 12)));
           const x = 4 + i * (bw + gap);
           const y_bar = H_val + H_bar - bh;
@@ -2325,7 +2326,7 @@ Respond ONLY with valid JSON: {"summary":"One honest sentence about NTA score an
 }
 
 // ── REVIEW SCREEN ─────────────────────────────────────────────────────────────
-function ReviewScreen({ questions, answers, onBack, onViewAnalytics, config, testDate }) {
+function ReviewScreen({ questions, answers, onBack, onViewAnalytics, config, testDate, timePerQ = {} }) {
   const [filter,      setFilter]      = useState("all");
   const [showPalette, setShowPalette] = useState(false);
   const [advisory,    setAdvisory]    = useState(null);
@@ -2519,6 +2520,29 @@ function ReviewScreen({ questions, answers, onBack, onViewAnalytics, config, tes
               </>
             )}
           </div>
+
+          {/* ── Time per Question chart ──────────────────────────── */}
+          {Object.keys(timePerQ).length >= 3 && (
+            <div style={{ background:CZ.card, borderRadius:12, padding:"14px 16px", marginBottom:18,
+              border:`1px solid ${CZ.bord}`, boxShadow:"0 4px 20px rgba(0,0,0,0.30)" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12, flexWrap:"wrap" }}>
+                <span style={{ fontSize:10, fontWeight:700, textTransform:"uppercase",
+                  letterSpacing:".07em", color:CZ.title }}>Time per Question</span>
+                <span style={{ display:"flex", gap:10, fontSize:10 }}>
+                  <span><span style={{color:CZ.grn,fontWeight:700}}>■</span> <span style={{color:CZ.textS}}> Correct</span></span>
+                  <span><span style={{color:CZ.pch,fontWeight:700}}>■</span> <span style={{color:CZ.textS}}> Wrong</span></span>
+                  <span><span style={{color:CZ.amb,fontWeight:700}}>■</span> <span style={{color:CZ.textS}}> Skipped</span></span>
+                </span>
+                <span style={{ marginLeft:"auto", fontSize:9, color:CZ.title }}>Q number below · seconds above</span>
+              </div>
+              <TimeBarChart timePerQ={timePerQ} questions={questions} answers={answers} />
+              <div style={{ marginTop:8, fontSize:11, color:CZ.textS }}>
+                Total time: <strong style={{color:CZ.text,fontFamily:"var(--font-mono)"}}>
+                  {fmtSecs(Object.values(timePerQ).reduce((a,b)=>a+b,0))}
+                </strong>
+              </div>
+            </div>
+          )}
 
           {filter !== "all" && (
             <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 18 }}>
@@ -3620,7 +3644,7 @@ export default function App() {
       {user && showRating && (screen === "results" || screen === "dashboard") && (
         <StarRatingModal user={user} onDismiss={() => setShowRating(false)} />
       )}
-      {screen === "review"      && <ReviewScreen          questions={questions} answers={answers} config={testConfig} testDate={reviewTestDate} onViewAnalytics={isPastReview ? () => { setPerfDashFrom("results"); setScreen("results"); } : undefined} onBack={() => isPastReview ? setScreen("dashboard") : setScreen("results")} />}
+      {screen === "review"      && <ReviewScreen          questions={questions} answers={answers} timePerQ={timePerQ} config={testConfig} testDate={reviewTestDate} onViewAnalytics={isPastReview ? () => { setPerfDashFrom("results"); setScreen("results"); } : undefined} onBack={() => isPastReview ? setScreen("dashboard") : setScreen("results")} />}
       {screen === "performance" && <PerformanceDashboard  testHistory={testHistory} user={user} onBack={() => setScreen("dashboard")} onBackToResults={perfDashFrom === "results" ? () => setScreen("results") : undefined} />}
     </React.Fragment>
   );
