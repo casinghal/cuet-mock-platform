@@ -34,16 +34,19 @@ const CSS = `
 }
 body{font-family:var(--font-body);background:var(--bg);color:var(--text-primary);font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased;}
 button{cursor:pointer;border:none;outline:none;font-family:var(--font-body);}
-.btn-primary{background:var(--navy);color:#fff;height:44px;padding:0 24px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;transition:background .15s;}
-.btn-primary:hover{background:var(--navy-light);}
-.btn-primary:disabled{background:var(--text-muted);cursor:not-allowed;}
+.btn-primary{background:linear-gradient(180deg,#1a3a6b 0%,#0F2747 100%);color:#fff;height:44px;padding:0 24px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 4px 0 #07192e,0 6px 12px rgba(15,39,71,0.35),inset 0 1px 0 rgba(255,255,255,0.12);transition:all .12s;border:1px solid #0a1e3a;}
+.btn-primary:hover{background:linear-gradient(180deg,#20467f 0%,#163356 100%);box-shadow:0 4px 0 #07192e,0 8px 16px rgba(15,39,71,0.4),inset 0 1px 0 rgba(255,255,255,0.15);transform:translateY(-1px);}
+.btn-primary:active{transform:translateY(3px);box-shadow:0 1px 0 #07192e,0 2px 4px rgba(15,39,71,0.2),inset 0 1px 0 rgba(255,255,255,0.08);}
+.btn-primary:disabled{background:var(--text-muted);box-shadow:none;cursor:not-allowed;border-color:transparent;}
 .btn-primary.full{width:100%;}
 .btn-amber{background:#FFFBEB;color:var(--amber);border:1px solid #FDE68A;height:36px;padding:0 16px;border-radius:6px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px;transition:background .15s;}
 .btn-amber:hover{background:#FEF3C7;}
-.btn-navy-sm{background:var(--navy);color:#fff;height:36px;padding:0 18px;border-radius:6px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px;transition:background .15s;}
-.btn-navy-sm:hover{background:var(--navy-light);}
-.btn-outline{background:transparent;color:var(--navy);border:1.5px solid var(--navy);height:44px;padding:0 24px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;transition:all .15s;}
-.btn-outline:hover{background:var(--navy);color:#fff;}
+.btn-navy-sm{background:linear-gradient(180deg,#1a3a6b 0%,#0F2747 100%);color:#fff;height:36px;padding:0 18px;border-radius:6px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px;box-shadow:0 3px 0 #07192e,0 5px 8px rgba(15,39,71,0.3),inset 0 1px 0 rgba(255,255,255,0.1);transition:all .12s;border:1px solid #0a1e3a;}
+.btn-navy-sm:hover{transform:translateY(-1px);box-shadow:0 4px 0 #07192e,0 7px 12px rgba(15,39,71,0.35),inset 0 1px 0 rgba(255,255,255,0.12);}
+.btn-navy-sm:active{transform:translateY(2px);box-shadow:0 1px 0 #07192e,0 2px 4px rgba(15,39,71,0.2);}
+.btn-outline{background:linear-gradient(180deg,#fff 0%,#f0f4fa 100%);color:var(--navy);border:1.5px solid #c5d3e8;height:44px;padding:0 24px;border-radius:8px;font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 3px 0 #c5d3e8,0 5px 10px rgba(15,39,71,0.1),inset 0 1px 0 rgba(255,255,255,0.9);transition:all .12s;}
+.btn-outline:hover{background:linear-gradient(180deg,#f0f4fa 0%,#e2eaf6 100%);box-shadow:0 3px 0 #b0c2d8,0 6px 12px rgba(15,39,71,0.15),inset 0 1px 0 rgba(255,255,255,0.9);transform:translateY(-1px);}
+.btn-outline:active{transform:translateY(2px);box-shadow:0 1px 0 #b0c2d8,inset 0 1px 0 rgba(255,255,255,0.7);}
 @keyframes indeterminate{0%{transform:translateX(-100%) scaleX(.5)}50%{transform:translateX(0) scaleX(.5)}100%{transform:translateX(100%) scaleX(.5)}}
 @keyframes pillGlow{0%,100%{box-shadow:0 0 0 0 rgba(110,231,183,0);}50%{box-shadow:0 0 0 4px rgba(110,231,183,0.18),0 0 16px rgba(110,231,183,0.12);}}
 @keyframes caretBlink{0%,100%{opacity:1;}50%{opacity:0;}}
@@ -1273,12 +1276,17 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onReviewTes
         {testHistory.length > 0 && (
           <button
             onClick={() => onViewAnalytics && onViewAnalytics()}
-            style={{ width:"100%", height:42, marginBottom:14, display:"flex", alignItems:"center",
+            style={{ width:"100%", height:44, marginBottom:14, display:"flex", alignItems:"center",
               justifyContent:"space-between", paddingLeft:16, paddingRight:16,
-              background:"#FFFFFF", border:"1px solid #C7D2FE",
-              borderRadius:10, cursor:"pointer", fontFamily:"var(--font-body)", transition:"border-color .2s" }}
-            onMouseEnter={e => e.currentTarget.style.borderColor = "#4338CA"}
-            onMouseLeave={e => e.currentTarget.style.borderColor = "#C7D2FE"}
+              background:"linear-gradient(180deg,#F5F7FF 0%,#EEF2FF 100%)",
+              border:"1px solid #C7D2FE", borderRadius:10, cursor:"pointer",
+              fontFamily:"var(--font-body)",
+              boxShadow:"0 3px 0 #a5b4fc,0 5px 12px rgba(67,56,202,0.14),inset 0 1px 0 rgba(255,255,255,0.9)",
+              transition:"all .12s" }}
+            onMouseEnter={e => { e.currentTarget.style.transform="translateY(-1px)"; e.currentTarget.style.boxShadow="0 4px 0 #a5b4fc,0 7px 16px rgba(67,56,202,0.18),inset 0 1px 0 rgba(255,255,255,0.9)"; }}
+            onMouseLeave={e => { e.currentTarget.style.transform=""; e.currentTarget.style.boxShadow="0 3px 0 #a5b4fc,0 5px 12px rgba(67,56,202,0.14),inset 0 1px 0 rgba(255,255,255,0.9)"; }}
+            onMouseDown={e => { e.currentTarget.style.transform="translateY(2px)"; e.currentTarget.style.boxShadow="0 1px 0 #a5b4fc,inset 0 1px 0 rgba(255,255,255,0.7)"; }}
+            onMouseUp={e => { e.currentTarget.style.transform="translateY(-1px)"; e.currentTarget.style.boxShadow="0 4px 0 #a5b4fc,0 7px 16px rgba(67,56,202,0.18)"; }}
           >
             <span style={{ display:"flex", alignItems:"center", gap:10 }}>
               <span style={{ fontSize:18 }}>📊</span>
@@ -1419,19 +1427,54 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onReviewTes
                   return (
                     <tr key={i} style={{ borderBottom: i < testHistory.length - 1 ? "1px solid var(--border)" : "none" }}>
                       <td style={{ padding: "12px 14px", color: "var(--text-secondary)" }}>{fmtDate(t.completedAt)}</td>
-                      <td style={{ padding: "12px 14px" }}><span className="pill pill-navy">{modeLabel}</span></td>
+                      <td style={{ padding: "12px 14px" }}>
+                        {(() => {
+                          const bg3d = t.mode?.includes("GAT")      ? { top:"#ECFDF5", bot:"#D1FAE5", shadow:"#6ee7b7", border:"#A7F3D0", text:"#065F46" }
+                                     : t.mode?.includes("Economics") ? { top:"#FFFBEB", bot:"#FEF3C7", shadow:"#fcd34d", border:"#FDE68A", text:"#92400E" }
+                                     :                                  { top:"#EEF2FF", bot:"#E0E7FF", shadow:"#a5b4fc", border:"#C7D2FE", text:"#3730A3" };
+                          return (
+                            <span style={{
+                              display:"inline-block", fontSize:10, fontWeight:700, padding:"3px 9px", borderRadius:5,
+                              background:`linear-gradient(180deg,${bg3d.top} 0%,${bg3d.bot} 100%)`,
+                              border:`1px solid ${bg3d.border}`, color:bg3d.text, whiteSpace:"nowrap",
+                              boxShadow:`0 2px 0 ${bg3d.shadow},0 3px 5px rgba(0,0,0,0.08),inset 0 1px 0 rgba(255,255,255,0.8)`,
+                              letterSpacing:".04em"
+                            }}>{modeLabel}</span>
+                          );
+                        })()}
+                      </td>
                       <td style={{ padding: "12px 14px", fontWeight: 600, fontFamily: "var(--font-mono)" }}>{t.totalScore ?? "—"}</td>
                       <td style={{ padding: "12px 14px", fontFamily: "var(--font-mono)" }}>{t.correct}/{t.attempted}</td>
                       <td style={{ padding: "12px 14px", fontWeight: 600, color: scoreColor(p), fontFamily: "var(--font-mono)" }}>{p}%</td>
                       <td style={{ padding: "12px 14px" }}>
-                        <span className={"pill " + (p >= 70 ? "pill-green" : p >= 45 ? "pill-amber" : "pill-red")}>
-                          {p >= 70 ? "Strong" : p >= 45 ? "Average" : "Needs Work"}
-                        </span>
+                        {(() => {
+                          const sp = p >= 70 ? { top:"#ECFDF5",bot:"#D1FAE5",shadow:"#6ee7b7",border:"#A7F3D0",text:"#065F46",label:"Strong" }
+                                   : p >= 45 ? { top:"#FFFBEB",bot:"#FEF3C7",shadow:"#fcd34d",border:"#FDE68A",text:"#92400E",label:"Average" }
+                                   :           { top:"#FEF2F2",bot:"#FEE2E2",shadow:"#fca5a5",border:"#FECACA",text:"#991B1B",label:"Needs Work" };
+                          return (
+                            <span style={{
+                              display:"inline-block", fontSize:10, fontWeight:700, padding:"3px 9px", borderRadius:5,
+                              background:`linear-gradient(180deg,${sp.top} 0%,${sp.bot} 100%)`,
+                              border:`1px solid ${sp.border}`, color:sp.text,
+                              boxShadow:`0 2px 0 ${sp.shadow},0 3px 5px rgba(0,0,0,0.06),inset 0 1px 0 rgba(255,255,255,0.8)`,
+                              letterSpacing:".03em"
+                            }}>{sp.label}</span>
+                          );
+                        })()}
                       </td>
                       <td style={{ padding: "12px 14px" }}>
                         <button
                           onClick={() => onReviewTest && onReviewTest(t.id)}
-                          style={{ fontSize: 12, fontWeight: 600, color: "var(--indigo)", background: "none", border: "1px solid var(--indigo)", borderRadius: 6, padding: "4px 10px", cursor: "pointer", whiteSpace: "nowrap" }}>
+                          style={{ fontSize: 12, fontWeight: 700, color: "#4338CA",
+                            background: "linear-gradient(180deg,#EEF2FF 0%,#E0E7FF 100%)",
+                            border: "1px solid #C7D2FE",
+                            borderRadius: 6, padding: "4px 12px", cursor: "pointer", whiteSpace: "nowrap",
+                            boxShadow: "0 2px 0 #a5b4fc, 0 3px 6px rgba(67,56,202,0.18), inset 0 1px 0 rgba(255,255,255,0.8)",
+                            transition: "all .12s" }}
+                          onMouseEnter={e=>{ e.currentTarget.style.transform="translateY(-1px)"; e.currentTarget.style.boxShadow="0 3px 0 #a5b4fc,0 5px 8px rgba(67,56,202,0.22),inset 0 1px 0 rgba(255,255,255,0.9)"; }}
+                          onMouseLeave={e=>{ e.currentTarget.style.transform=""; e.currentTarget.style.boxShadow="0 2px 0 #a5b4fc,0 3px 6px rgba(67,56,202,0.18),inset 0 1px 0 rgba(255,255,255,0.8)"; }}
+                          onMouseDown={e=>{ e.currentTarget.style.transform="translateY(1px)"; e.currentTarget.style.boxShadow="0 1px 0 #a5b4fc"; }}
+                        >
                           Review
                         </button>
                       </td>
