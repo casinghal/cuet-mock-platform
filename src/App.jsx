@@ -1768,9 +1768,9 @@ const CZ = {
   bg:"#18202E",           // page-level dark bg for chart card rows
   card:"#1F2D40",         // chart card surface
   bord:"rgba(255,255,255,0.09)",
-  text:"#F1F5F9",
-  textS:"rgba(241,245,249,0.88)",
-  title:"rgba(241,245,249,0.82)",
+  text:"#FFFFFF",
+  textS:"rgba(255,255,255,0.92)",
+  title:"#FFFFFF",
   grn:"#59A14F", grnDk:"#2D6E28",  // Tableau sage green
   red:"#E15759", redDk:"#961618",  // Tableau muted red (calmer than pure crimson)
   amb:"#F28E2C",                    // Tableau orange
