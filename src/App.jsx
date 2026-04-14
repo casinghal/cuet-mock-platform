@@ -1999,7 +1999,7 @@ function ResultsScreen({ questions, answers, config, user, testHistory, timePerQ
     else { wrong++; totalScore += MARKS_WRONG; }
   });
   const attempted  = correct + wrong;
-  const accuracy   = attempted > 0 ? Math.round((correct / attempted) * 100) : 0;
+  const accuracy   = questions.length > 0 ? Math.round((correct / questions.length) * 100) : 0;  // based on ALL questions, not just attempted
   const pct        = questions.length > 0 ? Math.round((totalScore / (questions.length * MARKS_CORRECT)) * 100) : 0;
   const maxScore   = questions.length * MARKS_CORRECT;
   const marksEarned    = correct * 5;
@@ -2325,12 +2325,49 @@ Respond ONLY with valid JSON: {"summary":"One honest sentence about NTA score an
 }
 
 // ── REVIEW SCREEN ─────────────────────────────────────────────────────────────
-function ReviewScreen({ questions, answers, onBack }) {
-  const [filter, setFilter]           = useState("all");
+function ReviewScreen({ questions, answers, onBack, onViewAnalytics, config, testDate }) {
+  const [filter,      setFilter]      = useState("all");
   const [showPalette, setShowPalette] = useState(false);
+  const [advisory,    setAdvisory]    = useState(null);
   const cardRefs = useRef([]);
   const isMobile = useMobile();
   useEffect(() => { logEvent("page_view", { page: "review" }); }, []);
+
+  // ── Compute scores for advisory ──────────────────────────────────────
+  const _revScores = questions.reduce((acc, q, i) => {
+    const ua = answers[i];
+    if (ua === undefined) acc.unanswered++;
+    else if (ua === q.correct) { acc.correct++; acc.totalScore += 5; }
+    else { acc.wrong++; acc.totalScore -= 1; }
+    return acc;
+  }, { correct:0, wrong:0, unanswered:0, totalScore:0 });
+  const _maxScore  = questions.length * 5;
+  const _pct       = _maxScore > 0 ? Math.round((_revScores.totalScore / _maxScore) * 100) : 0;
+  const _accuracy  = questions.length > 0 ? Math.round((_revScores.correct / questions.length) * 100) : 0;
+  const _topicMap  = {};
+  questions.forEach((q, i) => {
+    if (!_topicMap[q.topic]) _topicMap[q.topic] = { att:0, cor:0 };
+    if (answers[i] !== undefined) { _topicMap[q.topic].att++; if (answers[i]===q.correct) _topicMap[q.topic].cor++; }
+  });
+  const _weakest = Object.entries(_topicMap)
+    .map(([t,s]) => ({ topic:t, acc: s.att>0 ? Math.round(s.cor/s.att*100) : 0 }))
+    .sort((a,b) => a.acc - b.acc)[0];
+
+  useEffect(() => {
+    if (!CF_BASE) { setAdvisory({ summary:"Review the highlighted questions to identify your mistake patterns.", actions:["Start with your wrong answers, then skipped ones.","Revisit the weakest topic in your next test."] }); return; }
+    (async () => {
+      try {
+        const token = await getAuthToken();
+        const r = await fetch(`${CF_BASE}/generateAdvisory`, {
+          method:"POST", headers: authHeaders(token),
+          body: JSON.stringify({ score:_pct, correct:_revScores.correct, wrong:_revScores.wrong, unanswered:_revScores.unanswered, totalScore:_revScores.totalScore, maxScore:_maxScore, accuracy:_accuracy, weakest:_weakest?.topic, weakestAcc:_weakest?.acc })
+        });
+        if (!r.ok) throw new Error("CF error");
+        const d = await r.json();
+        setAdvisory(d.advisory || { summary: d.summary, actions: d.actions });
+      } catch(_) { setAdvisory({ summary:"Review the highlighted questions to identify your mistake patterns.", actions:["Focus on your wrong answers first.","Revisit your weakest topic next."] }); }
+    })();
+  }, []);
 
   const counts = questions.reduce((acc, _, i) => {
     const ua = answers[i];
@@ -2424,10 +2461,17 @@ function ReviewScreen({ questions, answers, onBack }) {
               ✓ {counts.correct} &nbsp;✗ {counts.wrong}
             </button>
           )}
+          {onViewAnalytics && (
+            <button onClick={onViewAnalytics}
+              style={{ background: "rgba(255,255,255,.1)", color: "#fff", border: "1px solid rgba(255,255,255,.25)",
+                borderRadius: 6, padding: "4px 12px", fontSize: 12, cursor: "pointer", fontFamily: "var(--font-body)" }}>
+              📊 Analytics
+            </button>
+          )}
           <button onClick={onBack}
             style={{ background: "transparent", color: "rgba(255,255,255,.7)", border: "1px solid rgba(255,255,255,.2)",
               borderRadius: 6, padding: "4px 14px", fontSize: 13, cursor: "pointer", fontFamily: "var(--font-body)" }}>
-            ← Back to Report
+            ← Back to Dashboard
           </button>
         </div>
       </div>
@@ -2447,7 +2491,35 @@ function ReviewScreen({ questions, answers, onBack }) {
 
         {/* question cards */}
         <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? "16px 14px" : "24px 28px", maxWidth: 820 }}>
-          <h1 style={{ fontFamily: "var(--font-display)", fontSize: 22, color: "var(--navy)", marginBottom: 6 }}>Answer Review</h1>
+          {/* test date + score strip */}
+          <div style={{ display:"flex", gap:8, alignItems:"center", flexWrap:"wrap", marginBottom:10 }}>
+            {config?.subject && <span style={{ fontSize:11, fontWeight:700, color:"var(--navy)", background:"#EEF2FF", border:"1px solid #C7D2FE", borderRadius:4, padding:"2px 8px" }}>{config.subject}</span>}
+            {testDate && <span style={{ fontSize:11, color:"var(--text-muted)" }}>{(() => { try { const d=testDate?.toDate?testDate.toDate():new Date(testDate); return d.toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}); }catch(_){return "";} })()}</span>}
+            <span style={{ fontSize:11, color:"var(--text-muted)" }}>·</span>
+            <span style={{ fontSize:11, fontFamily:"var(--font-mono)", fontWeight:700, color:_revScores.correct>0?"var(--success)":"var(--text-muted)" }}>✓ {_revScores.correct}</span>
+            <span style={{ fontSize:11, fontFamily:"var(--font-mono)", fontWeight:700, color:_revScores.wrong>0?"var(--danger)":"var(--text-muted)" }}>✗ {_revScores.wrong}</span>
+            <span style={{ fontSize:11, fontFamily:"var(--font-mono)", fontWeight:700, color:"var(--amber)" }}>— {_revScores.unanswered} skipped</span>
+          </div>
+          <h1 style={{ fontFamily: "var(--font-display)", fontSize: 22, color: "var(--navy)", marginBottom: 14 }}>Answer Review</h1>
+
+          {/* ── What to Do Next (advisory) ─────────────────────── */}
+          <div style={{ background:"#F8FAFC", border:"1px solid var(--border)", borderRadius:10, padding:"14px 16px", marginBottom:20 }}>
+            <div style={{ fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em", color:"var(--text-muted)", marginBottom:8 }}>What to Do Next</div>
+            {!advisory ? (
+              <div style={{ fontSize:12, color:"var(--text-secondary)" }}>Generating analysis…</div>
+            ) : (
+              <>
+                {advisory.summary && <p style={{ fontSize:13, color:"var(--text-secondary)", fontWeight:500, lineHeight:1.6, marginBottom:8, paddingBottom:8, borderBottom:"1px solid var(--border)" }}>{advisory.summary}</p>}
+                {(advisory.actions || []).map((a, idx) => (
+                  <div key={idx} style={{ display:"flex", gap:10, alignItems:"flex-start", marginBottom:6 }}>
+                    <span style={{ fontSize:14, flexShrink:0 }}>{["📚","🎯","⏱️","💡","✅"][idx] || "•"}</span>
+                    <span style={{ fontSize:13, color:"var(--text-secondary)", lineHeight:1.6 }}>{a}</span>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+
           {filter !== "all" && (
             <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 18 }}>
               Showing {visibleIndices.length} {filter} question{visibleIndices.length !== 1 ? "s" : ""}
@@ -3390,7 +3462,7 @@ export default function App() {
       setIsPastReview(true);
       setReviewTestDate(data.completedAt || null);
       setPerfDashFrom("results");
-      setScreen("results");
+      setScreen("review");
     } catch(e) { showToast("Could not load test. Please try again.", "error"); }
   }
 
@@ -3548,7 +3620,7 @@ export default function App() {
       {user && showRating && (screen === "results" || screen === "dashboard") && (
         <StarRatingModal user={user} onDismiss={() => setShowRating(false)} />
       )}
-      {screen === "review"      && <ReviewScreen          questions={questions} answers={answers} onBack={() => setScreen("results")} />}
+      {screen === "review"      && <ReviewScreen          questions={questions} answers={answers} config={testConfig} testDate={reviewTestDate} onViewAnalytics={isPastReview ? () => { setPerfDashFrom("results"); setScreen("results"); } : undefined} onBack={() => isPastReview ? setScreen("dashboard") : setScreen("results")} />}
       {screen === "performance" && <PerformanceDashboard  testHistory={testHistory} user={user} onBack={() => setScreen("dashboard")} onBackToResults={perfDashFrom === "results" ? () => setScreen("results") : undefined} />}
     </React.Fragment>
   );
