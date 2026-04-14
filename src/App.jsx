@@ -1764,30 +1764,95 @@ const AZ = {
 };
 
 // ── REUSABLE ANALYTICS COMPONENTS ────────────────────────────────────────────
-function DonutChart({ segments, centerLabel, centerSub, size = 108 }) {
+
+/* inject CSS keyframes once */
+if (typeof document !== "undefined" && !document.getElementById("az-chart-css")) {
+  const s = document.createElement("style"); s.id = "az-chart-css";
+  s.textContent = `
+    @keyframes az-spin-in { from { stroke-dashoffset: 1000; opacity:0; } to { opacity:1; } }
+    @keyframes az-bar-rise { from { transform: scaleY(0); opacity:0; } to { transform: scaleY(1); opacity:1; } }
+    @keyframes az-fade-in  { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
+    .az-donut-seg { animation: az-spin-in 0.7s cubic-bezier(0.34,1.56,0.64,1) both; }
+    .az-bar       { transform-origin: bottom; animation: az-bar-rise 0.5s cubic-bezier(0.34,1.56,0.64,1) both; }
+    .az-lbl       { animation: az-fade-in 0.4s ease both; }
+  `;
+  document.head.appendChild(s);
+}
+
+function DonutChart({ segments, centerLabel, centerSub, size = 140, labels = [] }) {
   const total = segments.reduce((s, x) => s + x.value, 0) || 1;
-  const r = 38, cx = size / 2, cy = size / 2, circ = 2 * Math.PI * r;
+  /* enlarged for 3D depth illusion: outer ring + shadow ring + fill ring */
+  const R = 46, r_inner = 32, cx = size / 2, cy = size / 2;
+  const circ = 2 * Math.PI * R;
   let offset = 0;
+  const segs = segments.filter(s => s.value > 0);
+
+  /* compute midpoint angles for label callout lines */
+  let cumAngle = -Math.PI / 2;
+  const segData = segs.map(seg => {
+    const angle = (seg.value / total) * 2 * Math.PI;
+    const mid = cumAngle + angle / 2;
+    cumAngle += angle;
+    return { ...seg, angle, mid };
+  });
+
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      <circle cx={cx} cy={cy} r={r} fill="none" stroke="#E2E8F0" strokeWidth={11} />
-      {segments.filter(s => s.value > 0).map((seg, i) => {
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} overflow="visible">
+      {/* drop shadow ring */}
+      <circle cx={cx} cy={cy+2} r={R} fill="none" stroke="rgba(0,0,0,0.10)" strokeWidth={13} />
+      {/* track ring */}
+      <circle cx={cx} cy={cy} r={R} fill="none" stroke="#E9EEF6" strokeWidth={12} />
+      {/* colored arcs with 3D highlight */}
+      {segData.map((seg, i) => {
         const dash = (seg.value / total) * circ;
-        const el = (
-          <circle key={i} cx={cx} cy={cy} r={r} fill="none"
-            stroke={seg.color} strokeWidth={11}
-            strokeDasharray={`${dash.toFixed(2)} ${(circ - dash + 0.01).toFixed(2)}`}
-            strokeDashoffset={(-offset).toFixed(2)}
-            strokeLinecap="butt"
-            transform={`rotate(-90 ${cx} ${cy})`} />
-        );
+        const off  = (-offset).toFixed(2);
         offset += dash;
-        return el;
+        return (
+          <g key={i} className="az-donut-seg" style={{ animationDelay: `${i * 0.12}s` }}>
+            {/* base arc */}
+            <circle cx={cx} cy={cy} r={R} fill="none" stroke={seg.color} strokeWidth={12}
+              strokeDasharray={`${dash.toFixed(2)} ${(circ - dash + 0.01).toFixed(2)}`}
+              strokeDashoffset={off} strokeLinecap="round"
+              transform={`rotate(-90 ${cx} ${cy})`} />
+            {/* highlight arc (inner edge shimmer) */}
+            <circle cx={cx} cy={cy} r={R} fill="none" stroke="rgba(255,255,255,0.28)" strokeWidth={4}
+              strokeDasharray={`${(dash * 0.4).toFixed(2)} ${(circ - dash * 0.4 + 0.01).toFixed(2)}`}
+              strokeDashoffset={off} strokeLinecap="round"
+              transform={`rotate(-90 ${cx} ${cy})`} />
+          </g>
+        );
       })}
-      <text x={cx} y={cy - 5} textAnchor="middle" fontSize={11}
-        fontFamily="JetBrains Mono,monospace" fontWeight={700} fill="#fff">{centerLabel}</text>
-      {centerSub && <text x={cx} y={cy + 10} textAnchor="middle" fontSize={9}
-        fontFamily="system-ui,sans-serif" fill="rgba(255,255,255,0.45)">{centerSub}</text>}
+      {/* white center circle for donut hole — gives 3D depth */}
+      <circle cx={cx} cy={cy} r={r_inner} fill="white" />
+      <circle cx={cx} cy={cy} r={r_inner} fill="none" stroke="rgba(0,0,0,0.04)" strokeWidth={1} />
+      {/* center text */}
+      <text x={cx} y={cy - 4} textAnchor="middle" fontSize={13}
+        fontFamily="JetBrains Mono,monospace" fontWeight={800} fill="#0F172A">{centerLabel}</text>
+      {centerSub && <text x={cx} y={cy + 12} textAnchor="middle" fontSize={9}
+        fontFamily="system-ui,sans-serif" fill="#94A3B8">{centerSub}</text>}
+      {/* segment labels with callout lines (only if labels array provided) */}
+      {labels.map((lbl, i) => {
+        if (!segData[i] || !lbl) return null;
+        const { mid, value } = segData[i];
+        if ((value / total) < 0.05) return null; // skip tiny slices
+        const LR = R + 20;
+        const lx = cx + LR * Math.cos(mid);
+        const ly = cy + LR * Math.sin(mid);
+        const anchor = lx > cx + 5 ? "start" : lx < cx - 5 ? "end" : "middle";
+        const lx2 = cx + (R + 8) * Math.cos(mid);
+        const ly2 = cy + (R + 8) * Math.sin(mid);
+        return (
+          <g key={i} className="az-lbl" style={{ animationDelay: `${0.5 + i * 0.1}s` }}>
+            <line x1={lx2.toFixed(1)} y1={ly2.toFixed(1)}
+                  x2={lx.toFixed(1)}  y2={ly.toFixed(1)}
+                  stroke={segData[i].color} strokeWidth={1.2} strokeDasharray="2 2" opacity={0.7} />
+            <text x={lx.toFixed(1)} y={(ly - 1).toFixed(1)} textAnchor={anchor}
+              fontSize={9} fontFamily="JetBrains Mono,monospace" fontWeight={700} fill={segData[i].color}>
+              {lbl}
+            </text>
+          </g>
+        );
+      })}
     </svg>
   );
 }
@@ -1813,19 +1878,88 @@ function Spark({ data, color = "#818CF8", w = 110, h = 34 }) {
 function TimeBarChart({ timePerQ, questions, answers }) {
   const keys = Object.keys(timePerQ || {});
   if (keys.length < 3) return null;
-  const n = questions.length, vals = Array.from({length:n}, (_, i) => timePerQ[i] || 0);
+  const n = questions.length;
+  const vals = Array.from({length: n}, (_, i) => timePerQ[i] || 0);
   const maxT = Math.max(...vals, 1);
-  const W = 320, H = 72, bw = Math.max(3, Math.floor((W - 8) / n) - 1);
+  /* Layout: bar area + label row below (Q number) + value label above */
+  const H_bar = 120, H_qnum = 16, H_val = 14, TOTAL_H = H_bar + H_qnum + H_val;
+  /* viewBox wide enough for all bars + gaps */
+  const gap = 3, bw_base = 14;
+  const VW = Math.max(n * (bw_base + gap) + 8, 400);
+  const bw = Math.max(8, Math.floor((VW - 8 - gap * (n - 1)) / n));
+  const totalBarW = n * bw + (n - 1) * gap + 8;
+
   return (
-    <svg width="100%" viewBox={`0 0 ${W} ${H + 14}`} preserveAspectRatio="none" style={{display:"block",width:"100%"}}>
-      {vals.map((t, i) => {
-        const bh = Math.max(2, Math.round((t / maxT) * (H - 8)));
-        const x = 4 + i * (bw + 1), y = H - bh;
-        const ua = answers[i];
-        const col = ua === undefined ? AZ.amb : ua === questions[i]?.correct ? AZ.grn : AZ.red;
-        return <rect key={i} x={x} y={y} width={bw} height={bh} rx={1} fill={col} opacity={0.8} />;
-      })}
-    </svg>
+    <div style={{ overflowX: "auto", overflowY: "visible" }}>
+      <svg width={Math.max(totalBarW, 400)} height={TOTAL_H}
+        viewBox={`0 0 ${Math.max(totalBarW, 400)} ${TOTAL_H}`}
+        style={{ display: "block", minWidth: "100%" }}>
+        {/* subtle grid lines */}
+        {[0, 0.25, 0.5, 0.75, 1].map(frac => {
+          const y = H_val + H_bar - Math.round(frac * (H_bar - 8));
+          return (
+            <line key={frac} x1={4} y1={y} x2={totalBarW - 4} y2={y}
+              stroke="rgba(0,0,0,0.06)" strokeWidth={1}
+              strokeDasharray={frac === 0 ? "none" : "3 4"} />
+          );
+        })}
+        {vals.map((t, i) => {
+          const ua = answers[i];
+          const isCorrect = ua !== undefined && ua === questions[i]?.correct;
+          const isSkipped = ua === undefined;
+          const col = isSkipped ? AZ.amb : isCorrect ? AZ.grn : AZ.red;
+          const shadowCol = isSkipped ? "#D97706" : isCorrect ? "#059669" : "#DC2626";
+          const bh = Math.max(4, Math.round((t / maxT) * (H_bar - 12)));
+          const x = 4 + i * (bw + gap);
+          const y_bar = H_val + H_bar - bh;
+          /* show value label only if bar is tall enough, or it's notable */
+          const showVal = t > 0 && (bh > 14 || t >= maxT * 0.3);
+          return (
+            <g key={i} className="az-bar" style={{ animationDelay: `${i * 0.018}s` }}>
+              {/* 3D shadow bar (offset down-right) */}
+              <rect x={x + 2} y={y_bar + 3} width={bw} height={bh} rx={3}
+                fill={shadowCol} opacity={0.18} />
+              {/* main bar with gradient */}
+              <defs>
+                <linearGradient id={`bg-${i}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={col} stopOpacity={1} />
+                  <stop offset="100%" stopColor={shadowCol} stopOpacity={0.8} />
+                </linearGradient>
+                <linearGradient id={`sh-${i}`} x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%" stopColor="rgba(255,255,255,0.35)" />
+                  <stop offset="100%" stopColor="rgba(255,255,255,0)" />
+                </linearGradient>
+              </defs>
+              <rect x={x} y={y_bar} width={bw} height={bh} rx={3}
+                fill={`url(#bg-${i})`} />
+              {/* left highlight streak */}
+              <rect x={x + 2} y={y_bar + 2} width={Math.max(2, bw * 0.22)} height={bh - 4} rx={2}
+                fill={`url(#sh-${i})`} />
+              {/* top cap highlight */}
+              <rect x={x + 1} y={y_bar} width={bw - 2} height={3} rx={2}
+                fill="rgba(255,255,255,0.45)" />
+              {/* seconds value above bar */}
+              {showVal && (
+                <text x={x + bw / 2} y={y_bar - 3} textAnchor="middle"
+                  fontSize={bw > 12 ? 9 : 7} fontFamily="JetBrains Mono,monospace"
+                  fontWeight={700} fill={col}
+                  className="az-lbl" style={{ animationDelay: `${i * 0.018 + 0.3}s` }}>
+                  {t}s
+                </text>
+              )}
+              {/* question number below bar */}
+              {(n <= 30 || i % 5 === 0 || i === n - 1) && (
+                <text x={x + bw / 2} y={H_val + H_bar + H_qnum - 2} textAnchor="middle"
+                  fontSize={bw > 10 ? 8 : 7} fontFamily="system-ui,sans-serif"
+                  fill="#94A3B8">
+                  {i + 1}
+                </text>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+    </div>
   );
 }
 
@@ -2018,29 +2152,39 @@ Respond ONLY with valid JSON: {"summary":"One honest sentence about NTA score an
         {/* ── BLOCK 3: Three Donut Charts ─────────────────────────────── */}
         <div style={{ display:"flex", gap:10, marginBottom:16, flexWrap:"wrap" }}>
           {/* Questions donut */}
-          <div style={{ flex:"1 1 160px", background:AZ.card, borderRadius:10, padding:"14px", border:`1px solid ${AZ.bord}`, display:"flex", flexDirection:"column", alignItems:"center" }}>
+          <div style={{ flex:"1 1 180px", background:AZ.card, borderRadius:12, padding:"16px 14px 12px", border:`1px solid ${AZ.bord}`, display:"flex", flexDirection:"column", alignItems:"center", boxShadow:"0 2px 8px rgba(0,0,0,0.05)" }}>
             <div style={{ fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em", color:AZ.textM, marginBottom:10 }}>{questions.length} Questions</div>
-            <DonutChart
-              segments={[{value:correct,color:AZ.grn},{value:wrong,color:AZ.red},{value:unanswered,color:"rgba(255,255,255,0.15)"}]}
-              centerLabel={`${attempted}/${questions.length}`} centerSub="answered" />
-            <div style={{ marginTop:10, fontSize:10, color:AZ.textS, textAlign:"center", lineHeight:1.8 }}>
-              <span style={{color:AZ.grn}}>■</span> {correct} Correct &nbsp;
-              <span style={{color:AZ.red}}>■</span> {wrong} Wrong &nbsp;
-              <span style={{color:"rgba(255,255,255,0.3)"}}>■</span> {unanswered} Skip
+            <DonutChart size={148}
+              segments={[{value:correct,color:AZ.grn},{value:wrong,color:AZ.red},{value:unanswered,color:"#E2E8F0"}]}
+              centerLabel={`${attempted}/${questions.length}`} centerSub="answered"
+              labels={[`${correct} ✓`, `${wrong} ✗`, unanswered > 0 ? `${unanswered} skip` : null]} />
+            <div style={{ marginTop:6, fontSize:10, color:AZ.textS, textAlign:"center", lineHeight:1.9 }}>
+              <span style={{color:AZ.grn,fontWeight:700}}>{correct}</span> Correct &nbsp;·&nbsp;
+              <span style={{color:AZ.red,fontWeight:700}}>{wrong}</span> Wrong &nbsp;·&nbsp;
+              <span style={{color:AZ.textM,fontWeight:600}}>{unanswered}</span> Skip
             </div>
           </div>
 
           {/* Time donut */}
           {hasTimeData ? (
-            <div style={{ flex:"1 1 160px", background:AZ.card, borderRadius:10, padding:"14px", border:`1px solid ${AZ.bord}`, display:"flex", flexDirection:"column", alignItems:"center" }}>
+            <div style={{ flex:"1 1 180px", background:AZ.card, borderRadius:12, padding:"16px 14px 12px", border:`1px solid ${AZ.bord}`, display:"flex", flexDirection:"column", alignItems:"center", boxShadow:"0 2px 8px rgba(0,0,0,0.05)" }}>
               <div style={{ fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em", color:AZ.textM, marginBottom:10 }}>Time Split</div>
-              <DonutChart
-                segments={[{value:timeOnCorrect,color:AZ.grn},{value:scoreDragSecs,color:AZ.red},{value:Math.max(0, Object.values(timePerQ).reduce((a,b)=>a+b,0)-timeOnCorrect-scoreDragSecs),color:"rgba(255,255,255,0.12)"}]}
-                centerLabel={fmtSecs(Object.values(timePerQ).reduce((a,b)=>a+b,0))} centerSub="total used" />
-              <div style={{ marginTop:10, fontSize:10, color:AZ.textS, textAlign:"center", lineHeight:1.8 }}>
-                <span style={{color:AZ.grn}}>■</span> {fmtSecs(timeOnCorrect)} Correct &nbsp;
-                <span style={{color:AZ.red}}>■</span> {fmtSecs(scoreDragSecs)} Wrong
-              </div>
+              {(() => {
+                const totalTime = Object.values(timePerQ).reduce((a,b)=>a+b,0);
+                const otherTime = Math.max(0, totalTime - timeOnCorrect - scoreDragSecs);
+                return (
+                  <>
+                    <DonutChart size={148}
+                      segments={[{value:timeOnCorrect,color:AZ.grn},{value:scoreDragSecs,color:AZ.red},{value:otherTime,color:"#E2E8F0"}]}
+                      centerLabel={fmtSecs(totalTime)} centerSub="total used"
+                      labels={[fmtSecs(timeOnCorrect), fmtSecs(scoreDragSecs), otherTime > 5 ? fmtSecs(otherTime) : null]} />
+                    <div style={{ marginTop:6, fontSize:10, color:AZ.textS, textAlign:"center", lineHeight:1.9 }}>
+                      <span style={{color:AZ.grn,fontWeight:700}}>{fmtSecs(timeOnCorrect)}</span> Correct &nbsp;·&nbsp;
+                      <span style={{color:AZ.red,fontWeight:700}}>{fmtSecs(scoreDragSecs)}</span> Wrong
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           ) : null}
 
@@ -2066,15 +2210,22 @@ Respond ONLY with valid JSON: {"summary":"One honest sentence about NTA score an
 
         {/* ── BLOCK 4: Per-Question Time Chart ─────────────────────────── */}
         {hasTimeData && (
-          <div style={{ background:AZ.card, borderRadius:10, padding:"14px 16px", marginBottom:16, border:`1px solid ${AZ.bord}` }}>
-            <div style={{ fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em", color:AZ.textM, marginBottom:10 }}>
-              Time per Question
-              <span style={{ fontWeight:400, marginLeft:6, color:AZ.textM }}>seconds spent · <span style={{color:AZ.grn}}>■</span> Correct &nbsp;<span style={{color:AZ.red}}>■</span> Wrong &nbsp;<span style={{color:AZ.amb}}>■</span> Skipped</span>
+          <div style={{ background:AZ.card, borderRadius:12, padding:"16px 18px", marginBottom:16, border:`1px solid ${AZ.bord}`, boxShadow:"0 2px 8px rgba(0,0,0,0.05)" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:14, flexWrap:"wrap" }}>
+              <span style={{ fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:".07em", color:AZ.textM }}>Time per Question</span>
+              <span style={{ display:"flex", gap:10, fontSize:10, color:AZ.textS }}>
+                <span><span style={{color:AZ.grn,fontWeight:700}}>■</span> Correct</span>
+                <span><span style={{color:AZ.red,fontWeight:700}}>■</span> Wrong</span>
+                <span><span style={{color:AZ.amb,fontWeight:700}}>■</span> Skipped</span>
+              </span>
+              <span style={{ marginLeft:"auto", fontSize:10, color:AZ.textM }}>
+                Q number shown below each bar · seconds shown above
+              </span>
             </div>
             <TimeBarChart timePerQ={timePerQ} questions={questions} answers={answers} />
-            <div style={{ display:"flex", gap:16, marginTop:8, fontSize:11, color:AZ.textS, flexWrap:"wrap" }}>
-              <span>Total time: <strong style={{color:AZ.text}}>{fmtSecs(Object.values(timePerQ).reduce((a,b)=>a+b,0))}</strong></span>
-              {scoreDragSecs > 0 && <span>Wasted on wrong: <strong style={{color:AZ.red}}>{fmtSecs(scoreDragSecs)}</strong></span>}
+            <div style={{ display:"flex", gap:16, marginTop:10, fontSize:11, color:AZ.textS, flexWrap:"wrap" }}>
+              <span>Total time: <strong style={{color:AZ.text,fontFamily:"var(--font-mono)"}}>{fmtSecs(Object.values(timePerQ).reduce((a,b)=>a+b,0))}</strong></span>
+              {scoreDragSecs > 0 && <span>Wasted on wrong answers: <strong style={{color:AZ.red,fontFamily:"var(--font-mono)"}}>{fmtSecs(scoreDragSecs)}</strong></span>}
             </div>
           </div>
         )}
