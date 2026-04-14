@@ -1756,11 +1756,25 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
 }
 
 // ── ANALYTICS ZONE COLOR CONSTANTS ──────────────────────────────────────────
+// Layout / text / non-chart UI stays light
 const AZ = {
   bg:"#F5F7FA", card:"#FFFFFF", card2:"#F1F5F9",
   bord:"#E2E8F0", bord2:"#EEF2F7",
   text:"#0F172A", textS:"#475569", textM:"#94A3B8",
-  grn:"#059669", red:"#DC2626", amb:"#D97706", ind:"#4338CA", blu:"#3B82F6",
+  grn:"#059669", red:"#E15759", amb:"#D97706", ind:"#4338CA", blu:"#3B82F6",
+};
+// Chart cards — Tableau 10 dark theme (sourced from Tableau / industry standard)
+const CZ = {
+  bg:"#18202E",           // page-level dark bg for chart card rows
+  card:"#1F2D40",         // chart card surface
+  bord:"rgba(255,255,255,0.09)",
+  text:"#F1F5F9",
+  textS:"rgba(241,245,249,0.62)",
+  title:"rgba(241,245,249,0.38)",
+  grn:"#59A14F", grnDk:"#2D6E28",  // Tableau sage green
+  red:"#E15759", redDk:"#961618",  // Tableau muted red (calmer than pure crimson)
+  amb:"#F28E2C",                    // Tableau orange
+  ind:"#4E79A7",                    // Tableau blue
 };
 
 // ── REUSABLE ANALYTICS COMPONENTS ────────────────────────────────────────────
@@ -1781,13 +1795,11 @@ if (typeof document !== "undefined" && !document.getElementById("az-chart-css"))
 
 function DonutChart({ segments, centerLabel, centerSub, size = 140, labels = [] }) {
   const total = segments.reduce((s, x) => s + x.value, 0) || 1;
-  /* enlarged for 3D depth illusion: outer ring + shadow ring + fill ring */
-  const R = 46, r_inner = 32, cx = size / 2, cy = size / 2;
+  const R = 44, r_inner = 30, cx = size / 2, cy = size / 2;
   const circ = 2 * Math.PI * R;
   let offset = 0;
   const segs = segments.filter(s => s.value > 0);
 
-  /* compute midpoint angles for label callout lines */
   let cumAngle = -Math.PI / 2;
   const segData = segs.map(seg => {
     const angle = (seg.value / total) * 2 * Math.PI;
@@ -1798,56 +1810,60 @@ function DonutChart({ segments, centerLabel, centerSub, size = 140, labels = [] 
 
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} overflow="visible">
-      {/* drop shadow ring */}
-      <circle cx={cx} cy={cy+2} r={R} fill="none" stroke="rgba(0,0,0,0.10)" strokeWidth={13} />
+      {/* ambient shadow ring */}
+      <circle cx={cx} cy={cy+2.5} r={R} fill="none" stroke="rgba(0,0,0,0.22)" strokeWidth={15} />
       {/* track ring */}
-      <circle cx={cx} cy={cy} r={R} fill="none" stroke="#E9EEF6" strokeWidth={12} />
-      {/* colored arcs with 3D highlight */}
+      <circle cx={cx} cy={cy} r={R} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={14} />
+      {/* arcs: dark base + vivid top + shimmer */}
       {segData.map((seg, i) => {
         const dash = (seg.value / total) * circ;
         const off  = (-offset).toFixed(2);
         offset += dash;
+        const darkColor = i === 0 ? CZ.grnDk : i === 1 ? CZ.redDk : "rgba(255,255,255,0.06)";
+        const mainColor = i === 0 ? CZ.grn   : i === 1 ? CZ.red   : "rgba(255,255,255,0.12)";
         return (
-          <g key={i} className="az-donut-seg" style={{ animationDelay: `${i * 0.12}s` }}>
-            {/* base arc */}
-            <circle cx={cx} cy={cy} r={R} fill="none" stroke={seg.color} strokeWidth={12}
-              strokeDasharray={`${dash.toFixed(2)} ${(circ - dash + 0.01).toFixed(2)}`}
+          <g key={i} className="az-donut-seg" style={{ animationDelay: `${i * 0.14}s` }}>
+            <circle cx={cx} cy={cy} r={R} fill="none" stroke={darkColor} strokeWidth={15}
+              strokeDasharray={`${dash.toFixed(2)} ${(circ-dash+0.01).toFixed(2)}`}
               strokeDashoffset={off} strokeLinecap="round"
               transform={`rotate(-90 ${cx} ${cy})`} />
-            {/* highlight arc (inner edge shimmer) */}
-            <circle cx={cx} cy={cy} r={R} fill="none" stroke="rgba(255,255,255,0.28)" strokeWidth={4}
-              strokeDasharray={`${(dash * 0.4).toFixed(2)} ${(circ - dash * 0.4 + 0.01).toFixed(2)}`}
+            <circle cx={cx} cy={cy} r={R} fill="none" stroke={mainColor} strokeWidth={12}
+              strokeDasharray={`${dash.toFixed(2)} ${(circ-dash+0.01).toFixed(2)}`}
+              strokeDashoffset={off} strokeLinecap="round"
+              transform={`rotate(-90 ${cx} ${cy})`} />
+            <circle cx={cx} cy={cy} r={R} fill="none" stroke="rgba(255,255,255,0.26)" strokeWidth={3}
+              strokeDasharray={`${(dash*0.35).toFixed(2)} ${(circ-dash*0.35+0.01).toFixed(2)}`}
               strokeDashoffset={off} strokeLinecap="round"
               transform={`rotate(-90 ${cx} ${cy})`} />
           </g>
         );
       })}
-      {/* white center circle for donut hole — gives 3D depth */}
-      <circle cx={cx} cy={cy} r={r_inner} fill="white" />
-      <circle cx={cx} cy={cy} r={r_inner} fill="none" stroke="rgba(0,0,0,0.04)" strokeWidth={1} />
-      {/* center text */}
+      {/* donut hole — dark card bg for contrast */}
+      <circle cx={cx} cy={cy} r={r_inner} fill={CZ.card} />
+      <circle cx={cx} cy={cy} r={r_inner} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={1} />
+      {/* center text — white on dark */}
       <text x={cx} y={cy - 4} textAnchor="middle" fontSize={13}
-        fontFamily="JetBrains Mono,monospace" fontWeight={800} fill="#0F172A">{centerLabel}</text>
+        fontFamily="JetBrains Mono,monospace" fontWeight={800} fill={CZ.text}>{centerLabel}</text>
       {centerSub && <text x={cx} y={cy + 12} textAnchor="middle" fontSize={9}
-        fontFamily="system-ui,sans-serif" fill="#94A3B8">{centerSub}</text>}
-      {/* segment labels with callout lines (only if labels array provided) */}
+        fontFamily="system-ui,sans-serif" fill={CZ.title}>{centerSub}</text>}
+      {/* callout labels */}
       {labels.map((lbl, i) => {
         if (!segData[i] || !lbl) return null;
         const { mid, value } = segData[i];
-        if ((value / total) < 0.05) return null; // skip tiny slices
+        if ((value / total) < 0.05) return null;
         const LR = R + 20;
         const lx = cx + LR * Math.cos(mid);
         const ly = cy + LR * Math.sin(mid);
         const anchor = lx > cx + 5 ? "start" : lx < cx - 5 ? "end" : "middle";
-        const lx2 = cx + (R + 8) * Math.cos(mid);
-        const ly2 = cy + (R + 8) * Math.sin(mid);
+        const lx2 = (cx + (R + 7) * Math.cos(mid)).toFixed(1);
+        const ly2 = (cy + (R + 7) * Math.sin(mid)).toFixed(1);
+        const mainColor = i === 0 ? CZ.grn : i === 1 ? CZ.red : CZ.title;
         return (
           <g key={i} className="az-lbl" style={{ animationDelay: `${0.5 + i * 0.1}s` }}>
-            <line x1={lx2.toFixed(1)} y1={ly2.toFixed(1)}
-                  x2={lx.toFixed(1)}  y2={ly.toFixed(1)}
-                  stroke={segData[i].color} strokeWidth={1.2} strokeDasharray="2 2" opacity={0.7} />
-            <text x={lx.toFixed(1)} y={(ly - 1).toFixed(1)} textAnchor={anchor}
-              fontSize={9} fontFamily="JetBrains Mono,monospace" fontWeight={700} fill={segData[i].color}>
+            <line x1={lx2} y1={ly2} x2={lx.toFixed(1)} y2={(ly - 1).toFixed(1)}
+              stroke={mainColor} strokeWidth={1.2} strokeDasharray="3 3" opacity={0.75} />
+            <text x={lx.toFixed(1)} y={(ly - 3).toFixed(1)} textAnchor={anchor}
+              fontSize={9} fontFamily="JetBrains Mono,monospace" fontWeight={700} fill={mainColor}>
               {lbl}
             </text>
           </g>
@@ -1907,8 +1923,8 @@ function TimeBarChart({ timePerQ, questions, answers }) {
           const ua = answers[i];
           const isCorrect = ua !== undefined && ua === questions[i]?.correct;
           const isSkipped = ua === undefined;
-          const col = isSkipped ? AZ.amb : isCorrect ? AZ.grn : AZ.red;
-          const shadowCol = isSkipped ? "#D97706" : isCorrect ? "#059669" : "#DC2626";
+          const col = isSkipped ? CZ.amb : isCorrect ? CZ.grn : CZ.red;
+          const shadowCol = isSkipped ? "#9A5E1A" : isCorrect ? CZ.grnDk : CZ.redDk;
           const bh = Math.max(4, Math.round((t / maxT) * (H_bar - 12)));
           const x = 4 + i * (bw + gap);
           const y_bar = H_val + H_bar - bh;
@@ -2152,35 +2168,35 @@ Respond ONLY with valid JSON: {"summary":"One honest sentence about NTA score an
         {/* ── BLOCK 3: Three Donut Charts ─────────────────────────────── */}
         <div style={{ display:"flex", gap:10, marginBottom:16, flexWrap:"wrap" }}>
           {/* Questions donut */}
-          <div style={{ flex:"1 1 180px", background:AZ.card, borderRadius:12, padding:"16px 14px 12px", border:`1px solid ${AZ.bord}`, display:"flex", flexDirection:"column", alignItems:"center", boxShadow:"0 2px 8px rgba(0,0,0,0.05)" }}>
-            <div style={{ fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em", color:AZ.textM, marginBottom:10 }}>{questions.length} Questions</div>
+          <div style={{ flex:"1 1 180px", background:CZ.card, borderRadius:12, padding:"16px 14px 12px", border:`1px solid ${CZ.bord}`, display:"flex", flexDirection:"column", alignItems:"center", boxShadow:"0 4px 20px rgba(0,0,0,0.35)" }}>
+            <div style={{ fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em", color:CZ.title, marginBottom:10 }}>{questions.length} Questions</div>
             <DonutChart size={148}
-              segments={[{value:correct,color:AZ.grn},{value:wrong,color:AZ.red},{value:unanswered,color:"#E2E8F0"}]}
+              segments={[{value:correct,color:CZ.grn},{value:wrong,color:CZ.red},{value:unanswered,color:"rgba(255,255,255,0.12)"}]}
               centerLabel={`${attempted}/${questions.length}`} centerSub="answered"
               labels={[`${correct} ✓`, `${wrong} ✗`, unanswered > 0 ? `${unanswered} skip` : null]} />
-            <div style={{ marginTop:6, fontSize:10, color:AZ.textS, textAlign:"center", lineHeight:1.9 }}>
-              <span style={{color:AZ.grn,fontWeight:700}}>{correct}</span> Correct &nbsp;·&nbsp;
-              <span style={{color:AZ.red,fontWeight:700}}>{wrong}</span> Wrong &nbsp;·&nbsp;
-              <span style={{color:AZ.textM,fontWeight:600}}>{unanswered}</span> Skip
+            <div style={{ marginTop:6, fontSize:10, color:CZ.textS, textAlign:"center", lineHeight:1.9 }}>
+              <span style={{color:CZ.grn,fontWeight:700}}>{correct}</span> Correct &nbsp;·&nbsp;
+              <span style={{color:CZ.red,fontWeight:700}}>{wrong}</span> Wrong &nbsp;·&nbsp;
+              <span style={{color:CZ.title,fontWeight:600}}>{unanswered}</span> Skip
             </div>
           </div>
 
           {/* Time donut */}
           {hasTimeData ? (
-            <div style={{ flex:"1 1 180px", background:AZ.card, borderRadius:12, padding:"16px 14px 12px", border:`1px solid ${AZ.bord}`, display:"flex", flexDirection:"column", alignItems:"center", boxShadow:"0 2px 8px rgba(0,0,0,0.05)" }}>
-              <div style={{ fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em", color:AZ.textM, marginBottom:10 }}>Time Split</div>
+            <div style={{ flex:"1 1 180px", background:CZ.card, borderRadius:12, padding:"16px 14px 12px", border:`1px solid ${CZ.bord}`, display:"flex", flexDirection:"column", alignItems:"center", boxShadow:"0 4px 20px rgba(0,0,0,0.35)" }}>
+              <div style={{ fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em", color:CZ.title, marginBottom:10 }}>Time Split</div>
               {(() => {
                 const totalTime = Object.values(timePerQ).reduce((a,b)=>a+b,0);
                 const otherTime = Math.max(0, totalTime - timeOnCorrect - scoreDragSecs);
                 return (
                   <>
                     <DonutChart size={148}
-                      segments={[{value:timeOnCorrect,color:AZ.grn},{value:scoreDragSecs,color:AZ.red},{value:otherTime,color:"#E2E8F0"}]}
+                      segments={[{value:timeOnCorrect,color:CZ.grn},{value:scoreDragSecs,color:CZ.red},{value:otherTime,color:"rgba(255,255,255,0.12)"}]}
                       centerLabel={fmtSecs(totalTime)} centerSub="total used"
                       labels={[fmtSecs(timeOnCorrect), fmtSecs(scoreDragSecs), otherTime > 5 ? fmtSecs(otherTime) : null]} />
-                    <div style={{ marginTop:6, fontSize:10, color:AZ.textS, textAlign:"center", lineHeight:1.9 }}>
-                      <span style={{color:AZ.grn,fontWeight:700}}>{fmtSecs(timeOnCorrect)}</span> Correct &nbsp;·&nbsp;
-                      <span style={{color:AZ.red,fontWeight:700}}>{fmtSecs(scoreDragSecs)}</span> Wrong
+                    <div style={{ marginTop:6, fontSize:10, color:CZ.textS, textAlign:"center", lineHeight:1.9 }}>
+                      <span style={{color:CZ.grn,fontWeight:700}}>{fmtSecs(timeOnCorrect)}</span> Correct &nbsp;·&nbsp;
+                      <span style={{color:CZ.red,fontWeight:700}}>{fmtSecs(scoreDragSecs)}</span> Wrong
                     </div>
                   </>
                 );
@@ -2189,20 +2205,20 @@ Respond ONLY with valid JSON: {"summary":"One honest sentence about NTA score an
           ) : null}
 
           {/* Marks breakdown */}
-          <div style={{ flex:"1 1 160px", background:AZ.card, borderRadius:10, padding:"14px 16px", border:`1px solid ${AZ.bord}` }}>
-            <div style={{ fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em", color:AZ.textM, marginBottom:12 }}>Marks Breakdown</div>
+          <div style={{ flex:"1 1 160px", background:CZ.card, borderRadius:12, padding:"14px 16px", border:`1px solid ${CZ.bord}`, boxShadow:"0 4px 20px rgba(0,0,0,0.35)" }}>
+            <div style={{ fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em", color:CZ.title, marginBottom:12 }}>Marks Breakdown</div>
             {[
-              {l:"Marks Earned",   v:`+${marksEarned}`, c:AZ.grn },
-              {l:"Negative Marks", v:`−${negativeMarks}`, c:AZ.red },
+              {l:"Marks Earned",   v:`+${marksEarned}`, c:CZ.grn },
+              {l:"Negative Marks", v:`−${negativeMarks}`, c:CZ.red },
             ].map(r => (
               <div key={r.l} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
-                <span style={{ fontSize:12, color:AZ.textS }}>{r.l}</span>
+                <span style={{ fontSize:12, color:CZ.textS }}>{r.l}</span>
                 <span style={{ fontFamily:"var(--font-mono)", fontWeight:700, fontSize:16, color:r.c }}>{r.v}</span>
               </div>
             ))}
-            <div style={{ height:1, background:AZ.bord, margin:"10px 0" }} />
+            <div style={{ height:1, background:CZ.bord, margin:"10px 0" }} />
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-              <span style={{ fontSize:13, fontWeight:700, color:AZ.text }}>Total Marks</span>
+              <span style={{ fontSize:13, fontWeight:700, color:CZ.text }}>Total Marks</span>
               <span style={{ fontFamily:"var(--font-mono)", fontWeight:800, fontSize:22, color: pct >= 70 ? AZ.grn : pct >= 45 ? AZ.amb : AZ.red }}>{totalScore}</span>
             </div>
           </div>
@@ -2210,9 +2226,9 @@ Respond ONLY with valid JSON: {"summary":"One honest sentence about NTA score an
 
         {/* ── BLOCK 4: Per-Question Time Chart ─────────────────────────── */}
         {hasTimeData && (
-          <div style={{ background:AZ.card, borderRadius:12, padding:"16px 18px", marginBottom:16, border:`1px solid ${AZ.bord}`, boxShadow:"0 2px 8px rgba(0,0,0,0.05)" }}>
+          <div style={{ background:CZ.card, borderRadius:12, padding:"16px 18px", marginBottom:16, border:`1px solid ${CZ.bord}`, boxShadow:"0 4px 24px rgba(0,0,0,0.38)" }}>
             <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:14, flexWrap:"wrap" }}>
-              <span style={{ fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:".07em", color:AZ.textM }}>Time per Question</span>
+              <span style={{ fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:".07em", color:CZ.title }}>Time per Question</span>
               <span style={{ display:"flex", gap:10, fontSize:10, color:AZ.textS }}>
                 <span><span style={{color:AZ.grn,fontWeight:700}}>■</span> Correct</span>
                 <span><span style={{color:AZ.red,fontWeight:700}}>■</span> Wrong</span>
