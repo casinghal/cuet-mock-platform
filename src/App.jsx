@@ -1434,16 +1434,14 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onReviewTes
                       <td style={{ padding: "12px 14px", color: "var(--text-secondary)" }}>{fmtDate(t.completedAt)}</td>
                       <td style={{ padding: "12px 14px" }}>
                         {(() => {
-                          const bg3d = t.mode?.includes("GAT")      ? { top:"#ECFDF5", bot:"#D1FAE5", shadow:"#6ee7b7", border:"#A7F3D0", text:"#065F46" }
-                                     : t.mode?.includes("Economics") ? { top:"#FFFBEB", bot:"#FEF3C7", shadow:"#fcd34d", border:"#FDE68A", text:"#92400E" }
-                                     :                                  { top:"#EEF2FF", bot:"#E0E7FF", shadow:"#a5b4fc", border:"#C7D2FE", text:"#3730A3" };
+                          const mc = t.mode?.includes("GAT")       ? { bg:"#F0FDF4", border:"#BBF7D0", text:"#166534" }
+                                   : t.mode?.includes("Economics")  ? { bg:"#FEFCE8", border:"#FDE68A", text:"#854D0E" }
+                                   :                                   { bg:"#EEF2FF", border:"#C7D2FE", text:"#3730A3" };
                           return (
                             <span style={{
-                              display:"inline-block", fontSize:10, fontWeight:700, padding:"3px 9px", borderRadius:5,
-                              background:`linear-gradient(180deg,${bg3d.top} 0%,${bg3d.bot} 100%)`,
-                              border:`1px solid ${bg3d.border}`, color:bg3d.text, whiteSpace:"nowrap",
-                              boxShadow:`0 2px 0 ${bg3d.shadow},0 3px 5px rgba(0,0,0,0.08),inset 0 1px 0 rgba(255,255,255,0.8)`,
-                              letterSpacing:".04em"
+                              display:"inline-block", fontSize:10, fontWeight:600, padding:"2px 8px",
+                              borderRadius:4, background:mc.bg, border:`1px solid ${mc.border}`,
+                              color:mc.text, whiteSpace:"nowrap", letterSpacing:".03em"
                             }}>{modeLabel}</span>
                           );
                         })()}
@@ -1453,17 +1451,15 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onReviewTes
                       <td style={{ padding: "12px 14px", fontWeight: 600, color: scoreColor(p), fontFamily: "var(--font-mono)" }}>{p}%</td>
                       <td style={{ padding: "12px 14px" }}>
                         {(() => {
-                          const sp = p >= 70 ? { top:"#ECFDF5",bot:"#D1FAE5",shadow:"#6ee7b7",border:"#A7F3D0",text:"#065F46",label:"Strong" }
-                                   : p >= 45 ? { top:"#FFFBEB",bot:"#FEF3C7",shadow:"#fcd34d",border:"#FDE68A",text:"#92400E",label:"Average" }
-                                   :           { top:"#FEF2F2",bot:"#FEE2E2",shadow:"#fca5a5",border:"#FECACA",text:"#991B1B",label:"Needs Work" };
+                          const sc = p >= 70 ? { bg:"#F0FDF4", border:"#BBF7D0", text:"#166534", label:"Strong"    }
+                                   : p >= 45 ? { bg:"#FEFCE8", border:"#FDE68A", text:"#854D0E", label:"Average"   }
+                                   :           { bg:"#FFF1F2", border:"#FECDD3", text:"#9F1239", label:"Needs Work" };
                           return (
                             <span style={{
-                              display:"inline-block", fontSize:10, fontWeight:700, padding:"3px 9px", borderRadius:5,
-                              background:`linear-gradient(180deg,${sp.top} 0%,${sp.bot} 100%)`,
-                              border:`1px solid ${sp.border}`, color:sp.text,
-                              boxShadow:`0 2px 0 ${sp.shadow},0 3px 5px rgba(0,0,0,0.06),inset 0 1px 0 rgba(255,255,255,0.8)`,
-                              letterSpacing:".03em"
-                            }}>{sp.label}</span>
+                              display:"inline-block", fontSize:10, fontWeight:600, padding:"2px 8px",
+                              borderRadius:4, background:sc.bg, border:`1px solid ${sc.border}`,
+                              color:sc.text, letterSpacing:".03em"
+                            }}>{sc.label}</span>
                           );
                         })()}
                       </td>
@@ -2833,8 +2829,8 @@ function PerformanceDashboard({ testHistory, user, onBack, onBackToResults }) {
                     <tr key={i} style={{ borderBottom:`1px solid ${AZ.bord2}` }}>
                       <td style={{ padding:"9px 10px", color:AZ.textM, fontFamily:"var(--font-mono)" }}>{attempts.length - i}</td>
                       <td style={{ padding:"9px 10px", color:AZ.textS, whiteSpace:"nowrap" }}>{fmtDate(t.completedAt)}</td>
-                      <td style={{ padding:"9px 10px" }}><span style={{ background:"rgba(129,140,248,0.18)", color:AZ.ind, fontSize:9, padding:"2px 7px", borderRadius:4, fontWeight:700 }}>{t.subject||"Eng"}</span></td>
-                      <td style={{ padding:"9px 10px" }}><span style={{ background:"rgba(255,255,255,0.08)", color:AZ.textS, fontSize:9, padding:"2px 7px", borderRadius:4 }}>{modeLabel}</span></td>
+                      <td style={{ padding:"9px 10px" }}><span style={{ background:"#EEF2FF", color:AZ.ind, fontSize:9, padding:"2px 8px", borderRadius:4, fontWeight:600, border:"1px solid #C7D2FE" }}>{t.subject||"Eng"}</span></td>
+                      <td style={{ padding:"9px 10px" }}><span style={{ background:"#F1F5F9", color:AZ.textS, fontSize:9, padding:"2px 8px", borderRadius:4, border:"1px solid #E2E8F0" }}>{modeLabel}</span></td>
                       <td style={{ padding:"9px 10px", fontFamily:"var(--font-mono)", fontWeight:700, color:AZ.text }}>{t.totalScore ?? "—"}</td>
                       <td style={{ padding:"9px 10px", fontFamily:"var(--font-mono)", fontWeight:700, color:AZ.grn }}>{t.correct ?? "—"}</td>
                       <td style={{ padding:"9px 10px", fontFamily:"var(--font-mono)", fontWeight:700, color:AZ.red }}>{t.wrong ?? "—"}</td>
