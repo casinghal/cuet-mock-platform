@@ -96,8 +96,8 @@ button{cursor:pointer;border:none;outline:none;font-family:var(--font-body);}
 .pill-red{background:#FEF2F2;color:var(--danger);}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--card-shadow);}
 .stat-strip{border-left:4px solid var(--indigo);padding:10px 14px;background:var(--surface);border-radius:0 8px 8px 0;}
-.nta-header{background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 24px;height:52px;flex-shrink:0;}
-.nta-logo{font-family:var(--font-display);font-size:18px;letter-spacing:.02em;}
+.nta-header{background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 28px;height:100px;flex-shrink:0;}
+.nta-logo{font-family:var(--font-display);font-size:26px;letter-spacing:.02em;}
 .nta-logo span{color:var(--amber-light);}
 .section-bar{background:var(--bg-alt);border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:8px 24px;font-size:12px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--text-secondary);display:flex;align-items:center;gap:12px;}
 @keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(8px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
@@ -108,10 +108,10 @@ button{cursor:pointer;border:none;outline:none;font-family:var(--font-body);}
 .error-msg{background:#FEF2F2;border:1px solid #FECACA;color:var(--danger);border-radius:8px;padding:10px 14px;font-size:13px;margin-top:8px;}
 ::-webkit-scrollbar{width:6px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
 @media(max-width:700px){
-  .nta-header{padding:0 12px;height:48px;}
+  .nta-header{padding:0 16px;height:80px;}
   /* Analytics zone — reduce padding on mobile */
   .az-card{padding:12px 14px !important;}
-  .nta-logo{font-size:14px;}
+  .nta-logo{font-size:20px;}
   /* Section bar: truncate long labels — GAT label is very long */
   .section-bar{padding:5px 12px;font-size:11px;overflow:hidden;}
   .section-bar span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1;}
@@ -141,8 +141,8 @@ button{cursor:pointer;border:none;outline:none;font-family:var(--font-body);}
   .feedback-float{bottom:80px !important;}
 }
 @media(max-width:420px){
-  .nta-header{padding:0 10px;height:44px;}
-  .nta-logo{font-size:13px;}
+  .nta-header{padding:0 12px;height:68px;}
+  .nta-logo{font-size:18px;}
   .option-box{padding:10px 11px;font-size:12px;}
   .palette-grid{grid-template-columns:repeat(6,1fr) !important;}
   /* Bottom nav: wrap to 2 rows on tiny screens */
@@ -2481,7 +2481,7 @@ function ReviewScreen({ questions, answers, onBack, onViewAnalytics, config, tes
         {/* left palette — desktop */}
         {!isMobile && (
           <div style={{ width: 164, flexShrink: 0, borderRight: "1px solid var(--border)", background: "#fff",
-            position: "sticky", top: 0, height: "calc(100vh - 52px)", overflowY: "auto", alignSelf: "flex-start" }}>
+            position: "sticky", top: 0, height: "calc(100vh - 100px)", overflowY: "auto", alignSelf: "flex-start" }}>
             <div style={{ padding: "10px 12px 6px", fontSize: 11, fontWeight: 700, letterSpacing: ".06em",
               textTransform: "uppercase", color: "var(--text-muted)", borderBottom: "1px solid var(--border)" }}>
               Questions
@@ -2792,6 +2792,95 @@ function PerformanceDashboard({ testHistory, user, onBack, onBackToResults }) {
             sub={trendDelta !== null ? (trendDelta >= 0 ? `▲ +${trendDelta}% vs prev` : `▼ ${trendDelta}% vs prev`) : "first test"}
             col={trendDelta === null ? AZ.textM : trendDelta >= 0 ? AZ.grn : AZ.red} />
         </div>
+
+        {/* ── Avg Time Per Question (across tests) ──────────────────── */}
+        {(() => {
+          // Collect tests that have timePerQuestion data
+          const tpqTests = attempts.filter(t => t.timePerQuestion && Object.keys(t.timePerQuestion).length >= 5).slice(-5);
+          if (tpqTests.length === 0) return null;
+          // Build per-Q average across those tests
+          const nQ = Math.max(...tpqTests.map(t => Math.max(...Object.keys(t.timePerQuestion).map(Number)) + 1));
+          const avgTPQ = {};
+          for (let i = 0; i < nQ; i++) {
+            const vals = tpqTests.map(t => t.timePerQuestion[i] || 0).filter(v => v > 0);
+            if (vals.length > 0) avgTPQ[i] = Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
+          }
+          if (Object.keys(avgTPQ).length < 3) return null;
+          // Mock question+answer arrays for TimeBarChart (just need length and colour logic)
+          const mockQ   = Array.from({length: nQ}, () => ({ correct: 0 }));
+          const mockAns = {}; // empty — all bars will show as peach (no answer context)
+          // But we want green/peach based on average accuracy per Q across tests
+          // Compute avg accuracy per Q: answered correctly in >= 50% of tests = green
+          const qGreen = {};
+          for (let i = 0; i < nQ; i++) {
+            const correctCount = tpqTests.filter(t => {
+              if (!t.answers) return false;
+              const ans = Array.isArray(t.answers) ? t.answers[i] : t.answers[String(i)];
+              const qObj = Array.isArray(t.questions) ? t.questions[i] : null;
+              return ans !== undefined && qObj && ans === qObj.correct;
+            }).length;
+            qGreen[i] = correctCount >= Math.ceil(tpqTests.length / 2);
+          }
+          return (
+            <div style={{ background:CZ.card, borderRadius:12, padding:"16px 18px", marginBottom:16,
+              border:`1px solid ${CZ.bord}`, boxShadow:"0 4px 24px rgba(0,0,0,0.35)" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14, flexWrap:"wrap" }}>
+                <span style={{ fontSize:10, fontWeight:700, textTransform:"uppercase",
+                  letterSpacing:".07em", color:CZ.title }}>Avg Time per Question</span>
+                <span style={{ fontSize:10, color:CZ.textS }}>across last {tpqTests.length} test{tpqTests.length!==1?"s":""} with time data</span>
+                <span style={{ marginLeft:"auto", display:"flex", gap:10, fontSize:10 }}>
+                  <span><span style={{color:CZ.grn,fontWeight:700}}>■</span><span style={{color:CZ.textS}}> Usually correct</span></span>
+                  <span><span style={{color:CZ.pch,fontWeight:700}}>■</span><span style={{color:CZ.textS}}> Usually wrong</span></span>
+                </span>
+              </div>
+              {/* Custom bar chart using avgTPQ */}
+              {(() => {
+                const keys = Object.keys(avgTPQ).map(Number);
+                const n2 = Math.max(...keys) + 1;
+                const vals2 = Array.from({length:n2}, (_,i) => avgTPQ[i] || 0);
+                const maxT = Math.max(...vals2, 1);
+                const VH = 130, gap = 3, bw = 14;
+                const totalBarW = n2*(bw+gap)+8;
+                return (
+                  <div style={{ overflowX:"auto" }}>
+                    <svg width={Math.max(totalBarW,400)} height={VH}
+                      viewBox={`0 0 ${Math.max(totalBarW,400)} ${VH}`}
+                      style={{ display:"block", minWidth:"100%" }}>
+                      {[0,.25,.5,.75,1].map(f => {
+                        const y = VH-16-Math.round(f*(VH-28));
+                        return <line key={f} x1={4} y1={y} x2={totalBarW-4} y2={y} stroke="rgba(255,255,255,0.06)" strokeWidth={1}/>
+                      })}
+                      {vals2.map((v,i) => {
+                        if (v===0) return null;
+                        const bh = Math.max(4, Math.round((v/maxT)*(VH-28)));
+                        const x = 4+i*(bw+gap), y = VH-16-bh;
+                        const col  = qGreen[i] ? CZ.grn : CZ.pch;
+                        const dark = qGreen[i] ? CZ.grnDk : CZ.pchDk;
+                        const showV = bh > 16;
+                        return (
+                          <g key={i} className="az-bar" style={{animationDelay:`${i*0.018}s`}}>
+                            <rect x={x+2} y={y+3} width={bw} height={bh} rx={3} fill={dark} opacity={0.3}/>
+                            <rect x={x} y={y} width={bw} height={bh} rx={3} fill={dark}/>
+                            <rect x={x} y={y} width={bw} height={bh} rx={3} fill={col} opacity={0.88}/>
+                            <rect x={x+1.5} y={y+1} width={Math.max(2,Math.floor(bw*.28))} height={bh-3} rx={1.5} fill="rgba(255,255,255,0.3)"/>
+                            <rect x={x+1} y={y} width={bw-2} height={3} rx={1} fill="rgba(255,255,255,0.42)"/>
+                            {showV && <text x={x+bw/2} y={y-4} textAnchor="middle" fontSize={8}
+                              fontFamily="JetBrains Mono,monospace" fontWeight={700} fill={col}>{v}s</text>}
+                            {(n2<=30||i%5===0||i===n2-1) && <text x={x+bw/2} y={VH-2} textAnchor="middle"
+                              fontSize={7.5} fontFamily="system-ui" fill="rgba(255,255,255,0.32)">{i+1}</text>}
+                          </g>
+                        );
+                      })}
+                    </svg>
+                  </div>
+                );
+              })()}
+              <div style={{ marginTop:8, fontSize:10, color:CZ.textS }}>
+                Seconds shown above each bar · Q number shown below · green = usually answered correctly
+              </div>
+            </div>
+          );
+        })()}
 
         {/* ── Progression Trend ─────────────────────────────────────── */}
         <div style={{ background:AZ.card, borderRadius:12, padding:"16px 18px", marginBottom:16, border:`1px solid ${AZ.bord}` }}>
