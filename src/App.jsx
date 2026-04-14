@@ -1769,8 +1769,8 @@ const CZ = {
   card:"#1F2D40",         // chart card surface
   bord:"rgba(255,255,255,0.09)",
   text:"#F1F5F9",
-  textS:"rgba(241,245,249,0.62)",
-  title:"rgba(241,245,249,0.38)",
+  textS:"rgba(241,245,249,0.88)",
+  title:"rgba(241,245,249,0.82)",
   grn:"#59A14F", grnDk:"#2D6E28",  // Tableau sage green
   red:"#E15759", redDk:"#961618",  // Tableau muted red (calmer than pure crimson)
   amb:"#F28E2C",                    // Tableau orange
@@ -2246,6 +2246,37 @@ Respond ONLY with valid JSON: {"summary":"One honest sentence about NTA score an
           </div>
         )}
 
+        {/* ── BLOCK 7: Action Buttons — context-aware ─────────────────── */}
+        <div style={{ display:"flex", gap:10, flexWrap:"wrap", flexDirection: isMobile ? "column" : "row", marginBottom:20 }}>
+
+          {/* Review Answers: PRIMARY for past review, secondary for fresh */}
+          <button onClick={onReview} style={{ flex:1, minWidth:0, height:40, borderRadius:8,
+            fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"var(--font-body)",
+            background: isPastReview ? AZ.ind : "transparent",
+            color:       isPastReview ? "#fff"  : AZ.textS,
+            border:      isPastReview ? "none"  : `1px solid ${AZ.bord}` }}>
+            Review Answers
+          </button>
+
+          {/* My Analytics: always outline */}
+          {onViewAnalytics && (
+            <button onClick={onViewAnalytics} style={{ flex:1, minWidth:0, height:40,
+              background:"transparent", color:AZ.ind, border:`1.5px solid ${AZ.ind}`,
+              borderRadius:8, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"var(--font-body)" }}>
+              📊 My Analytics
+            </button>
+          )}
+
+          {/* Right CTA: "Begin New Test" fresh · "Back to Dashboard" past */}
+          <button onClick={onNewTest} style={{ flex:1, minWidth:0, height:40, borderRadius:8,
+            fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"var(--font-body)",
+            background: isPastReview ? "transparent" : AZ.grn,
+            color:       isPastReview ? AZ.textS      : "#0D0D0D",
+            border:      isPastReview ? `1px solid ${AZ.bord}` : "none" }}>
+            {isPastReview ? "← Back to Dashboard" : "Begin New Test →"}
+          </button>
+
+        </div>
         {/* ── BLOCK 5: Topic Accuracy ───────────────────────────────────── */}
         {topicRows.filter(t => t.attempted > 0).length > 0 && (
           <div style={{ background:AZ.card, borderRadius:10, padding:"14px 16px", marginBottom:16, border:`1px solid ${AZ.bord}` }}>
@@ -2288,37 +2319,6 @@ Respond ONLY with valid JSON: {"summary":"One honest sentence about NTA score an
           )}
         </div>
 
-        {/* ── BLOCK 7: Action Buttons — context-aware ─────────────────── */}
-        <div style={{ display:"flex", gap:10, flexWrap:"wrap", flexDirection: isMobile ? "column" : "row" }}>
-
-          {/* Review Answers: PRIMARY for past review, secondary for fresh */}
-          <button onClick={onReview} style={{ flex:1, minWidth:0, height:40, borderRadius:8,
-            fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"var(--font-body)",
-            background: isPastReview ? AZ.ind : "transparent",
-            color:       isPastReview ? "#fff"  : AZ.textS,
-            border:      isPastReview ? "none"  : `1px solid ${AZ.bord}` }}>
-            Review Answers
-          </button>
-
-          {/* My Analytics: always outline */}
-          {onViewAnalytics && (
-            <button onClick={onViewAnalytics} style={{ flex:1, minWidth:0, height:40,
-              background:"transparent", color:AZ.ind, border:`1.5px solid ${AZ.ind}`,
-              borderRadius:8, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"var(--font-body)" }}>
-              📊 My Analytics
-            </button>
-          )}
-
-          {/* Right CTA: "Begin New Test" fresh · "Back to Dashboard" past */}
-          <button onClick={onNewTest} style={{ flex:1, minWidth:0, height:40, borderRadius:8,
-            fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"var(--font-body)",
-            background: isPastReview ? "transparent" : AZ.grn,
-            color:       isPastReview ? AZ.textS      : "#0D0D0D",
-            border:      isPastReview ? `1px solid ${AZ.bord}` : "none" }}>
-            {isPastReview ? "← Back to Dashboard" : "Begin New Test →"}
-          </button>
-
-        </div>
       </div>
     </div>
   );
