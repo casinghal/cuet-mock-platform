@@ -1331,11 +1331,14 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onReviewTes
                 return (
                   <button key={key} onClick={() => handleSubjectChange(key)} style={{
                     padding: "5px 14px", borderRadius: 20, cursor: "pointer",
-                    border: `1.5px solid ${isActive ? "var(--navy)" : "var(--border)"}`,
-                    background: isActive ? "var(--navy)" : "#fff",
-                    color: isActive ? "#fff" : "var(--navy)",
+                    border: `1.5px solid ${isActive ? "#2563EB" : "#BFDBFE"}`,
+                    background: isActive ? "#2563EB" : "#EFF6FF",
+                    color: isActive ? "#fff" : "#2563EB",
                     fontWeight: 600, fontSize: 12, fontFamily: "var(--font-body)",
                     transition: "all .15s", display: "flex", alignItems: "center", gap: 6,
+                    boxShadow: isActive
+                      ? "0 3px 0 #1d4ed8,0 5px 10px rgba(37,99,235,0.25),inset 0 1px 0 rgba(255,255,255,0.15)"
+                      : "0 2px 0 #93c5fd,0 3px 6px rgba(37,99,235,0.1),inset 0 1px 0 rgba(255,255,255,0.9)",
                   }}>
                     <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#6EE7B7", display: "inline-block", flexShrink: 0 }} />
                     {label}
