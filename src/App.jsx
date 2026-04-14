@@ -109,6 +109,8 @@ button{cursor:pointer;border:none;outline:none;font-family:var(--font-body);}
 ::-webkit-scrollbar{width:6px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
 @media(max-width:700px){
   .nta-header{padding:0 12px;height:48px;}
+  /* Analytics zone — reduce padding on mobile */
+  .az-card{padding:12px 14px !important;}
   .nta-logo{font-size:14px;}
   /* Section bar: truncate long labels — GAT label is very long */
   .section-bar{padding:5px 12px;font-size:11px;overflow:hidden;}
@@ -2124,10 +2126,10 @@ Respond ONLY with valid JSON: {"summary":"One honest sentence about NTA score an
         </div>
 
         {/* ── BLOCK 7: Action Buttons — context-aware ─────────────────── */}
-        <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
+        <div style={{ display:"flex", gap:10, flexWrap:"wrap", flexDirection: isMobile ? "column" : "row" }}>
 
           {/* Review Answers: PRIMARY for past review, secondary for fresh */}
-          <button onClick={onReview} style={{ flex:1, minWidth:120, height:40, borderRadius:8,
+          <button onClick={onReview} style={{ flex:1, minWidth:0, height:40, borderRadius:8,
             fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"var(--font-body)",
             background: isPastReview ? AZ.ind : "transparent",
             color:       isPastReview ? "#fff"  : AZ.textS,
@@ -2137,7 +2139,7 @@ Respond ONLY with valid JSON: {"summary":"One honest sentence about NTA score an
 
           {/* My Analytics: always outline */}
           {onViewAnalytics && (
-            <button onClick={onViewAnalytics} style={{ flex:1, minWidth:120, height:40,
+            <button onClick={onViewAnalytics} style={{ flex:1, minWidth:0, height:40,
               background:"transparent", color:AZ.ind, border:`1.5px solid ${AZ.ind}`,
               borderRadius:8, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"var(--font-body)" }}>
               📊 My Analytics
@@ -2145,7 +2147,7 @@ Respond ONLY with valid JSON: {"summary":"One honest sentence about NTA score an
           )}
 
           {/* Right CTA: "Begin New Test" fresh · "Back to Dashboard" past */}
-          <button onClick={onNewTest} style={{ flex:1, minWidth:120, height:40, borderRadius:8,
+          <button onClick={onNewTest} style={{ flex:1, minWidth:0, height:40, borderRadius:8,
             fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"var(--font-body)",
             background: isPastReview ? "transparent" : AZ.grn,
             color:       isPastReview ? AZ.textS      : "#0D0D0D",
@@ -2227,7 +2229,7 @@ function ReviewScreen({ questions, answers, onBack }) {
       </div>
       {/* tiles */}
       <div style={{ padding: "10px 10px", display: "flex", flexWrap: "wrap", gap: 5,
-        overflowY: "auto", maxHeight: isMobile ? 220 : "calc(100vh - 260px)" }}>
+        overflowY: "auto", maxHeight: isMobile ? "50vh" : "calc(100vh - 260px)" }}>
         {questions.map((_, i) => {
           const { bg, bc, cl } = tileStyle(i);
           const dim = !visibleIndices.includes(i);
@@ -2538,54 +2540,54 @@ function PerformanceDashboard({ testHistory, user, onBack, onBackToResults }) {
 
           <div style={{ display:"flex", gap:16, flexWrap:"wrap" }}>
             {/* Score Trend */}
-            <div style={{ flex:"1 1 200px" }}>
+            <div style={{ flex:"1 1 260px", minWidth:0 }}>
               <div style={{ fontSize:11, color:AZ.textS, marginBottom:8, fontWeight:600 }}>
                 Accuracy per Test
                 {trendLabel && <span style={{ marginLeft:8, fontSize:11, color:trendLabel.c, fontWeight:700 }}>{trendLabel.text}</span>}
               </div>
               {(() => {
-                const w = isMobile ? 220 : 300, h = 80;
+                const W = 400, H = 130;
                 const data = allAcc;
                 if (data.length < 2) return <div style={{fontSize:11,color:AZ.textM}}>Need 2+ tests for trend chart</div>;
                 const max = Math.max(...data), min = Math.min(...data), range = max - min || 1;
-                const pts = data.map((v,i) =>
-                  `${((i/(data.length-1))*(w-10)+5).toFixed(1)},${(h-5-((v-min)/range)*(h-14)).toFixed(1)}`
-                ).join(" ");
-                // Regression line
+                const px = (i) => ((i/(data.length-1))*(W-20)+10).toFixed(1);
+                const py = (v) => (H-12-((v-min)/range)*(H-30)).toFixed(1);
+                const pts = data.map((v,i) => `${px(i)},${py(v)}`).join(" ");
                 const { slope: s2 } = linReg(data);
                 const ymean = data.reduce((a,b)=>a+b,0)/data.length;
-                const x0=5, x1=w-5;
-                const y0 = h-5-((ymean - s2*(data.length-1)/2 - min)/range)*(h-14);
-                const y1 = h-5-((ymean + s2*(data.length-1)/2 - min)/range)*(h-14);
+                const y0r = H-12-((ymean - s2*(data.length-1)/2 - min)/range)*(H-30);
+                const y1r = H-12-((ymean + s2*(data.length-1)/2 - min)/range)*(H-30);
                 const li = data.length-1;
-                const lx = ((li/(data.length-1))*(w-10)+5).toFixed(1);
-                const ly = (h-5-((data[li]-min)/range)*(h-14)).toFixed(1);
                 return (
-                  <svg width={w} height={h}>
+                  <svg width="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet"
+                    style={{display:"block",width:"100%",height:"auto",minHeight:90}}>
                     {/* Grid lines */}
                     {[0,25,50,75,100].map(v => {
-                      const y = h-5-((v-min)/range)*(h-14);
-                      return y >= 0 && y <= h ? <line key={v} x1={5} y1={y} x2={w-5} y2={y} stroke="rgba(0,0,0,0.07)" strokeWidth={1} /> : null;
+                      const y = H-12-((v-min)/range)*(H-30);
+                      return y >= 0 && y <= H ? (
+                        <g key={v}>
+                          <line x1={10} y1={y} x2={W-10} y2={y} stroke="rgba(0,0,0,0.07)" strokeWidth={1} />
+                          <text x={6} y={y+3} textAnchor="end" fontSize={8} fill={AZ.textM} fontFamily="JetBrains Mono,monospace">{v}</text>
+                        </g>
+                      ) : null;
                     })}
                     {/* Trend regression line */}
-                    <line x1={x0} y1={y0} x2={x1} y2={y1} stroke={AZ.amb} strokeWidth={1} strokeDasharray="4 3" opacity={0.7} />
+                    <line x1={10} y1={y0r} x2={W-10} y2={y1r} stroke={AZ.amb} strokeWidth={1.5} strokeDasharray="5 4" opacity={0.7} />
+                    {/* Filled area under line */}
+                    <polyline points={data.map((v,i)=>`${px(i)},${py(v)}`).join(" ") + ` ${px(li)},${H-12} 10,${H-12}`}
+                      fill={`rgba(67,56,202,0.06)`} stroke="none" />
                     {/* Score line */}
-                    <polyline points={pts} fill="none" stroke={AZ.ind} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-                    {/* All dots + per-dot labels */}
+                    <polyline points={pts} fill="none" stroke={AZ.ind} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+                    {/* Dots + labels */}
                     {data.map((v,i) => {
-                      const dx = ((i/(data.length-1))*(w-10)+5).toFixed(1);
-                      const dy = (h-5-((v-min)/range)*(h-14)).toFixed(1);
-                      const showLbl = data.length <= 8 || i === li || i === 0;
-                      const lblY = parseFloat(dy) - 7;
+                      const dx = px(i), dy = py(v);
+                      const showLbl = data.length <= 10 || i === li || i === 0;
                       const anchor = i === 0 ? "start" : i === li ? "end" : "middle";
                       return (
                         <g key={i}>
-                          <circle cx={dx} cy={dy} r={i===li?4:2.5} fill={i===li?AZ.ind:"rgba(67,56,202,0.55)"} stroke="#F5F7FA" strokeWidth={1} />
-                          {showLbl && <text x={dx} y={lblY} textAnchor={anchor} fontSize={8}
-                            fill={i===li ? AZ.ind : AZ.textM}
-                            fontFamily="JetBrains Mono,monospace" fontWeight={i===li ? 700 : 500}>
-                            {v}%
-                          </text>}
+                          <circle cx={dx} cy={dy} r={i===li?5:3} fill={i===li?AZ.ind:"rgba(67,56,202,0.55)"} stroke="#F5F7FA" strokeWidth={1.5} />
+                          {showLbl && <text x={dx} y={parseFloat(dy)-8} textAnchor={anchor} fontSize={9}
+                            fill={i===li?AZ.ind:AZ.textM} fontFamily="JetBrains Mono,monospace" fontWeight={i===li?700:500}>{v}%</text>}
                         </g>
                       );
                     })}
@@ -2598,7 +2600,7 @@ function PerformanceDashboard({ testHistory, user, onBack, onBackToResults }) {
             </div>
 
             {/* Wrong answers trend */}
-            <div style={{ flex:"1 1 180px" }}>
+            <div style={{ flex:"1 1 200px", minWidth:0 }}>
               <div style={{ fontSize:11, color:AZ.textS, marginBottom:8, fontWeight:600 }}>
                 Wrong Answers per Test
                 {attempts.length >= 3 && <span style={{ marginLeft:8, fontSize:11, fontWeight:700, color: wrongSlope < -0.5 ? AZ.grn : wrongSlope > 0.5 ? AZ.red : AZ.amb }}>
@@ -2606,24 +2608,36 @@ function PerformanceDashboard({ testHistory, user, onBack, onBackToResults }) {
                 </span>}
               </div>
               {(() => {
-                const w = isMobile ? 180 : 220, H2 = 80;
+                const VW = 360, VH = 130;
                 const data = wrongTrend;
                 if (data.length < 1) return null;
                 const maxV = Math.max(...data, 1);
-                const bw = Math.max(4, Math.floor((w - 8) / data.length) - 2);
+                const gap = 3, bw = Math.max(6, Math.floor((VW - 12 - gap*(data.length-1)) / data.length));
+                const totalW = data.length * bw + (data.length-1)*gap + 8;
                 return (
-                  <svg width={w} height={H2}>
+                  <svg width="100%" viewBox={`0 0 ${totalW} ${VH}`} preserveAspectRatio="xMidYMid meet"
+                    style={{display:"block",width:"100%",height:"auto",minHeight:90}}>
+                    {/* Y-axis grid */}
+                    {[0, Math.ceil(maxV/2), maxV].map(v => {
+                      const y = VH-12-((v/maxV)*(VH-28));
+                      return (
+                        <g key={v}>
+                          <line x1={4} y1={y} x2={totalW-4} y2={y} stroke="rgba(0,0,0,0.06)" strokeWidth={1} />
+                          <text x={2} y={y+3} textAnchor="start" fontSize={7} fill={AZ.textM} fontFamily="JetBrains Mono,monospace">{v}</text>
+                        </g>
+                      );
+                    })}
                     {data.map((v, i) => {
-                      const bh = Math.max(3, Math.round((v/maxV)*(H2-10)));
-                      const x = 4 + i * (bw + 2), y = H2 - bh;
+                      const bh = Math.max(4, Math.round((v/maxV)*(VH-28)));
+                      const x = 4 + i * (bw + gap), y = VH - 12 - bh;
                       const isLast = i === data.length - 1;
+                      const col = v === 0 ? AZ.grn : isLast ? AZ.red : "rgba(220,38,38,0.5)";
                       return (
                         <g key={i}>
-                          <rect x={x} y={y} width={bw} height={bh} rx={2}
-                            fill={v === 0 ? AZ.grn : isLast ? AZ.red : "rgba(220,38,38,0.45)"} />
-                          <text x={x+bw/2} y={y-3} textAnchor="middle" fontSize={8}
-                            fill={v === 0 ? AZ.grn : isLast ? AZ.red : AZ.textM}
-                            fontFamily="JetBrains Mono,monospace" fontWeight={isLast ? 700 : 500}>{v}</text>
+                          <rect x={x} y={y} width={bw} height={bh} rx={3} fill={col} />
+                          <text x={x+bw/2} y={y-4} textAnchor="middle" fontSize={9}
+                            fill={v===0 ? AZ.grn : isLast ? AZ.red : AZ.textM}
+                            fontFamily="JetBrains Mono,monospace" fontWeight={isLast?700:500}>{v}</text>
                         </g>
                       );
                     })}
@@ -2783,7 +2797,7 @@ function PerformanceDashboard({ testHistory, user, onBack, onBackToResults }) {
                 const trendDir = f.last > f.avg ? "▲" : f.last < f.avg ? "▼" : "→";
                 const trendC   = trendDir === "▲" ? AZ.grn : trendDir === "▼" ? AZ.red : AZ.amb;
                 return (
-                  <div key={f.topic} style={{ flex:"1 1 140px", background:AZ.card2, borderRadius:10, padding:"12px 14px", border:`1px solid ${AZ.bord}` }}>
+                  <div key={f.topic} style={{ flex:"1 1 120px", minWidth:0, background:AZ.card2, borderRadius:10, padding:"12px 14px", border:`1px solid ${AZ.bord}` }}>
                     <div style={{ fontWeight:700, fontSize:12, color:AZ.text, marginBottom:6, lineHeight:1.3 }}>{f.topic}</div>
                     <div style={{ fontFamily:"var(--font-mono)", fontSize:26, fontWeight:800, color:col, lineHeight:1 }}>{f.avg}%</div>
                     <div style={{ fontSize:10, color:AZ.textM, marginTop:3 }}>avg over {f.n} test{f.n!==1?"s":""}</div>
@@ -2802,7 +2816,7 @@ function PerformanceDashboard({ testHistory, user, onBack, onBackToResults }) {
         <div style={{ background:AZ.card, borderRadius:12, padding:"14px 18px", marginBottom:24, border:`1px solid ${AZ.bord}` }}>
           {sLabel("All Attempts")}
           <div style={{ overflowX:"auto" }}>
-            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12, minWidth:500 }}>
               <thead>
                 <tr style={{ borderBottom:`1px solid ${AZ.bord}` }}>
                   {["#","Date","Subject","Mode","Score","Correct","Wrong","Accuracy","Status"].map(h => (
