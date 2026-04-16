@@ -2366,13 +2366,14 @@ function ReviewScreen({ questions, answers, onBack, onViewAnalytics, config, tes
     (async () => {
       try {
         const token = await getAuthToken();
+        const _prompt = `You are a CUET preparation expert. A student reviewed their answers. Correct: ${_revScores.correct}/${questions.length}. Wrong: ${_revScores.wrong}. Skipped: ${_revScores.unanswered}. Accuracy: ${_accuracy}%.${_weakest?" Weakest: "+_weakest.topic+" "+_weakest.acc+"%.":""} Respond ONLY with valid JSON, no markdown: {"summary":"One honest sentence.","actions":["Action 1","Action 2"]}`;
         const r = await fetch(`${CF_BASE}/generateAdvisory`, {
           method:"POST", headers: authHeaders(token),
-          body: JSON.stringify({ score:_pct, correct:_revScores.correct, wrong:_revScores.wrong, unanswered:_revScores.unanswered, totalScore:_revScores.totalScore, maxScore:_maxScore, accuracy:_accuracy, weakest:_weakest?.topic, weakestAcc:_weakest?.acc })
+          body: JSON.stringify({ prompt: _prompt })
         });
         if (!r.ok) throw new Error("CF error");
         const d = await r.json();
-        setAdvisory(d.advisory || { summary: d.summary, actions: d.actions });
+        let _p2=null; if(d.text){try{_p2=JSON.parse(d.text.replace(/```json|```/g,"").trim());}catch(_e){_p2={summary:d.text,actions:[]};}} setAdvisory(_p2||{summary:"Review highlighted questions to find mistake patterns.",actions:["Focus on wrong answers first.","Revisit weakest topic next."]});
       } catch(_) { setAdvisory({ summary:"Review the highlighted questions to identify your mistake patterns.", actions:["Focus on your wrong answers first.","Revisit your weakest topic next."] }); }
     })();
   }, []);
@@ -2647,20 +2648,21 @@ function PerformanceDashboard({ testHistory, user, onBack, onBackToResults }) {
   if (!testHistory || testHistory.length === 0) {
     return (
       <div style={{ minHeight:"100vh", background:AZ.bg, display:"flex", flexDirection:"column" }}>
-        <div className="nta-header">
-          <span className="nta-logo">Vantiq <span>CUET</span></span>
+        <div className="nta-header" style={{ position:"relative" }}>
           <div style={{ display:"flex", gap:8 }}>
             {onBackToResults && (
               <button onClick={onBackToResults}
-                style={{ background:"transparent", color:"rgba(255,255,255,.7)", border:"1px solid rgba(255,255,255,.25)", borderRadius:6, padding:"4px 12px", fontSize:13, cursor:"pointer", fontFamily:"var(--font-body)" }}>
+                style={{ background:"rgba(255,255,255,0.13)", color:"#fff", border:"1.5px solid rgba(255,255,255,0.40)", borderRadius:8, padding:"8px 18px", fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:"var(--font-body)", display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
                 ← Results
               </button>
             )}
             <button onClick={onBack}
-              style={{ background:"transparent", color:"rgba(255,255,255,.5)", border:"1px solid rgba(255,255,255,.18)", borderRadius:6, padding:"4px 14px", fontSize:13, cursor:"pointer", fontFamily:"var(--font-body)" }}>
+              style={{ background:"rgba(255,255,255,0.13)", color:"#fff", border:"1.5px solid rgba(255,255,255,0.40)", borderRadius:8, padding:"8px 18px", fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:"var(--font-body)", display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
               Dashboard
             </button>
           </div>
+          <span className="nta-logo" style={{ position:"absolute", left:"50%", transform:"translateX(-50%)" }}>Vantiq <span>CUET</span></span>
+          <div style={{ width:130 }} />
         </div>
         <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center" }}>
           <div style={{ textAlign:"center" }}>
@@ -2762,9 +2764,10 @@ function PerformanceDashboard({ testHistory, user, onBack, onBackToResults }) {
   return (
     <div style={{ minHeight:"100vh", background:AZ.bg, display:"flex", flexDirection:"column" }}>
       {/* Header */}
-      <div className="nta-header">
-        <span className="nta-logo">Vantiq <span>CUET</span></span>
-        <button onClick={onBack} style={{ background:"transparent", color:"rgba(255,255,255,.55)", border:"1px solid rgba(255,255,255,.18)", borderRadius:6, padding:"4px 14px", fontSize:13, cursor:"pointer", fontFamily:"var(--font-body)" }}>← Dashboard</button>
+      <div className="nta-header" style={{ position:"relative" }}>
+        <button onClick={onBack} style={{ background:"rgba(255,255,255,0.13)", color:"#fff", border:"1.5px solid rgba(255,255,255,0.40)", borderRadius:8, padding:"8px 18px", fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:"var(--font-body)", display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>← Dashboard</button>
+        <span className="nta-logo" style={{ position:"absolute", left:"50%", transform:"translateX(-50%)" }}>Vantiq <span>CUET</span></span>
+        <div style={{ width:130 }} />
       </div>
 
       <div style={{ flex:1, maxWidth:880, margin:"0 auto", width:"100%", padding: isMobile ? "16px 14px" : "28px 24px" }}>
