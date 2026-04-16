@@ -2073,10 +2073,14 @@ Respond ONLY with valid JSON: {"summary":"One honest sentence about NTA score an
     <div style={{ minHeight:"100vh", background: AZ.bg, display:"flex", flexDirection:"column" }}>
       {/* Header */}
       <div className="nta-header">
-        <span className="nta-logo">Vantiq <span>CUET</span></span>
-        <button onClick={onNewTest} style={{ background:"transparent", color:"rgba(255,255,255,.55)", border:"1px solid rgba(255,255,255,.18)", borderRadius:6, padding:"4px 14px", fontSize:13, cursor:"pointer", fontFamily:"var(--font-body)" }}>
+        <button onClick={onNewTest} style={{ background:"rgba(255,255,255,0.12)", color:"#fff",
+          border:"1.5px solid rgba(255,255,255,0.40)", borderRadius:8, padding:"8px 18px",
+          fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:"var(--font-body)",
+          display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
           ← Dashboard
         </button>
+        <span className="nta-logo">Vantiq <span>CUET</span></span>
+        <div style={{ width:110 }} />{/* spacer so logo stays centered */}
       </div>
 
       <div style={{ flex:1, maxWidth:820, margin:"0 auto", width:"100%", padding: isMobile ? "16px 14px" : "28px 24px" }}>
