@@ -25,6 +25,13 @@ const Razorpay  = require("razorpay");
 admin.initializeApp();
 const db               = admin.firestore();
 const FREE_LIMIT       = 4;
+// ─── FREE MODE ──────────────────────────────────────────────────────────────
+// It's free right now — all Mock Exams across all subjects are free for everyone.
+// To restore the paywall: set FREE_MODE = false and push to GitHub.
+// Restore date: April 26, 2026
+// When restoring, also set FREE_MODE = false in src/App.jsx and push.
+const FREE_MODE        = true;
+// ─────────────────────────────────────────────────────────────────────────────
 const UNLOCK_AMOUNT    = 19900;
 // Mode-specific cache configuration
 // Mock: 20 sets target, auto-fill triggers at 12
@@ -1987,7 +1994,10 @@ Return ONLY the JSON object. Begin with { — nothing before it.`;
     // ── Free modes: always allowed, no limit checks ───────────────────────────
     const isFreeMode = mode === "QuickPractice" || mode === "GAT_QP" || mode === "Economics_QP";
 
-    if (!isFreeMode) {
+    // ── FREE MODE: It's free right now — all paywall and daily cap checks bypassed ──
+    // Restore: set FREE_MODE = false (defined at top of file) on April 26, 2026.
+    // When restoring, also set FREE_MODE = false in src/App.jsx.
+    if (!FREE_MODE && !isFreeMode) {
       const isUnlocked = !!(userDoc.unlocked);
 
       if (mode === "GAT_Mock") {
@@ -2019,6 +2029,7 @@ Return ONLY the JSON object. Begin with { — nothing before it.`;
         }
       }
     }
+    // ─────────────────────────────────────────────────────────────────────────
 
     const usedSetIds = userDoc.usedCacheSetIds || [];
     const cutoff     = new Date(Date.now() - CACHE_TTL_MS);
@@ -2122,6 +2133,28 @@ exports.checkTestLimit = functions.runWith({ timeoutSeconds: 20, memory: "256MB"
   const decoded = await verifyToken(req, res); if (!decoded) return;
   const uid = decoded.uid;
   const mode = req.body?.mode || "Mock"; // default English Mock if not specified
+
+  // ── FREE MODE: It's free right now — return allowed for everyone ─────────
+  // Restore: set FREE_MODE = false (defined at top of file) on April 26, 2026.
+  if (FREE_MODE) {
+    return res.status(200).json({
+      allowed: true,
+      freeMode: true,
+      isUnlocked: true,
+      testsUsed: 0,
+      freeLimit: FREE_LIMIT,
+      freeRemaining: 999,
+      dailyLimit: DAILY_TEST_LIMIT,
+      dailyCount: 0,
+      dailyRemaining: DAILY_TEST_LIMIT,
+      testsRemaining: 999,
+      limitLabel: "It's free right now",
+      quickPracticeAlwaysFree: true,
+      gatTestsUsed: 0,
+    });
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   try {
     const snap       = await db.collection("users").doc(uid).get();
     const ud         = snap.data() || {};

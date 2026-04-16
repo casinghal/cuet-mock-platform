@@ -203,6 +203,13 @@ try {
 const CF_BASE       = import.meta.env.VITE_CLOUD_FUNCTION_BASE || "";
 const RZP_KEY_ID    = import.meta.env.VITE_RAZORPAY_KEY_ID;
 const FREE_LIMIT    = 4;
+// ─── FREE MODE ──────────────────────────────────────────────────────────────
+// It's free right now — all Mock Exams across all subjects are free for everyone.
+// To restore the paywall: set FREE_MODE = false and push to GitHub.
+// Restore date: April 26, 2026
+// When restoring, also set FREE_MODE = false in functions/index.js and push.
+const FREE_MODE     = true;
+// ─────────────────────────────────────────────────────────────────────────────
 const EXAM_SECS     = 3600; // 60 min
 const MARKS_CORRECT = 5;
 const MARKS_WRONG   = -1;
@@ -912,8 +919,8 @@ function AuthScreen({ onLogin, showToast }) {
           <div style={{ ...S.trialBadge, marginTop: 4 }}>
             <span style={S.trialIcon}>&#127381;</span>
             <div style={S.trialText}>
-              <span style={S.trialStrong}>4 free Mock Exams per subject.</span>{" "}
-              Quick Practice free forever. Unlimited access at ₹199 till 30 June.
+              <span style={S.trialStrong}>It's free right now — all subjects, all Mock Exams.</span>{" "}
+              Quick Practice free forever. No payment needed.
             </div>
           </div>
 
@@ -1169,43 +1176,51 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onReviewTes
 
     setChecking(true);
     try {
-      if (CF_BASE) {
-        const token = await getAuthToken();
-        const r = await fetch(`${CF_BASE}/checkTestLimit`, {
-          method: "POST",
-          headers: authHeaders(token),
-          body: JSON.stringify({ mode }), // pass mode so CF checks the right pool
-        });
-        const d = await r.json();
-        if (!d.allowed) {
-          logEvent("paywall_triggered", { user_id: user?.uid, tests_used: mode === "GAT_Mock" ? gatTestsUsed : mode === "Economics_Mock" ? econTestsUsed : testsUsed });
-          setShowPaywall(true); return;
+      // ── FREE MODE: It's free right now — skip all paywall checks ────────────
+      // Restore: set FREE_MODE = false (defined at top of file) on April 26, 2026
+      if (!FREE_MODE) {
+        if (CF_BASE) {
+          const token = await getAuthToken();
+          const r = await fetch(`${CF_BASE}/checkTestLimit`, {
+            method: "POST",
+            headers: authHeaders(token),
+            body: JSON.stringify({ mode }), // pass mode so CF checks the right pool
+          });
+          const d = await r.json();
+          if (!d.allowed) {
+            logEvent("paywall_triggered", { user_id: user?.uid, tests_used: mode === "GAT_Mock" ? gatTestsUsed : mode === "Economics_Mock" ? econTestsUsed : testsUsed });
+            setShowPaywall(true); return;
+          }
+        } else {
+          // localStorage fallback — check appropriate counter
+          const effectiveCount = mode === "GAT_Mock"
+            ? (gatTestsUsed  || parseInt(localStorage.getItem("cuet_gat_tests_used")  || "0"))
+            : mode === "Economics_Mock"
+            ? (econTestsUsed || parseInt(localStorage.getItem("cuet_econ_tests_used") || "0"))
+            : (testsUsed     || parseInt(localStorage.getItem("cuet_tests_used")      || "0"));
+          const effectiveUnlocked = unlocked || localStorage.getItem("cuet_unlocked") === "true";
+          if (!effectiveUnlocked && effectiveCount >= FREE_LIMIT) {
+            logEvent("paywall_triggered", { user_id: user?.uid, tests_used: effectiveCount });
+            setShowPaywall(true); return;
+          }
         }
-      } else {
-        // localStorage fallback — check appropriate counter
+      }
+      // ────────────────────────────────────────────────────────────────────────
+      onBeginTest({ mode, subject: activeSubject });
+    } catch(err) {
+      // ── FREE MODE: It's free right now — do not show paywall on any error ───
+      if (!FREE_MODE && err.paywall) {
         const effectiveCount = mode === "GAT_Mock"
           ? (gatTestsUsed  || parseInt(localStorage.getItem("cuet_gat_tests_used")  || "0"))
           : mode === "Economics_Mock"
           ? (econTestsUsed || parseInt(localStorage.getItem("cuet_econ_tests_used") || "0"))
           : (testsUsed     || parseInt(localStorage.getItem("cuet_tests_used")      || "0"));
-        const effectiveUnlocked = unlocked || localStorage.getItem("cuet_unlocked") === "true";
-        if (!effectiveUnlocked && effectiveCount >= FREE_LIMIT) {
-          logEvent("paywall_triggered", { user_id: user?.uid, tests_used: effectiveCount });
+        if (!unlocked && effectiveCount >= FREE_LIMIT) {
           setShowPaywall(true); return;
         }
-      }
-      onBeginTest({ mode, subject: activeSubject });
-    } catch(_) {
-      const effectiveCount = mode === "GAT_Mock"
-        ? (gatTestsUsed  || parseInt(localStorage.getItem("cuet_gat_tests_used")  || "0"))
-        : mode === "Economics_Mock"
-        ? (econTestsUsed || parseInt(localStorage.getItem("cuet_econ_tests_used") || "0"))
-        : (testsUsed     || parseInt(localStorage.getItem("cuet_tests_used")      || "0"));
-      if (!unlocked && effectiveCount >= FREE_LIMIT) {
-        setShowPaywall(true); return;
-      }
-      if (!unlocked && effectiveCount >= FREE_LIMIT - 1) {
-        setShowPaywall(true); return;
+        if (!unlocked && effectiveCount >= FREE_LIMIT - 1) {
+          setShowPaywall(true); return;
+        }
       }
       onBeginTest({ mode, subject: activeSubject });
     } finally { setChecking(false); }
@@ -1232,7 +1247,8 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onReviewTes
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
-      {showPaywall && <PaywallModal user={user} onSuccess={handlePaySuccess} onClose={() => setShowPaywall(false)} subject={activeSubject} />}
+      {/* FREE MODE: It's free right now — PaywallModal is suppressed. Restore: set FREE_MODE=false */}
+      {!FREE_MODE && showPaywall && <PaywallModal user={user} onSuccess={handlePaySuccess} onClose={() => setShowPaywall(false)} subject={activeSubject} />}
 
       <div className="nta-header">
         <span className="nta-logo">Vantiq <span>CUET</span></span>
@@ -1262,13 +1278,13 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onReviewTes
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 8, marginBottom: 14 }}>
           {[
-            { label: "Tests Taken",  val: activeSubject === "GAT" ? gatTestsUsed : activeSubject === "Economics" ? econTestsUsed : testsUsed, sub: unlocked ? "Unlimited" : `${testsLeft} free left`, accent: "var(--indigo)" },
+            { label: "Tests Taken",  val: activeSubject === "GAT" ? gatTestsUsed : activeSubject === "Economics" ? econTestsUsed : testsUsed, sub: FREE_MODE ? "It's free right now" : unlocked ? "Unlimited" : `${testsLeft} free left`, accent: "var(--indigo)" },
             { label: "Avg. Score",   val: avgScore != null ? `${avgScore}%` : "—", sub: "across all tests", accent: "#D97706" },
             { label: "Best Score",   val: bestScore != null ? `${bestScore}%` : "—", sub: "personal best", accent: "var(--success)" },
-            { label: "Access",       val: unlocked ? "Pro" : "Free", sub: unlocked ? "Unlimited till 30 Jun" : `${testsLeft} of 4 free (this subject)`, accent: unlocked ? "var(--success)" : "var(--indigo)" },
+            { label: "Access",       val: FREE_MODE ? "Free" : unlocked ? "Pro" : "Free", sub: FREE_MODE ? "It's free right now" : unlocked ? "Unlimited till 30 Jun" : `${testsLeft} of 4 free (this subject)`, accent: "var(--success)" },
           ].map(s => (
             <div key={s.label} className="stat-strip" style={{ borderLeft: `3px solid ${s.accent}`, padding: "10px 14px" }}>
-              <div style={{ fontSize: 18, fontWeight: 700, color: s.label === "Access" && unlocked ? "var(--success)" : "var(--navy)", fontFamily: "var(--font-mono)", lineHeight: 1 }}>{s.val}</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: (FREE_MODE || (s.label === "Access" && unlocked)) ? "var(--success)" : "var(--navy)", fontFamily: "var(--font-mono)", lineHeight: 1 }}>{s.val}</div>
               <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", color: "var(--text-muted)", marginTop: 4 }}>{s.label}</div>
               <div style={{ fontSize: 10, color: "var(--text-secondary)", marginTop: 1 }}>{s.sub}</div>
             </div>
@@ -1375,10 +1391,16 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onReviewTes
                               ALWAYS FREE
                             </span>
                           )}
-                          {!cfg.free && !unlocked && (
+                          {!cfg.free && !FREE_MODE && !unlocked && (
                             <div style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 5 }}>
                               {testsLeft > 0 ? `${testsLeft} free · ₹199 unlimited` : "Free limit reached · ₹199 to unlock"}
                             </div>
+                          )}
+                          {/* FREE MODE: It's free right now */}
+                          {!cfg.free && FREE_MODE && (
+                            <span style={{ display: "inline-block", marginTop: 5, background: "#DCFCE7", color: "var(--success)", fontSize: 9, fontWeight: 700, padding: "1px 7px", borderRadius: 20, letterSpacing: ".04em", border: "1px solid #A7F3D0" }}>
+                              IT'S FREE RIGHT NOW
+                            </span>
                           )}
                         </div>
                       </div>
@@ -1403,7 +1425,7 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onReviewTes
                 {checking ? "Checking..." : "Begin Test →"}
               </button>
               <span style={{ fontSize: 10, color: !activeSubject || !mode ? "var(--text-muted)" : isCurrentModeFree ? "var(--success)" : "var(--text-muted)", fontWeight: isCurrentModeFree ? 600 : 400, whiteSpace: "nowrap", flexShrink: 0 }}>
-                {!activeSubject ? "Pick a subject" : !mode ? "Pick a format" : isCurrentModeFree ? "✓ Always free" : !unlocked && testsLeft > 0 ? `${testsLeft} Mock Exam${testsLeft !== 1 ? "s" : ""} free` : !unlocked ? "Free limit reached" : "Unlimited access"}
+                {!activeSubject ? "Pick a subject" : !mode ? "Pick a format" : isCurrentModeFree ? "✓ Always free" : FREE_MODE ? "✓ It's free right now" : !unlocked && testsLeft > 0 ? `${testsLeft} Mock Exam${testsLeft !== 1 ? "s" : ""} free` : !unlocked ? "Free limit reached" : "Unlimited access"}
               </span>
             </div>
 
@@ -3613,9 +3635,12 @@ export default function App() {
       // Sync Firestore in background
       if (user) loadUserData(user).catch(() => {});
     } catch(e) {
-      if (e.paywall) {
+      // FREE MODE: It's free right now — do not show paywall. Restore: set FREE_MODE=false
+      if (!FREE_MODE && e.paywall) {
         setScreen("dashboard");
         setShowPaywall(true);
+      } else if (e.paywall) {
+        // FREE_MODE is on — ignore paywall errors, do not block student
       } else if (e.blocked) {
         // User was blocked mid-session — sign them out and show block screen
         showToast(e.permanent
