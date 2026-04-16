@@ -2042,26 +2042,29 @@ function ResultsScreen({ questions, answers, config, user, testHistory, timePerQ
   const weakest    = topicRows[0] && topicRows[0].attempted > 0 ? topicRows[0] : null;
 
   // ── AI advisory ───────────────────────────────────────────────────────
+  const isQP = config?.mode === "QuickPractice" || config?.mode === "GAT_QP" || config?.mode === "Economics_QP";
   useEffect(() => {
     const weakStr = weakest ? `Weakest topic: ${weakest.topic} at ${weakest.accuracy}% accuracy.` : "";
-    const prompt = `You are a CUET preparation expert. A student just finished a CUET mock test.
-- NTA points scored: ${totalScore} out of ${maxScore} possible (${pct}%)
-- Questions correct: ${correct} out of ${questions.length} attempted
-- Wrong answers: ${wrong} | Skipped: ${unanswered} | Accuracy: ${accuracy}%
-${weakStr}
-CRITICAL: Do NOT conflate pct% with accuracy. State NTA score and accuracy separately.
-Respond ONLY with valid JSON: {"summary":"One honest sentence about NTA score and accuracy.","actions":["Action 1: ...","Action 2: ..."]}`;
+    const prompt = isQP
+      ? `You are a CUET preparation expert. A student finished a Quick Practice session (ungraded). Correct: ${correct}/${questions.length}. Wrong: ${wrong}. Skipped: ${unanswered}. Accuracy: ${accuracy}%. ${weakStr} Respond ONLY with valid JSON, no markdown: {"summary":"One honest sentence.","actions":["Action 1","Action 2"]}`
+      : `You are a CUET preparation expert. A student finished a CUET mock test. NTA score: ${totalScore}/${maxScore} (${pct}%). Correct: ${correct}. Wrong: ${wrong}. Skipped: ${unanswered}. Accuracy: ${accuracy}%. ${weakStr} Respond ONLY with valid JSON, no markdown: {"summary":"One honest sentence about NTA score and accuracy.","actions":["Action 1","Action 2"]}`;
     if (!CF_BASE) { setAnalysis({ summary: "Review your answers to find improvement areas.", actions: ["Focus on your weakest topic first."] }); return; }
     (async () => {
       try {
         const token = await getAuthToken();
         const r = await fetch(`${CF_BASE}/generateAdvisory`, {
           method:"POST", headers: authHeaders(token),
-          body: JSON.stringify({ score: pct, correct, wrong, unanswered, totalScore, maxScore, accuracy, weakest: weakest?.topic, weakestAcc: weakest?.accuracy })
+          body: JSON.stringify({ prompt })
         });
         if (!r.ok) throw new Error("CF error");
         const d = await r.json();
-        setAnalysis(d.advisory || { summary: d.summary, actions: d.actions });
+        // CF returns { text: "..." } — parse JSON out of the text field
+        let _parsed = null;
+        if (d.text) {
+          try { _parsed = JSON.parse(d.text.replace(/```json|```/g, "").trim()); }
+          catch(_e) { _parsed = { summary: d.text, actions: [] }; }
+        }
+        setAnalysis(_parsed || { summary: "Review your answers to identify improvement areas.", actions: ["Focus on your weakest topic first."] });
       } catch(_) { setAnalysis({ summary: "Review your answers to identify improvement areas.", actions: ["Focus on your weakest topic first."] }); }
     })();
   }, []);
