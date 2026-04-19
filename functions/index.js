@@ -1523,6 +1523,92 @@ function validateQuestionSet(questions, mode) {
 // ── Post-generation accuracy verifier — runs on Economics numerical questions ──
 // Uses Sonnet to cross-check: does explanation arithmetic match the correct index?
 // Returns corrected questions array (fixes wrong correct index, marks bad questions)
+// ── SCHEMA AUDIT ─────────────────────────────────────────────────────────────
+// Deterministic structural checks — zero API cost. Catches defects the AI
+// verifier misses: case study schema violations, stems leaking into question
+// field, circular stems, broken passage linkage on linked questions.
+// Returns { defectsByIdx: Map<idx, string[]>, setLevelDefects: string[] }
+function verifyQuestionSchema(questions, mode) {
+  const defectsByIdx = new Map();
+  const setLevelDefects = [];
+  const addDefect = (idx, msg) => {
+    if (!defectsByIdx.has(idx)) defectsByIdx.set(idx, []);
+    defectsByIdx.get(idx).push(msg);
+  };
+
+  // Group passage-bearing questions by passage key (first 60 chars)
+  const passageGroups = new Map();
+  questions.forEach((q, idx) => {
+    const qtext = (q.question || "");
+    const ptext = (q.passage || "");
+
+    // DEFECT 1: "[CASE STUDY PART N]" markers leaking into question text
+    if (/\[CASE STUDY(\s+PART)?\s*\d*\]?/i.test(qtext) ||
+        /\[END CASE STUDY\]/i.test(qtext)) {
+      addDefect(idx, "case_study_marker_in_question");
+    }
+
+    // DEFECT 2: Case study scenario text embedded in question field
+    // Signature: very long question stem (>350 chars) on non-RC topics is suspicious
+    // For Economics Market Equilibrium / National Income — scenario should be in passage
+    const isEconCaseStudyTopic = /market equilibrium|national income/i.test(q.topic || "");
+    if (isEconCaseStudyTopic && qtext.length > 350 && !ptext) {
+      addDefect(idx, "case_study_scenario_in_question_field_not_passage");
+    }
+
+    // DEFECT 3: Circular stem — question asks "what does this represent/describe"
+    // and the topic/options suggest the answer is restated in the stem
+    if (/\b(situation|scenario|market condition)\s+(of|described|shown)\b/i.test(qtext) &&
+        /\brepresents?\b|\bdescribes?\b|\bdepicts?\b/i.test(qtext)) {
+      // Heuristic: if stem names a condition (excess supply, excess demand, equilibrium)
+      // AND asks what it represents → circular
+      const namedCondition = /(excess supply|excess demand|market shortage|equilibrium|surplus|deficit)/i.test(qtext);
+      if (namedCondition) addDefect(idx, "circular_stem_names_answer");
+    }
+
+    // DEFECT 4: Stem references "above" / "as described" / "the case study above"
+    if (/\b(the (case study|scenario|passage|data) (above|shown|described))\b/i.test(qtext)) {
+      addDefect(idx, "stem_references_above_context");
+    }
+
+    // Collect passage groups for consistency check
+    if (ptext && ptext.length > 30) {
+      const key = ptext.slice(0, 60);
+      if (!passageGroups.has(key)) passageGroups.set(key, []);
+      passageGroups.get(key).push({ idx, ptext });
+    }
+  });
+
+  // DEFECT 5: Passage inconsistency within a case study group
+  // All linked questions in a case study MUST have identical passage text
+  for (const [key, group] of passageGroups.entries()) {
+    if (group.length < 2) continue;
+    const canonical = group[0].ptext;
+    group.forEach(({ idx, ptext }) => {
+      if (ptext !== canonical) {
+        addDefect(idx, "passage_inconsistent_with_linked_questions");
+      }
+    });
+  }
+
+  // DEFECT 6 (set-level): Economics_Mock Market Equilibrium questions exist
+  // but none have a passage field set — means case study wasn't rendered
+  if (mode === "Economics_Mock") {
+    const meQs = questions.filter(q => /market equilibrium/i.test(q.topic || ""));
+    const meWithPassage = meQs.filter(q => q.passage && q.passage.length > 30);
+    if (meQs.length >= 3 && meWithPassage.length === 0) {
+      setLevelDefects.push("economics_market_equilibrium_questions_have_no_passage");
+    }
+    const niQs = questions.filter(q => /national income/i.test(q.topic || ""));
+    const niWithPassage = niQs.filter(q => q.passage && q.passage.length > 30);
+    if (niQs.length >= 3 && niWithPassage.length === 0) {
+      setLevelDefects.push("economics_national_income_questions_have_no_passage");
+    }
+  }
+
+  return { defectsByIdx, setLevelDefects };
+}
+
 async function verifyQuestionAccuracy(questions, mode, apiKey) {
   // Filter: numerical + conceptual classification questions — both categories have wrong-correct-index bugs
   const verifyTopics = [
@@ -1809,6 +1895,22 @@ async function generateQuestionSet(mode, apiKey) {
         throw new Error(`QUALITY_FAIL:${errorSummary}`);
       }
       functions.logger.info("QUALITY_GATE_PASSED", { mode, attempt, count: questions.length });
+
+      // ── Schema verification — deterministic structural checks (zero API cost) ──
+      // Catches: case study markers in question text, scenarios embedded in stem instead
+      // of passage field, circular stems, passage inconsistency across linked questions.
+      // Any schema defect = regenerate the entire set. No partial fixes for schema bugs.
+      const schemaCheck = verifyQuestionSchema(questions, mode);
+      if (schemaCheck.defectsByIdx.size > 0 || schemaCheck.setLevelDefects.length > 0) {
+        const sampleDefects = [...schemaCheck.defectsByIdx.entries()].slice(0, 3).map(([i, ds]) => ({ idx: i, defects: ds }));
+        functions.logger.warn("SCHEMA_REJECTION_RETRY", {
+          mode, attempt,
+          questionDefectCount: schemaCheck.defectsByIdx.size,
+          setLevelDefects: schemaCheck.setLevelDefects,
+          sampleDefects,
+        });
+        throw new Error(`SCHEMA_REJECT:${schemaCheck.defectsByIdx.size} questions with defects + ${schemaCheck.setLevelDefects.length} set-level defects`);
+      }
 
       // ── Accuracy verification — fix wrong correct indices, reject approximate answers ──
       // This catches the class of errors seen in production: correct index set to wrong value
@@ -3342,7 +3444,29 @@ exports.auditCacheAccuracy = functions
           continue;
         }
 
-        // Run accuracy verifier on this set
+        // STEP 1 — Run deterministic schema audit (zero API cost)
+        const schemaResult = verifyQuestionSchema(questions, mode);
+        const hasSchemaDefects = schemaResult.defectsByIdx.size > 0 || schemaResult.setLevelDefects.length > 0;
+
+        if (hasSchemaDefects) {
+          const defectSummary = {
+            questionDefectCount: schemaResult.defectsByIdx.size,
+            setLevelDefects: schemaResult.setLevelDefects,
+            sampleQuestionDefects: [...schemaResult.defectsByIdx.entries()].slice(0, 3).map(([i, ds]) => ({ idx: i, defects: ds })),
+          };
+          if (!dryRun) {
+            await db.collection("questionCache").doc(docSnap.id).delete();
+            totalDeleted++;
+            functions.logger.warn("AUDIT_SET_DELETED_SCHEMA_DEFECTS", {
+              docId: docSnap.id, mode, ...defectSummary,
+              reason: "Schema defects — case study structure, circular stems, or passage inconsistency",
+            });
+          }
+          results.push({ id: docSnap.id, mode, status: dryRun ? "schema_defect_dry_run" : "schema_defect_deleted", ...defectSummary });
+          continue; // Skip accuracy check — set is going to be deleted anyway
+        }
+
+        // STEP 2 — Run accuracy verifier on this set (AI-based, only if schema passes)
         let verified;
         try {
           verified = await verifyQuestionAccuracy(questions, mode, KEY);
