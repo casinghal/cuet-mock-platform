@@ -1032,8 +1032,9 @@ IED questions: stick to Unit II (LPG 1991) and Unit III (HDI, poverty) — most 
 // Batch 3: IED 12q             (req 14 → take 12)  [Course III, all 4 units]
 // Total: 20 + 18 + 12 = 50
 function buildEconomicsMockBatch(batchNum, econContext) {
-  const schema = '{"questions":[{"question":"...","options":["A","B","C","D"],"correct":0,"topic":"...","passage":null,"explanation":"2-3 sentences"}]}';
-  // passage: null for standalone MCQs OR 60-80 word scenario text for case study questions
+  const schema = '{"questions":[{"question":"...","options":["A","B","C","D"],"correct":0,"topic":"...","passage":"case study text or null","explanation":"2-3 sentences"}]}';
+  // passage: 60-80 word case study text (IDENTICAL across all linked questions) OR null for standalone MCQs
+  // Case study delivery pattern matches English RC: passage field holds shared context, question field holds only the specific question
 
   switch (batchNum) {
 
@@ -1061,18 +1062,40 @@ UNIT III — Perfect Competition (5 questions, passage=null):
 - topic "Price Elasticity of Supply": 2 questions — one determinant, one measurement — different time horizons
 
 UNIT IV — Market Equilibrium (6 questions):
-- Case Study Block: Write ONE scenario (60-80 words, a UNIQUE market — choose from: agricultural commodity / manufactured good / housing / foreign exchange / labour). passage=null for ALL questions — embed the FULL scenario text directly inside each of the 4 question fields, followed by the specific question. DO NOT use passage field.
-  - topic "Market Equilibrium": Q1 equilibrium price and quantity, Q2 demand/supply shift effect, Q3 excess demand/supply, Q4 welfare/efficiency
-- topic "Price Ceiling": 1 question (maximum price — effect, examples)
-- topic "Price Floor": 1 question (minimum price / MSP — effect, examples)
+- Case Study Block (4 questions, topic "Market Equilibrium"):
+  ⚠ SCHEMA RULE — CRITICAL: Write ONE market scenario (60-80 words — choose a UNIQUE market from: agricultural commodity / manufactured good / housing / foreign exchange / labour).
+  Place the scenario text in the "passage" field of ALL 4 linked questions — IDENTICAL text, character-for-character, in all 4 passage fields.
+  The "question" field must contain ONLY the specific question itself — short, 1-2 sentences, NO case study text, NO "[CASE STUDY PART N]" markers, NO restating of the scenario.
+  Example structure for each of the 4 questions:
+    { "question": "Calculate the equilibrium quantity in this market.", "options": [...], "correct": 0, "topic": "Market Equilibrium", "passage": "<the same 60-80 word scenario repeated in every question>", "explanation": "..." }
+  The 4 linked questions ask: Q1 equilibrium price and quantity, Q2 effect of demand/supply shift, Q3 identification of excess demand/supply situation, Q4 consumer/producer welfare consequence.
+- topic "Price Ceiling": 1 question (passage=null) — maximum price, effect, examples
+- topic "Price Floor": 1 question (passage=null) — minimum price / MSP, effect, examples
 
 DIVERSITY MANDATE: All numerical questions must use different cost/price values. No two demand questions should involve the same type of good. Vary: consumer income levels, production scales, market types in case study.
 Rules: correct is 0-indexed. Round numbers only. No monopoly/oligopoly. Explanation: 2-3 sentences.
+
+STEM HYGIENE — MANDATORY:
+- The question stem must NOT contain or restate the correct answer.
+- If the question asks to IDENTIFY a market condition (excess demand / excess supply / equilibrium), the stem must describe facts only — never label the condition. Forbidden: "the situation of excess supply described above represents...". Correct phrasing: "In this market, 15,000 kg is supplied daily while only 12,000 kg is demanded at ₹30 per kg. This situation is best described as:"
+- The question stem must NOT say "the case study above" or "as described" or "the scenario shown" — the passage panel makes that context obvious. Ask a direct, self-contained question.
+
 CRITICAL NUMERICAL ACCURACY — MANDATORY FOR ALL QUESTIONS:
 1. For every numerical: compute the answer yourself FIRST, THEN set correct index to match.
 2. NEVER write "approximately", "closest to", or "nearest option" — if your formula gives 0.8, include 0.8 as an option. Exact answers only.
 3. SELF-CHECK: After writing each question, re-read the explanation arithmetic. If it produces a different number than your marked answer, fix the correct index — not the explanation.
-4. Price Elasticity rule: use percentage method OR midpoint method — apply one method consistently per question and compute exactly.
+4. Price Elasticity rule: use the PERCENTAGE METHOD by default — Ed = (%ΔQ) / (%ΔP), where %ΔQ uses the ORIGINAL quantity as denominator and %ΔP uses the ORIGINAL price as denominator. Report Ed as a negative number for normal goods.
+
+ELASTICITY DATA LOCK — MANDATORY: For every Price Elasticity of Demand numerical, choose P and Q values from this pre-verified set where the percentage-method answer is clean:
+  • P 10→20 (+100%), Q 40→20 (−50%) → Ed = −0.5
+  • P 20→25 (+25%), Q 100→80 (−20%) → Ed = −0.8
+  • P 50→60 (+20%), Q 100→80 (−20%) → Ed = −1.0
+  • P 40→60 (+50%), Q 80→40 (−50%) → Ed = −1.0
+  • P 100→150 (+50%), Q 80→20 (−75%) → Ed = −1.5
+  • P 10→15 (+50%), Q 100→0 (−100%) → Ed = −2.0
+  Do NOT invent P/Q combinations outside this set. If a combination you want is not listed, pick one that is. The "correct" option MUST be the exact Ed value listed.
+  The three distractor options should be: one sign error (+Ed), one midpoint-method answer, one formula-swap (%ΔP/%ΔQ inverted).
+
 CRITICAL OUTPUT RULE: NEVER mention "NCERT", "Sandeep Garg", "Class 11", "Class 12", "textbook", or any author/book name in question text, options, or explanations. Write explanations in plain authoritative language.
 Return ONLY the JSON object. Begin with { — nothing before it.`;
 
@@ -1083,10 +1106,11 @@ JSON schema: ${schema}
 MANDATORY TOPIC DISTRIBUTION — 21 questions, all passage=null unless case study:
 
 UNIT I — National Income Accounting (6 questions):
-- Case Study Block: Write ONE scenario (60-70 words with NNP, depreciation, and indirect tax data). passage=null for ALL questions — embed the FULL scenario text directly inside each question field, followed by the specific question. DO NOT use passage field.
-  - Calculate NNPfc from given data
-  - Identify stock vs flow concept from scenario
-  - Private Income or Disposable Income calculation (2026 addition)
+- Case Study Block (3 questions, topic "National Income"):
+  ⚠ SCHEMA RULE — CRITICAL: Write ONE scenario (60-70 words with a consistent set of national income data: GDPmp or NNPmp, depreciation, net indirect taxes, net factor income from abroad — all integer values in crore ₹).
+  Place the scenario text in the "passage" field of ALL 3 linked questions — IDENTICAL text, character-for-character, in all 3 passage fields.
+  The "question" field must contain ONLY the specific question — NO scenario text, NO "[CASE STUDY PART N]" markers, NO restating of the data.
+  The 3 linked questions ask: Q1 calculate NNPfc from the given data, Q2 identify whether a specified item is stock or flow (use an item consistent with the scenario), Q3 Private Income OR Disposable Income calculation (2026 addition).
 - Circular flow of income, concepts of GDP/GNP/NNP/NDP (passage=null): 2 questions
 - Value Added Method or Expenditure Method of National Income (passage=null): 1 question
 
@@ -1110,12 +1134,19 @@ UNIT V — Open Economy Macroeconomics (3 questions, passage=null):
 - Exchange rate: fixed vs flexible vs managed float; determination: 1 question
 
 Rules: correct is 0-indexed. All numericals: whole number answers, provide all data in question. Explanation: 2-3 sentences.
+
+STEM HYGIENE — MANDATORY:
+- The question stem must NOT contain or restate the correct answer.
+- The question stem must NOT say "the case study above", "as described", or "the scenario shown" — the passage panel makes that context obvious. Ask a direct, self-contained question.
+- For case study linked questions, the stem is ONE sentence asking for one specific value or classification. Data lives in the passage, not the stem.
+
 CRITICAL NUMERICAL ACCURACY — MANDATORY FOR ALL QUESTIONS:
 1. For every numerical: compute the answer yourself FIRST, THEN set correct index to match.
 2. NEVER write "approximately", "closest to", or "nearest option" — exact answers only. Options must include the precisely calculated value.
 3. SELF-CHECK: After writing each question, re-read your explanation arithmetic. If it gives a different number than your marked correct option, fix the correct index.
 4. M1 rule: M1 = Currency in circulation + Demand Deposits with banks + Other Deposits with RBI. Always sum exactly.
 5. Revenue Deficit rule: Revenue Deficit = Revenue Expenditure − Revenue Receipts. Calculate and verify.
+6. NNPfc rule: NNPfc = GDPmp − Depreciation − Net Indirect Taxes + Net Factor Income from Abroad. Keep the sign of NFIA as given in the scenario.
 CRITICAL OUTPUT RULE: NEVER mention "NCERT", "Sandeep Garg", "Class 11", "Class 12", "textbook", or any author/book name in question text, options, or explanations. Write explanations in plain authoritative language.
 Return ONLY the JSON object. Begin with { — nothing before it.`;
 
@@ -1168,6 +1199,12 @@ Question 10 — DEMOGRAPHIC COMPARISON: China One Child Policy (1980 introduced 
 Question 11 — HDI/DEVELOPMENT COMPARISON: HDI 2025 rankings: China (~75, High) > India (130, Medium) > Pakistan (~164, Low); OR economic growth: India ~7%, China ~5%, Pakistan ~2-3%; OR sex ratio comparison
 
 Rules: correct is 0-indexed. When uncertain about a fact → default to Unit II (LPG) instead. Explanation: 2-3 sentences on the economic concept only.
+
+STEM HYGIENE — MANDATORY:
+- The question stem must NOT contain or restate the correct answer.
+- Do NOT write stems that describe a situation and then ask "what does this describe?" where the situation is the answer. Describe facts, ask for classification.
+- Stems must be self-contained: no references to "above", "shown", "described".
+
 CRITICAL OUTPUT RULE: NEVER mention "NCERT", "Sandeep Garg", "Class 11", "Class 12", "textbook", or any author/book name anywhere in question text, options, or explanations. Write in plain authoritative economic language only.
 Return ONLY the JSON object. Begin with { — nothing before it.`;
     }
@@ -1188,7 +1225,21 @@ MANDATORY TOPIC DISTRIBUTION (all passage=null):
 - Course II Macroeconomics: 5 questions (national income definitions, stock vs flow, money aggregates, govt deficit types)
 - Course III IED: 5 questions (LPG 1991 key facts, MGNREGA, HDI rank 130, India-China-Pakistan comparison basics)
 Rules: correct is 0-indexed. Easy-Moderate only. All numericals: provide data in question, round number answers. Explanation: 1-2 sentences.
+
+STEM HYGIENE — MANDATORY:
+- The question stem must NOT contain or restate the correct answer.
+- Stems must be self-contained: no references to "above", "shown", "described".
+
 CRITICAL NUMERICAL ACCURACY: Calculate every numerical answer yourself first. Set correct index to match your calculation exactly. NEVER approximate — exact answers only. SELF-CHECK each question before output.
+
+ELASTICITY DATA LOCK — MANDATORY: If a Price Elasticity of Demand numerical is generated, choose P and Q from this pre-verified set only (percentage method):
+  • P 10→20, Q 40→20 → Ed = −0.5
+  • P 20→25, Q 100→80 → Ed = −0.8
+  • P 50→60, Q 100→80 → Ed = −1.0
+  • P 100→150, Q 80→20 → Ed = −1.5
+  • P 10→15, Q 100→0 → Ed = −2.0
+  The "correct" option MUST equal the exact Ed value listed for that P/Q pair. Do NOT invent values outside this set.
+
 CRITICAL OUTPUT RULE: NEVER mention "NCERT", "Sandeep Garg", "Class 11", "Class 12", "textbook", or any author/book name in question text, options, or explanations.
 Return ONLY the JSON object. Begin with { — nothing before it.`;
 }
