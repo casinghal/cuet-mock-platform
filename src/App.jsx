@@ -388,7 +388,7 @@ function PaywallModal({ user, onSuccess, onClose, subject }) {
 const SUBJECTS = [
   { name: "English (101)",               live: true  },
   { name: "General Aptitude Test (GAT)", live: true  }, // GAT is live
-  { name: "Economics (118)",             live: true  }, // LIVE — Economics IED engine deployed
+  { name: "Economics (118)",             live: false }, // OFFLINE 2026-04-19 — prompt fix in progress (case study schema + elasticity data lock). Flip back to true after QA on 3 fresh sets.
 ];
 
 function AuthScreen({ onLogin, showToast }) {
