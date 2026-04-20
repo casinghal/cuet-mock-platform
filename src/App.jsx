@@ -2063,13 +2063,69 @@ function ResultsScreen({ questions, answers, config, user, testHistory, timePerQ
   const delta      = histAvg !== null ? pct - histAvg : null;
   const weakest    = topicRows[0] && topicRows[0].attempted > 0 ? topicRows[0] : null;
 
-  // ── AI advisory ───────────────────────────────────────────────────────
+  // ── Next Steps advisory ───────────────────────────────────────────────
+  // Mock modes → rich, history-aware structured advisory (trajectory, priority areas, 48h plan)
+  // QP modes   → simple summary+actions (unchanged from v1)
   const isQP = config?.mode === "QuickPractice" || config?.mode === "GAT_QP" || config?.mode === "Economics_QP";
   useEffect(() => {
+    // Build QP prompt (simple)
     const weakStr = weakest ? `Weakest topic: ${weakest.topic} at ${weakest.accuracy}% accuracy.` : "";
-    const prompt = isQP
-      ? `You are a CUET preparation expert. A student finished a Quick Practice session (ungraded). Correct: ${correct}/${questions.length}. Wrong: ${wrong}. Skipped: ${unanswered}. Accuracy: ${accuracy}%. ${weakStr} Respond ONLY with valid JSON, no markdown: {"summary":"One honest sentence.","actions":["Action 1","Action 2"]}`
-      : `You are a CUET preparation expert. A student finished a CUET mock test. NTA score: ${totalScore}/${maxScore} (${pct}%). Correct: ${correct}. Wrong: ${wrong}. Skipped: ${unanswered}. Accuracy: ${accuracy}%. ${weakStr} Respond ONLY with valid JSON, no markdown: {"summary":"One honest sentence about NTA score and accuracy.","actions":["Action 1","Action 2"]}`;
+    const qpPrompt = `You are a CUET preparation expert. A student finished a Quick Practice session (ungraded). Correct: ${correct}/${questions.length}. Wrong: ${wrong}. Skipped: ${unanswered}. Accuracy: ${accuracy}%. ${weakStr} Respond ONLY with valid JSON, no markdown: {"summary":"One honest sentence.","actions":["Action 1","Action 2"]}`;
+
+    // Build Mock prompt (rich, history-aware)
+    const currentTopicStr = topicRows.filter(t => t.attempted > 0).map(t => `${t.topic}: ${t.correct}/${t.attempted} (${t.accuracy}%)`).join('; ');
+    const history5 = (pastTests || []).slice(0, 5);
+    const historyStr = history5.length > 0
+      ? history5.map((t, i) => {
+          const tr = (t.topicResults || []).filter(r => r.attempted > 0).map(r => `${r.topic}=${r.accuracy}%`).join(', ');
+          return `Attempt -${i+1}: score=${t.totalScore || 0}, accuracy=${t.accuracy || 0}%${tr ? `, topics: ${tr}` : ''}`;
+        }).join(' | ')
+      : 'No prior attempts.';
+    const subject = config?.subject || 'English';
+    const mockPrompt = `You are a senior CUET ${subject} exam coach analysing a student's performance. Produce a specific, data-backed, actionable plan — NOT generic advice.
+
+CURRENT TEST:
+- NTA score: ${totalScore}/${maxScore} (${pct}%)
+- Accuracy: ${accuracy}% (${correct} correct, ${wrong} wrong, ${unanswered} skipped)
+- Topics: ${currentTopicStr}
+
+HISTORY (last ${history5.length} ${subject} attempts, newest first):
+${historyStr}
+
+Return ONLY a JSON object. NO markdown fences. NO preamble. Begin with {.
+
+SCHEMA:
+{
+  "trajectory": "improving" | "stable" | "declining" | "baseline",
+  "trajectory_insight": "One sharp sentence (20-35 words) on what the data shows. Cite a number.",
+  "priority_areas": [
+    {"rank": 1, "topic": "<exact topic name from current test>", "weakness": "<specific sub-skill, NOT the topic name>", "evidence": "<one line citing numbers>", "action": "<concrete task with a number>", "time_mins": <30-120>},
+    {"rank": 2, "topic": "...", "weakness": "...", "evidence": "...", "action": "...", "time_mins": 60},
+    {"rank": 3, "topic": "...", "weakness": "...", "evidence": "...", "action": "...", "time_mins": 45}
+  ],
+  "strengths": ["<topic> (<accuracy>%)"],
+  "pattern_insight": "<one observation on study pattern with numbers, 30-50 words>",
+  "next_target": {"score": <integer, +5 to +25 from current>, "accuracy": <integer>, "focus": "<the ONE thing to nail>"},
+  "study_plan_48h": [
+    {"when": "Today evening", "task": "<specific>", "duration_mins": <integer>},
+    {"when": "Tomorrow morning", "task": "<specific>", "duration_mins": <integer>},
+    {"when": "Tomorrow evening", "task": "<specific>", "duration_mins": <integer>}
+  ]
+}
+
+RULES:
+1. Specificity over generality. "Practice RC" is banned. "Practice 10 literary passages focused on inference" is required.
+2. Every recommendation cites a number from the data.
+3. Exactly 3 priority_areas, ranked by urgency (highest-impact weakness = rank 1).
+4. If no prior history, set trajectory="baseline" and do NOT invent trends.
+5. Strengths must actually be strong (>=70% accuracy with 5+ attempted). Empty array if none qualify.
+6. next_target.score must be realistic — not more than +25 from current.
+7. study_plan_48h duration_mins total between 90-180 minutes.
+8. No references to AI, algorithms, engines, or generation. Write as a human coach.
+9. No motivational filler. Analysis and action only.`;
+
+    const prompt = isQP ? qpPrompt : mockPrompt;
+
     if (!CF_BASE) { setAnalysis({ summary: "Review your answers to find improvement areas.", actions: ["Focus on your weakest topic first."] }); return; }
     (async () => {
       try {
@@ -2331,12 +2387,128 @@ function ResultsScreen({ questions, answers, config, user, testHistory, timePerQ
           </div>
         )}
 
-        {/* ── BLOCK 6: Advisory ─────────────────────────────────────────── */}
-        <div style={{ background:AZ.card, borderRadius:10, padding:"14px 16px", marginBottom:20, border:`1px solid ${AZ.bord}` }}>
-          <div style={{ fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:".06em", color:AZ.textM, marginBottom:10 }}>What to Do Next</div>
+        {/* ── BLOCK 6: Next Steps — Personalised Action Plan ─────────── */}
+        <div style={{ background:AZ.card, borderRadius:10, padding: isMobile?"16px 14px":"20px 22px", marginBottom:20, border:`1px solid ${AZ.bord}` }}>
+          <div style={{ fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:".1em", color:AZ.ind, marginBottom:4 }}>Your Next Steps</div>
+          <div style={{ fontSize:isMobile?17:20, fontWeight:400, color:AZ.text, marginBottom:14, fontFamily:"var(--font-display)", lineHeight:1.2 }}>Personalised Action Plan</div>
+
           {!analysis ? (
-            <div style={{ fontSize:12, color:AZ.textS }}>Generating analysis…</div>
+            <div style={{ fontSize:12, color:AZ.textS }}>Building your action plan…</div>
+          ) : analysis.priority_areas ? (
+            <>
+              {/* Trajectory card */}
+              {analysis.trajectory && analysis.trajectory_insight && (() => {
+                const cfg = ({
+                  improving: { arrow:"↗", lbl:"IMPROVING", col:AZ.grn, bg:"#ECFDF5", bd:"#A7F3D0" },
+                  stable:    { arrow:"→", lbl:"STABLE",    col:AZ.amb, bg:"#FFFBEB", bd:"#FCD34D" },
+                  declining: { arrow:"↘", lbl:"DECLINING", col:AZ.red, bg:"#FEF2F2", bd:"#FECACA" },
+                  baseline:  { arrow:"●", lbl:"BASELINE",  col:AZ.ind, bg:"#EEF2FF", bd:"#C7D2FE" },
+                })[analysis.trajectory] || { arrow:"●", lbl:"BASELINE", col:AZ.ind, bg:"#EEF2FF", bd:"#C7D2FE" };
+                return (
+                  <div style={{ display:"flex", alignItems:"center", gap:12, padding:"12px 14px", background:cfg.bg, border:`1px solid ${cfg.bd}`, borderRadius:8, marginBottom:16, flexWrap:"wrap" }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
+                      <span style={{ fontSize:20, fontWeight:700, color:cfg.col, fontFamily:"var(--font-mono)", lineHeight:1 }}>{cfg.arrow}</span>
+                      <span style={{ fontSize:10, fontWeight:700, color:cfg.col, letterSpacing:"1.5px", fontFamily:"var(--font-mono)" }}>{cfg.lbl}</span>
+                    </div>
+                    <p style={{ margin:0, fontSize:13, color:AZ.text, lineHeight:1.5, flex:1, minWidth:200 }}>{analysis.trajectory_insight}</p>
+                  </div>
+                );
+              })()}
+
+              {/* Priority Areas */}
+              <div style={{ fontSize:11, fontWeight:700, color:AZ.text, textTransform:"uppercase", letterSpacing:".08em", marginBottom:10 }}>
+                Priority Areas <span style={{ color:AZ.textM, fontWeight:400, textTransform:"none", letterSpacing:0 }}>— work on these first</span>
+              </div>
+              <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:16 }}>
+                {(analysis.priority_areas || []).map(p => (
+                  <div key={p.rank} style={{ display:"flex", gap:12, padding:"12px 14px", background:AZ.card2, borderRadius:8, border:`1px solid ${AZ.bord}`, borderLeft:`3px solid ${AZ.ind}` }}>
+                    <div style={{ flexShrink:0, width:28, height:28, borderRadius:6, background:"#0F2747", color:"#fff", display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:700, fontFamily:"var(--font-mono)" }}>{p.rank}</div>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", gap:10, marginBottom:3, flexWrap:"wrap" }}>
+                        <span style={{ fontSize:13, fontWeight:700, color:AZ.text }}>{p.topic}</span>
+                        {p.time_mins && <span style={{ fontSize:11, color:AZ.amb, fontWeight:700, fontFamily:"var(--font-mono)", background:"#FFFBEB", padding:"2px 7px", borderRadius:4 }}>{p.time_mins} min</span>}
+                      </div>
+                      {p.weakness && <div style={{ fontSize:12, color:AZ.text, fontWeight:500, marginBottom:6, lineHeight:1.4 }}>{p.weakness}</div>}
+                      {p.evidence && (
+                        <div style={{ display:"flex", gap:8, marginBottom:3, alignItems:"baseline" }}>
+                          <span style={{ flexShrink:0, fontSize:9, fontWeight:700, letterSpacing:".08em", color:AZ.textM, textTransform:"uppercase", width:44 }}>Data</span>
+                          <span style={{ fontSize:12, color:AZ.textS, lineHeight:1.5 }}>{p.evidence}</span>
+                        </div>
+                      )}
+                      {p.action && (
+                        <div style={{ display:"flex", gap:8, alignItems:"baseline" }}>
+                          <span style={{ flexShrink:0, fontSize:9, fontWeight:700, letterSpacing:".08em", color:AZ.ind, textTransform:"uppercase", width:44 }}>Action</span>
+                          <span style={{ fontSize:12, color:AZ.text, lineHeight:1.5, fontWeight:500 }}>{p.action}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Strengths */}
+              {(analysis.strengths || []).length > 0 && (
+                <div style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 14px", background:"#F0FDF4", borderRadius:6, border:"1px solid #BBF7D0", marginBottom:14, flexWrap:"wrap" }}>
+                  <span style={{ fontSize:10, fontWeight:700, color:AZ.grn, textTransform:"uppercase", letterSpacing:".08em", flexShrink:0 }}>Hold ground on</span>
+                  <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                    {analysis.strengths.map((s, i) => (
+                      <span key={i} style={{ background:AZ.card, border:"1px solid #BBF7D0", color:AZ.grn, padding:"3px 8px", borderRadius:4, fontSize:11, fontWeight:600 }}>{s}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Pattern insight */}
+              {analysis.pattern_insight && (
+                <div style={{ padding:"12px 14px", background:"#FFFBEB", borderLeft:`3px solid ${AZ.amb}`, borderRadius:6, marginBottom:14 }}>
+                  <div style={{ fontSize:9, fontWeight:700, letterSpacing:".1em", textTransform:"uppercase", color:AZ.amb, marginBottom:4 }}>Pattern Observation</div>
+                  <div style={{ fontSize:12, color:AZ.text, lineHeight:1.55 }}>{analysis.pattern_insight}</div>
+                </div>
+              )}
+
+              {/* Next target */}
+              {analysis.next_target && (
+                <div style={{ padding:"14px 16px", background:"linear-gradient(135deg, #0F2747, #2D5282)", borderRadius:10, color:"#fff", marginBottom:14 }}>
+                  <div style={{ fontSize:10, fontWeight:700, letterSpacing:".12em", textTransform:"uppercase", color:"rgba(255,255,255,0.7)", marginBottom:10 }}>Target for your next attempt</div>
+                  <div style={{ display:"flex", alignItems:"center", gap:20, marginBottom: analysis.next_target.focus ? 10 : 0, flexWrap:"wrap" }}>
+                    {analysis.next_target.score != null && (
+                      <div><div style={{ fontSize:28, fontWeight:700, fontFamily:"var(--font-mono)", color:"#FCD34D", lineHeight:1 }}>{analysis.next_target.score}</div><div style={{ fontSize:10, letterSpacing:".1em", textTransform:"uppercase", color:"rgba(255,255,255,0.6)", marginTop:3 }}>Score</div></div>
+                    )}
+                    {analysis.next_target.accuracy != null && (
+                      <div style={{ borderLeft:"1px solid rgba(255,255,255,0.15)", paddingLeft:20 }}><div style={{ fontSize:28, fontWeight:700, fontFamily:"var(--font-mono)", color:"#FCD34D", lineHeight:1 }}>{analysis.next_target.accuracy}%</div><div style={{ fontSize:10, letterSpacing:".1em", textTransform:"uppercase", color:"rgba(255,255,255,0.6)", marginTop:3 }}>Accuracy</div></div>
+                    )}
+                  </div>
+                  {analysis.next_target.focus && (
+                    <div style={{ paddingTop:10, borderTop:"1px solid rgba(255,255,255,0.15)", fontSize:12, color:"rgba(255,255,255,0.9)", lineHeight:1.45 }}>
+                      <span style={{ color:"#FCD34D", fontWeight:700, fontSize:10, letterSpacing:".08em", textTransform:"uppercase", marginRight:6 }}>Focus:</span>{analysis.next_target.focus}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 48h plan */}
+              {(analysis.study_plan_48h || []).length > 0 && (
+                <>
+                  <div style={{ fontSize:11, fontWeight:700, color:AZ.text, textTransform:"uppercase", letterSpacing:".08em", marginBottom:10 }}>
+                    Next 48 Hours <span style={{ color:AZ.textM, fontWeight:400, textTransform:"none", letterSpacing:0 }}>— do this, in order</span>
+                  </div>
+                  <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                    {analysis.study_plan_48h.map((it, i) => (
+                      <div key={i} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 14px", background:AZ.card2, borderRadius:6, border:`1px solid ${AZ.bord}` }}>
+                        <div style={{ flexShrink:0, fontSize:14, fontWeight:700, fontFamily:"var(--font-mono)", color:AZ.ind, width:24 }}>{String(i+1).padStart(2,"0")}</div>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize:9, fontWeight:700, letterSpacing:".1em", textTransform:"uppercase", color:AZ.textS, marginBottom:2 }}>{it.when}</div>
+                          <div style={{ fontSize:12, color:AZ.text, lineHeight:1.4, fontWeight:500 }}>{it.task}</div>
+                        </div>
+                        {it.duration_mins && <div style={{ flexShrink:0, fontSize:11, color:AZ.amb, fontWeight:700, fontFamily:"var(--font-mono)", background:"#FFFBEB", padding:"3px 8px", borderRadius:4 }}>{it.duration_mins} min</div>}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </>
           ) : (
+            // Fallback: QP mode or parse failure — old summary+actions layout
             <>
               {analysis.summary && <p style={{ fontSize:13, color:AZ.textS, fontWeight:500, lineHeight:1.6, marginBottom:10, paddingBottom:10, borderBottom:`1px solid ${AZ.bord}` }}>{analysis.summary}</p>}
               {(analysis.actions || []).map((a, i) => (

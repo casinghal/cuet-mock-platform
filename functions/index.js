@@ -2272,7 +2272,7 @@ exports.generateAdvisory = functions.runWith({ timeoutSeconds: 60, memory: "128M
   const KEY = functions.config().anthropic?.api_key || process.env.ANTHROPIC_API_KEY;
   try {
     const r = await axios.post("https://api.anthropic.com/v1/messages",
-      { model: "claude-sonnet-4-6", max_tokens: 500, messages: [{ role: "user", content: prompt }] },
+      { model: "claude-sonnet-4-6", max_tokens: 2000, messages: [{ role: "user", content: prompt }] },
       { headers: { "Content-Type": "application/json", "x-api-key": KEY, "anthropic-version": "2023-06-01" }, timeout: 55000 });
     res.status(200).json({ text: r.data?.content?.[0]?.text || "Keep practising — consistency is key." });
   } catch (e) { res.status(200).json({ text: "Analysis unavailable. Focus on weak topics before next test." }); }
