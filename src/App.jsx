@@ -2008,7 +2008,7 @@ function fmtSecs(s) {
 }
 
 // ── RESULTS SCREEN ────────────────────────────────────────────────────────────
-function ResultsScreen({ questions, answers, config, user, testHistory, timePerQ = {}, isPastReview = false, reviewTestDate = null, onNewTest, onReview, onViewAnalytics }) {
+function ResultsScreen({ questions, answers, config, user, testHistory, timePerQ = {}, isPastReview = false, reviewTestDate = null, testId = null, onNewTest, onReview, onViewAnalytics }) {
   const [analysis, setAnalysis] = useState(null);
   const isMobile = useMobile();
 
@@ -2132,7 +2132,7 @@ RULES:
         const token = await getAuthToken();
         const r = await fetch(`${CF_BASE}/generateAdvisory`, {
           method:"POST", headers: authHeaders(token),
-          body: JSON.stringify({ prompt })
+          body: JSON.stringify({ prompt, testId })
         });
         if (!r.ok) throw new Error("CF error");
         const d = await r.json();
@@ -2527,7 +2527,7 @@ RULES:
 }
 
 // ── REVIEW SCREEN ─────────────────────────────────────────────────────────────
-function ReviewScreen({ questions, answers, onBack, onViewAnalytics, config, testDate, timePerQ = {} }) {
+function ReviewScreen({ questions, answers, onBack, onViewAnalytics, config, testDate, testId = null, timePerQ = {} }) {
   const [filter,      setFilter]      = useState("all");
   const [showPalette, setShowPalette] = useState(false);
   const [advisory,    setAdvisory]    = useState(null);
@@ -2563,7 +2563,7 @@ function ReviewScreen({ questions, answers, onBack, onViewAnalytics, config, tes
         const _prompt = `You are a CUET preparation expert. A student reviewed their answers. Correct: ${_revScores.correct}/${questions.length}. Wrong: ${_revScores.wrong}. Skipped: ${_revScores.unanswered}. Accuracy: ${_accuracy}%.${_weakest?" Weakest: "+_weakest.topic+" "+_weakest.acc+"%.":""} Respond ONLY with valid JSON, no markdown: {"summary":"One honest sentence.","actions":["Action 1","Action 2"]}`;
         const r = await fetch(`${CF_BASE}/generateAdvisory`, {
           method:"POST", headers: authHeaders(token),
-          body: JSON.stringify({ prompt: _prompt })
+          body: JSON.stringify({ prompt: _prompt, testId })
         });
         if (!r.ok) throw new Error("CF error");
         const d = await r.json();
@@ -3687,6 +3687,7 @@ export default function App() {
   const [timePerQ,    setTimePerQ]   = useState({});
   const [isPastReview,  setIsPastReview]  = useState(false);
   const [reviewTestDate, setReviewTestDate] = useState(null);
+  const [currentTestId, setCurrentTestId]  = useState(null); // testId for advisory caching — set on submit or past-review open
   const [perfDashFrom,   setPerfDashFrom]   = useState("dashboard");
   const [toast,       setToast]      = useState(null);
   const [authLoading, setAuthLoad]   = useState(true);
@@ -3778,6 +3779,7 @@ export default function App() {
       setConfig({ mode: data.mode, subject: data.subject || "English" });
       setIsPastReview(true);
       setReviewTestDate(data.completedAt || null);
+      setCurrentTestId(testId);
       setPerfDashFrom("results");
       setScreen("review");
     } catch(e) { showToast("Could not load test. Please try again.", "error"); }
@@ -3892,8 +3894,9 @@ export default function App() {
     setTimePerQ(tpq);
     setIsPastReview(false);
     setReviewTestDate(null);
+    setCurrentTestId(null);
     try {
-      await addDoc(collection(db, "tests"), {
+      const _testRef = await addDoc(collection(db, "tests"), {
         uid: user.uid,
         email: user.email || null,
         displayName: user.displayName || null,
@@ -3907,6 +3910,7 @@ export default function App() {
         completedAt: serverTimestamp(),
         questions, answers: submittedAnswers,
       });
+      setCurrentTestId(_testRef?.id || null);
       await loadUserData(user);
     } catch(_) { /* non-blocking — results still show */ }
     // Fire test_completed here — score and accuracy now available (not available in ExamScreen)
@@ -3933,14 +3937,14 @@ export default function App() {
       {screen === "dashboard"  && <DashboardScreen user={user} userData={userData} testHistory={testHistory} onBeginTest={handleBeginTest} onReviewTest={handleReviewPastTest} onViewAnalytics={() => { setPerfDashFrom("dashboard"); setScreen("performance"); }} onLogout={() => auth ? signOut(auth) : setScreen("auth")} showToast={showToast} subjects={SUBJECTS} showPaywallOverride={showPaywall} setShowPaywallOverride={setShowPaywall} />}
       {screen === "generating" && <GeneratingScreen config={testConfig} />}
       {screen === "exam"       && <ExamScreen      questions={questions} config={testConfig} user={user} onSubmit={handleSubmitTest} showToast={showToast} />}
-      {screen === "results"    && <ResultsScreen   questions={questions} answers={answers} config={testConfig} user={user} testHistory={testHistory} timePerQ={timePerQ} isPastReview={isPastReview} reviewTestDate={reviewTestDate} onNewTest={() => setScreen("dashboard")} onReview={() => setScreen("review")} onViewAnalytics={() => { setPerfDashFrom("results"); setScreen("performance"); }} />}
+      {screen === "results"    && <ResultsScreen   questions={questions} answers={answers} config={testConfig} user={user} testHistory={testHistory} timePerQ={timePerQ} isPastReview={isPastReview} reviewTestDate={reviewTestDate} testId={currentTestId} onNewTest={() => setScreen("dashboard")} onReview={() => setScreen("review")} onViewAnalytics={() => { setPerfDashFrom("results"); setScreen("performance"); }} />}
       {/* Feedback button — always visible when logged in */}
       {user && screen !== "auth" && screen !== "exam" && <FeedbackWidget user={user} />}
       {/* Star rating — shown once per login session */}
       {user && showRating && (screen === "results" || screen === "dashboard") && (
         <StarRatingModal user={user} onDismiss={() => setShowRating(false)} />
       )}
-      {screen === "review"      && <ReviewScreen          questions={questions} answers={answers} timePerQ={timePerQ} config={testConfig} testDate={reviewTestDate} onViewAnalytics={isPastReview ? () => { setPerfDashFrom("results"); setScreen("results"); } : undefined} onBack={() => isPastReview ? setScreen("dashboard") : setScreen("results")} />}
+      {screen === "review"      && <ReviewScreen          questions={questions} answers={answers} timePerQ={timePerQ} config={testConfig} testDate={reviewTestDate} testId={currentTestId} onViewAnalytics={isPastReview ? () => { setPerfDashFrom("results"); setScreen("results"); } : undefined} onBack={() => isPastReview ? setScreen("dashboard") : setScreen("results")} />}
       {screen === "performance" && <PerformanceDashboard  testHistory={testHistory} user={user} onBack={() => setScreen("dashboard")} onBackToResults={perfDashFrom === "results" ? () => setScreen("results") : undefined} />}
     </React.Fragment>
   );

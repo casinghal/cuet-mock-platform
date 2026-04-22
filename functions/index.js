@@ -1610,27 +1610,27 @@ function verifyQuestionSchema(questions, mode) {
 }
 
 async function verifyQuestionAccuracy(questions, mode, apiKey) {
-  // Filter: numerical + conceptual classification questions — both categories have wrong-correct-index bugs
+  // Filter: specific numerical + narrowly-defined classification questions only.
+  // Generic terms ("calculate", "classify", "what is the value", "profit", "revenue", "equilibrium",
+  // standalone "stock"/"flow"/"micro"/"macro") have been removed — they matched nearly every
+  // Economics/GAT question and made the verifier fire on content it did not need to check.
+  // Kept: precise technical vocabulary where a wrong correct-index is a genuine calculation bug.
   const verifyTopics = [
-    // Economics numerical
+    // Economics numerical — specific formula-driven topics
     "money supply", "m1", "m2", "m3", "m4",
     "revenue deficit", "fiscal deficit", "primary deficit", "budget deficit",
     "price elasticity", "income elasticity", "cross elasticity",
     "national income", "gnp", "gdp", "nnp", "ndp", "gnpmp", "nnpmp", "nnpfc",
-    "multiplier", "credit creation", "money multiplier", "crr", "slr",
+    "credit creation", "money multiplier", "crr", "slr",
     "cost curves", "total cost", "marginal cost", "average cost",
-    "revenue", "equilibrium", "consumer surplus",
-    // Economics conceptual classification — prone to wrong correct index
-    "stock", "flow", "stock vs flow", "stock and flow",
-    "micro", "macro", "positive", "normative",
-    "direct tax", "indirect tax", "depreciation", "capital formation",
-    // GAT Quant
+    "consumer surplus",
+    // Economics classification — compound terms only (narrow matches)
+    "stock and flow", "stock vs flow",
+    "direct tax", "indirect tax",
+    "depreciation", "capital formation",
+    // GAT Quant — specific chapter names
     "profit and loss", "time and work", "time speed distance",
-    "mensuration", "number system", "percentage", "data interpretation",
-    // General numerical / classification indicators
-    "calculate", "find the value", "what is the value", "compute",
-    "identify which", "classify", "which of the following is",
-    "profit", "loss", "cost"
+    "mensuration", "number system", "data interpretation"
   ];
 
   const toVerify = questions
@@ -2268,13 +2268,42 @@ exports.generateAdvisory = functions.runWith({ timeoutSeconds: 60, memory: "128M
   if (req.method === "OPTIONS") { res.status(204).send(""); return; }
   if (req.method !== "POST")    { res.status(405).json({ error: "Method not allowed" }); return; }
   const decoded = await verifyToken(req, res); if (!decoded) return;
-  const { prompt } = req.body;
+  const { prompt, testId } = req.body;
+
+  // ── Cache-first: if testId provided and we already generated advisory for this test, return it ──
+  // Test docs are immutable after submission (questions, answers, scores fixed), so advisory is stable.
+  // This eliminates repeat Anthropic calls when a student re-opens a past test review.
+  if (testId) {
+    try {
+      const snap = await db.collection("tests").doc(testId).get();
+      if (snap.exists) {
+        const data = snap.data() || {};
+        // Defence in depth: only serve cached advisory to the owning user
+        if (data.uid === decoded.uid && data.advisory && typeof data.advisory === "string" && data.advisory.length > 10) {
+          return res.status(200).json({ text: data.advisory, cached: true });
+        }
+      }
+    } catch (_) { /* fall through to live generation */ }
+  }
+
   const KEY = functions.config().anthropic?.api_key || process.env.ANTHROPIC_API_KEY;
   try {
     const r = await axios.post("https://api.anthropic.com/v1/messages",
-      { model: "claude-sonnet-4-6", max_tokens: 2000, messages: [{ role: "user", content: prompt }] },
+      { model: "claude-haiku-4-5-20251001", max_tokens: 2000, messages: [{ role: "user", content: prompt }] },
       { headers: { "Content-Type": "application/json", "x-api-key": KEY, "anthropic-version": "2023-06-01" }, timeout: 55000 });
-    res.status(200).json({ text: r.data?.content?.[0]?.text || "Keep practising — consistency is key." });
+    const text = r.data?.content?.[0]?.text || "Keep practising — consistency is key.";
+
+    // Write back to Firestore so subsequent opens of this test review return from cache
+    if (testId) {
+      try {
+        await db.collection("tests").doc(testId).set({
+          advisory: text,
+          advisoryGeneratedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+      } catch (_) { /* non-blocking — response still returned */ }
+    }
+
+    res.status(200).json({ text });
   } catch (e) { res.status(200).json({ text: "Analysis unavailable. Focus on weak topics before next test." }); }
 });
 
