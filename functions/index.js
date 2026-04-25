@@ -1516,6 +1516,28 @@ function validateQuestionSet(questions, mode) {
     }
   });
 
+  // RC passage integrity — applies to English Mock and Quick Practice
+  // Bug fix (P1): RC questions arriving with empty/null passage break ExamScreen rendering
+  // and fragment passage groups in shuffleQuestions. Reject any set where this occurs.
+  if (mode === "Mock" || mode === "QuickPractice") {
+    const rcByPassage = new Map();
+    questions.forEach((q, i) => {
+      if (q.topic !== "Reading Comprehension") return;
+      const n = i + 1;
+      if (!q.passage || typeof q.passage !== "string" || q.passage.trim().length < 200) {
+        errors.push(`Q${n}:RC_MISSING_OR_SHORT_PASSAGE`);
+        return;
+      }
+      const norm = q.passage.replace(/\s+/g, " ").trim();
+      if (!rcByPassage.has(norm)) rcByPassage.set(norm, []);
+      rcByPassage.get(norm).push(n);
+    });
+    // English Mock: 3 distinct passage groups expected (one per batch 1/2/3)
+    if (mode === "Mock" && rcByPassage.size !== 0 && rcByPassage.size !== 3) {
+      errors.push(`RC_PASSAGE_GROUP_COUNT:${rcByPassage.size} — expected 3 distinct passages`);
+    }
+  }
+
   return errors;
 }
 

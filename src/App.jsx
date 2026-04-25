@@ -1668,12 +1668,19 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
 
       <div style={{ flex: 1, display: "flex", overflow: "hidden", flexDirection: isMobile ? "column" : "row" }}>
         <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? "16px 16px" : "20px 24px" }}>
-          {q.passage && (
+          {q.passage ? (
             <div style={{ borderLeft: "4px solid var(--indigo)", background: "#F5F7FF", borderRadius: "0 8px 8px 0", padding: isMobile ? "12px 14px" : "14px 18px", marginBottom: 16, fontSize: 13, lineHeight: 1.7, color: "var(--text-primary)", overflowWrap: "break-word", wordBreak: "break-word" }}>
               <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".05em", textTransform: "uppercase", color: "var(--indigo)", marginBottom: 8 }}>Reading Passage</div>
               {q.passage}
             </div>
-          )}
+          ) : q.topic === "Reading Comprehension" ? (
+            <div style={{ borderLeft: "4px solid var(--amber)", background: "#FFFBEB", borderRadius: "0 8px 8px 0", padding: isMobile ? "12px 14px" : "14px 18px", marginBottom: 16, fontSize: 13, lineHeight: 1.7, color: "var(--text-primary)" }}>
+              <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".05em", textTransform: "uppercase", color: "var(--amber)", marginBottom: 8 }}>Reading Passage</div>
+              <div style={{ fontStyle: "italic", color: "var(--text-muted)" }}>
+                Passage text is not available for this question. We recommend skipping it and returning to the dashboard to start a fresh test.
+              </div>
+            </div>
+          ) : null}
           <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 14 }}>
             <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Q.{current + 1}</span>
           </div>
@@ -3631,19 +3638,40 @@ function shuffleQuestions(qs) {
     return a;
   };
 
-  // Bucket RC questions into groups keyed by passage (first 60 chars as key)
+  // Bucket RC questions into groups keyed by NORMALISED passage (robust to whitespace/quote drift)
+  // Bug fix (P1): brittle slice(0,60) key + falsy passage check were fragmenting RC groups
+  // and dumping passage-less RC questions into the nonRC bucket (shuffled freely).
+  const passageKey = (p) => {
+    if (!p || typeof p !== "string") return null;
+    const norm = p.replace(/\s+/g, " ")
+                  .replace(/[\u2018\u2019]/g, "'")
+                  .replace(/[\u201C\u201D]/g, '"')
+                  .replace(/[\u2013\u2014]/g, "-")
+                  .trim();
+    return norm.length >= 50 ? norm.slice(0, 200) : null;
+  };
+
   const passageGroups = new Map(); // passageKey → [questions]
+  const orphanRC = [];             // RC topic questions that arrived passage-less — keep adjacent
   const nonRC = [];
 
   arr.forEach(q => {
-    if (q.passage) {
-      const key = q.passage.slice(0, 60);
+    const key = passageKey(q.passage);
+    const isRC = q.topic === "Reading Comprehension";
+    if (key) {
       if (!passageGroups.has(key)) passageGroups.set(key, []);
       passageGroups.get(key).push(q);
+    } else if (isRC) {
+      orphanRC.push(q);            // do NOT mix into nonRC bucket
     } else {
       nonRC.push(q);
     }
   });
+
+  // Cluster orphan RC together so they at least stay contiguous, even if passage missing
+  if (orphanRC.length > 0) {
+    passageGroups.set("__orphan_rc__", orphanRC);
+  }
 
   // Shuffle within each passage group (question order within a passage can vary)
   const groups = [...passageGroups.values()].map(g => fyShuffle(g));
