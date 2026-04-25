@@ -211,6 +211,7 @@ const FREE_LIMIT    = 4;
 const FREE_MODE     = true;
 // ─────────────────────────────────────────────────────────────────────────────
 const EXAM_SECS     = 3600; // 60 min
+const QP_SECS       = 900;  // 15 min — Quick Practice (English / GAT / Economics)
 const MARKS_CORRECT = 5;
 const MARKS_WRONG   = -1;
 
@@ -1145,11 +1146,11 @@ function DashboardScreen({ user, userData, testHistory, onBeginTest, onReviewTes
 
   // Labels are identical for both subjects — subject tab already provides context
   const ALL_MODES = {
-    QuickPractice:  { label: "Quick Practice",          icon: "⚡", desc: "15 questions · All topics · Lifetime Free",              free: true,  subject: "English" },
+    QuickPractice:  { label: "Quick Practice",          icon: "⚡", desc: "15 questions · 15 min · Lifetime Free",                  free: true,  subject: "English" },
     Mock:           { label: "Mock Exam",                icon: "📝", desc: "50 questions · 60 min · NTA standard marking",           free: false, subject: "English" },
-    GAT_QP:         { label: "Quick Practice",           icon: "⚡", desc: "15 questions · All aptitude topics · Always Free",       free: true,  subject: "GAT" },
+    GAT_QP:         { label: "Quick Practice",           icon: "⚡", desc: "15 questions · 15 min · Always Free",                   free: true,  subject: "GAT" },
     GAT_Mock:       { label: "Mock Exam",                icon: "📝", desc: "50 questions · 60 min · General Aptitude",              free: false, subject: "GAT" },
-    Economics_QP:   { label: "Quick Practice",           icon: "⚡", desc: "15 questions · All topics · Always Free",               free: true,  subject: "Economics" },
+    Economics_QP:   { label: "Quick Practice",           icon: "⚡", desc: "15 questions · 15 min · Always Free",                   free: true,  subject: "Economics" },
     Economics_Mock: { label: "Mock Exam",                icon: "📝", desc: "50 questions · 60 min · Micro · Macro · Indian Economy", free: false, subject: "Economics" },
   };
 
@@ -1547,11 +1548,14 @@ function GeneratingScreen({ config }) {
 
 // ── EXAM SCREEN ───────────────────────────────────────────────────────────────
 function ExamScreen({ questions, config, user, onSubmit, showToast }) {
-  const isTimed    = config?.mode !== "QuickPractice" && config?.mode !== "GAT_QP" && config?.mode !== "Economics_QP"; // free modes: no timer
+  // All modes are timed. Mock = 60 min, Quick Practice (English/GAT/Economics) = 15 min.
+  const isQP       = config?.mode === "QuickPractice" || config?.mode === "GAT_QP" || config?.mode === "Economics_QP";
+  const isTimed    = true;
+  const examSecs   = isQP ? QP_SECS : EXAM_SECS;
   const [current,   setCurrent]   = useState(0);
   const [answers,   setAnswers]   = useState({});
   const [marked,    setMarked]    = useState(new Set());
-  const [timeLeft,  setTimeLeft]  = useState(isTimed ? EXAM_SECS : null);
+  const [timeLeft,  setTimeLeft]  = useState(examSecs);
   const [exitModal, setExitModal] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
@@ -1564,7 +1568,6 @@ function ExamScreen({ questions, config, user, onSubmit, showToast }) {
   useEffect(() => { logEvent("page_view", { page: "exam" }); }, []);
 
   useEffect(() => {
-    if (!isTimed) return; // QuickPractice — no countdown timer
     timerRef.current = setInterval(() => {
       setTimeLeft(t => {
         if (t <= 1) { clearInterval(timerRef.current); submitTest(true); return 0; }
